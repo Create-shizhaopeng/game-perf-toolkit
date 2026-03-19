@@ -21,5 +21,25 @@ source/data/config.json
 # OS / IDE
 .DS_Store
 Thumbs.db
+desktop.ini
 .idea/
 .vscode/
+.cursor/
+
+# 日志与临时文件
+*.log
+*.tmp
+*.temp
+*.swp
+
+# 本地提交说明草稿（勿提交，避免污染历史）
+commit_msg*.txt
+*_commit_msg.txt
+lv-game-toolkit-commit.txt
+
+# 根目录误放的 zip 产物
+/*.zip
+
+# PyInstaller 本地分析报告（若生成在仓库路径内）
+warn-build.txt
+xref-*.html

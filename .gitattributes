@@ -1,0 +1,6 @@
+# 明确二进制类型，避免协作者环境下 diff/合并异常
+*.dll binary
+*.exe binary
+*.png binary
+*.jpg binary
+*.jpeg binary

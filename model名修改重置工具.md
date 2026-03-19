@@ -4,9 +4,19 @@
 - **ModifyModelNameTool**：设备型号伪装与重置（本说明对应此功能）
 - **push policy**：策略配置文件推送（详见 `spec-push-policy.md`）
 
+## 目录
+
+- [功能（ModifyModelNameTool 选项卡）](#功能modifymodelnametool-选项卡)
+- [界面示意图文件](#界面示意图文件)
+- [Git 与提交（协作者）](#git-与提交协作者)
+
 # 功能（ModifyModelNameTool 选项卡）
 
-1，界面如图所示:
+1，界面总览（线框图）：
+
+![UI 线框](UI.jpg)
+
+主界面效果参考：
 
 ![U](ui.png)
 
@@ -26,3 +36,21 @@
 * 第三行内容说明：显示当前的任务进度
   * 点击start后，需要根据任务执行的进度按照图中信息进行打印
   * 点击reset后，同样打印任务执行进度，最后一行打印修改为"设备信息重置成功",打印出重置后的设备信息
+
+## 界面示意图文件
+
+本目录下与说明对应的静态资源（**纳入 Git**，协作者 `git pull` 后应与文档一并存在）：
+
+| 文件 | 说明 |
+|------|------|
+| `UI.jpg` | 整体线框 / 布局示意 |
+| `ui.png` | 主界面参考 |
+| `ui2.png` | 保存对话框示意 |
+| `ui3.png` | 设备选取弹窗示意 |
+
+## Git 与提交（协作者）
+
+- 拉取远程后请阅读仓库根目录 [README.md](README.md) 与 [.github/COMMIT_MSG_TEMPLATE.md](.github/COMMIT_MSG_TEMPLATE.md)。
+- 在仓库根目录执行一次：`git config commit.template .github/COMMIT_MSG_TEMPLATE.md`。
+- `.gitignore` 会排除编译产物、虚拟环境、本地备份与个人 `config.json`；**不要**把模板文件或 `.gitignore` 加入忽略列表。
+- 提交前用 `git status` 确认仅包含有意义的源码与文档。
