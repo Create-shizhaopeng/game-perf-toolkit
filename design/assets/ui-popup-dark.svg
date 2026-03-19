@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 340" width="480" height="340"
+     preserveAspectRatio="xMidYMid meet">
+  <!-- Design: min-width=400, min-height=280 -->
+  <defs>
+    <style>
+      text { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; }
+    </style>
+  </defs>
+
+  <!-- Popup Frame -->
+  <rect width="480" height="340" rx="6" fill="#252526" stroke="#3c3c3c" stroke-width="1"/>
+
+  <!-- Left Panel: Device List -->
+  <rect x="0" y="0" width="200" height="340" rx="6" fill="#1e1e1e"/>
+  <rect x="6" y="0" width="194" height="340" fill="#1e1e1e"/>
+
+  <text x="16" y="24" fill="#858585" font-size="11">&#x5DF2;&#x4FDD;&#x5B58;&#x7684;&#x8BBE;&#x5907;&#x578B;&#x53F7;</text>
+
+  <!-- Item 1 (selected, h=36) -->
+  <rect x="4" y="34" width="192" height="36" rx="3" fill="#094771"/>
+  <text x="16" y="50" fill="#ffffff" font-size="12">V2505A</text>
+  <text x="16" y="64" fill="#8cb4d8" font-size="9">vivo &#xB7; vivo</text>
+
+  <!-- Item 2 (h=36) -->
+  <rect x="4" y="72" width="192" height="36" rx="3" fill="transparent"/>
+  <text x="16" y="88" fill="#d4d4d4" font-size="12">24090PN55C</text>
+  <text x="16" y="102" fill="#858585" font-size="9">Xiaomi &#xB7; Xiaomi</text>
+
+  <!-- Item 3 (h=36) -->
+  <rect x="4" y="110" width="192" height="36" rx="3" fill="transparent"/>
+  <text x="16" y="126" fill="#d4d4d4" font-size="12">SM-S9280</text>
+  <text x="16" y="140" fill="#858585" font-size="9">samsung &#xB7; samsung</text>
+
+  <!-- Item 4 (h=36) -->
+  <rect x="4" y="148" width="192" height="36" rx="3" fill="transparent"/>
+  <text x="16" y="164" fill="#d4d4d4" font-size="12">PGKM10</text>
+  <text x="16" y="178" fill="#858585" font-size="9">OnePlus &#xB7; OnePlus</text>
+
+  <!-- Item 5 (h=36) -->
+  <rect x="4" y="186" width="192" height="36" rx="3" fill="transparent"/>
+  <text x="16" y="202" fill="#d4d4d4" font-size="12">iPhone16,2</text>
+  <text x="16" y="216" fill="#858585" font-size="9">Apple &#xB7; Apple</text>
+
+  <!-- Scrollbar -->
+  <rect x="194" y="34" width="3" height="180" rx="1.5" fill="#2a2a2a"/>
+  <rect x="194" y="34" width="3" height="80" rx="1.5" fill="#555555"/>
+
+  <!-- Divider -->
+  <rect x="200" y="0" width="1" height="340" fill="#3c3c3c"/>
+
+  <!-- Right Panel: Notes -->
+  <text x="216" y="24" fill="#858585" font-size="11">&#x5907;&#x6CE8;</text>
+
+  <text x="216" y="54" fill="#ce9178" font-size="13" font-weight="600">V2505A</text>
+  <rect x="216" y="62" width="240" height="1" fill="#3c3c3c"/>
+
+  <text x="216" y="84" fill="#d4d4d4" font-size="12">&#x9002;&#x7528;&#x4E8E;&#x7A7F;&#x8D8A;&#x706B;&#x7EBF;&#x3001;&#x548C;&#x5E73;&#x7CBE;&#x82F1;</text>
+  <text x="216" y="102" fill="#d4d4d4" font-size="12">&#x7B49;&#x9700;&#x8981;&#x9AD8;&#x5E27;&#x7387;&#x7684;&#x6E38;&#x620F;&#x3002;</text>
+  <text x="216" y="120" fill="#d4d4d4" font-size="12">vivo &#x673A;&#x578B;&#x901A;&#x5E38;&#x6709;&#x8F83;&#x597D;&#x7684;</text>
+  <text x="216" y="138" fill="#d4d4d4" font-size="12">&#x6E38;&#x620F;&#x9AD8;&#x5E27;&#x7387;&#x652F;&#x6301;&#x3002;</text>
+
+  <!-- Game tags (h=20, center=166) -->
+  <rect x="216" y="156" width="72" height="20" rx="10" fill="#2d4f2d"/>
+  <text x="252" y="166" text-anchor="middle" dominant-baseline="central" fill="#4ec94e" font-size="10">&#x7A7F;&#x8D8A;&#x706B;&#x7EBF;</text>
+
+  <rect x="296" y="156" width="72" height="20" rx="10" fill="#2d4f2d"/>
+  <text x="332" y="166" text-anchor="middle" dominant-baseline="central" fill="#4ec94e" font-size="10">&#x548C;&#x5E73;&#x7CBE;&#x82F1;</text>
+
+  <rect x="376" y="156" width="56" height="20" rx="10" fill="#2d4f2d"/>
+  <text x="404" y="166" text-anchor="middle" dominant-baseline="central" fill="#4ec94e" font-size="10">&#x539F;&#x795E;</text>
+
+  <!-- Right-click context menu -->
+  <rect x="100" y="130" width="110" height="60" rx="4" fill="#2d2d30" stroke="#454545" stroke-width="1"/>
+  <!-- Edit item (h=26, center=145) -->
+  <rect x="102" y="132" width="106" height="26" rx="2" fill="#094771"/>
+  <text x="116" y="145" dominant-baseline="central" fill="#ffffff" font-size="12">&#x7F16;&#x8F91;</text>
+  <!-- Delete item (h=26, center=171) -->
+  <rect x="102" y="158" width="106" height="26" rx="2" fill="transparent"/>
+  <text x="116" y="171" dominant-baseline="central" fill="#d4d4d4" font-size="12">&#x5220;&#x9664;</text>
+</svg>

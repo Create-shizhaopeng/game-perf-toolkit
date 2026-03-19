@@ -1,0 +1,26 @@
+[
+  {
+    "brand": "vivo",
+    "manufacturer": "vivo",
+    "model": "V2505A",
+    "notes": "支持120帧原神、王者荣耀"
+  },
+  {
+    "brand": "OPPO",
+    "manufacturer": "OPPO",
+    "model": "PGJM10",
+    "notes": "Find X7 Ultra，支持120帧和平精英"
+  },
+  {
+    "brand": "Xiaomi",
+    "manufacturer": "Xiaomi Communications",
+    "model": "24129PN74C",
+    "notes": "Xiaomi 15 Pro，高帧穿越火线"
+  },
+  {
+    "brand": "samsung",
+    "manufacturer": "samsung",
+    "model": "SM-S9280",
+    "notes": "Galaxy S25 Ultra，支持高帧率游戏"
+  }
+]

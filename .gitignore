@@ -1,0 +1,25 @@
+# PyInstaller / 编译产物
+source/dist/
+source/build/
+*.spec.bak
+
+# 虚拟环境
+source/.venv/
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# 运行时本地数据（不提交）
+source/data/backups/
+source/data/config.json
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
