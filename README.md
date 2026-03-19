@@ -10,7 +10,7 @@
 - **用户（exe）**：下载 `Toolkit-vX.X.X.zip` → 解压 → 双击 `Toolkit.exe`；需 Windows 10/11 x64、Android 设备已 root 并开启 USB 调试。
 - **开发者**：`cd source` → `pip install -r requirements.txt` → `python main.py`；构建 exe 执行 `python build.py`。
 
-完整安装步骤、使用流程与项目结构见 [quickstart.md](quickstart.md)；Push 策略需求见 [spec-push-policy.md](spec-push-policy.md)。
+完整安装步骤、使用流程与项目结构见 [doc/quickstart.md](doc/quickstart.md)；Push 策略需求见 [doc/spec-push-policy.md](doc/spec-push-policy.md)。
 
 ### Git 与提交说明
 
