@@ -2,14 +2,17 @@
 """游戏性能配置工具 Tab：解析/编辑 gameperfconfig.xml + 推送到设备，作为 Toolkit 的第二个选项卡。"""
 
 import os
+import re
+import json
 import pandas as pd
+from datetime import datetime
 from lxml import etree
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QComboBox, QLabel,
     QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
     QFrame, QLineEdit, QGridLayout, QTextEdit, QProgressBar, QSizePolicy,
 )
-from PyQt6.QtCore import Qt, pyqtSlot, QMimeData
+from PyQt6.QtCore import Qt, pyqtSlot, QMimeData, pyqtSignal, QTimer
 from PyQt6.QtGui import QTextCursor, QColor, QTextCharFormat, QFont, QDragEnterEvent, QDropEvent
 
 from core.adb_manager import AdbManager, DeviceMonitor
@@ -200,6 +203,7 @@ class GamePerfParser:
         row = self.df.iloc[row_idx]
         try:
             xml_node = row["xml_node"]
+            xml_node.set("temp", str(row["触发温度(℃)"]))
             for item in xml_node.findall("item"):
                 item_name = item.get("name")
                 if item_name == "Gold":
@@ -266,9 +270,34 @@ class GamePerfParser:
             QMessageBox.warning(win, "保存失败", f"无法保存XML：{str(e)}")
             return False
 
+    def write_to_path(self, path: str) -> bool:
+        """将当前 original_tree 写入指定路径（用于 push 前保存修改到原文件）。"""
+        if not self.original_tree:
+            return False
+        try:
+            if isinstance(self.original_tree, etree._ElementTree):
+                self.original_tree.write(
+                    path, encoding="utf-8", xml_declaration=True, pretty_print=True
+                )
+            else:
+                with open(path, "wb") as f:
+                    f.write(
+                        etree.tostring(
+                            self.original_tree,
+                            encoding="utf-8",
+                            pretty_print=True,
+                            xml_declaration=True,
+                        )
+                    )
+            return True
+        except Exception:
+            return False
+
 
 class GamePerfToolTab(QWidget):
     """游戏性能配置工具的可嵌入 Tab 页：编辑 gameperfconfig.xml + 推送到设备。"""
+
+    refresh_device_requested = pyqtSignal()
 
     def __init__(
         self,
@@ -283,10 +312,10 @@ class GamePerfToolTab(QWidget):
         self.parser = None
         self.current_filtered_df = None
 
-        data_dir = os.path.join(
+        self._data_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
         )
-        self._push_service = PushPolicyService(adb_manager, data_dir)
+        self._push_service = PushPolicyService(adb_manager, self._data_dir)
 
         self._init_ui()
         self._connect_signals()
@@ -416,28 +445,45 @@ class GamePerfToolTab(QWidget):
         header.addStretch()
         card_layout.addLayout(header)
 
-        row = QGridLayout()
-        row.setHorizontalSpacing(12)
-        row.setVerticalSpacing(6)
+        row = QHBoxLayout()
+        row.setSpacing(6)
         lbl = QLabel("游戏：")
         lbl.setProperty("class", "fieldLabel")
-        row.addWidget(lbl, 0, 0)
+        row.addWidget(lbl)
         self.game_cbx = QComboBox()
+        self.game_cbx.setMinimumWidth(120)
+        self.game_cbx.setMaximumWidth(180)
         self.game_cbx.currentTextChanged.connect(self._on_game_changed)
-        row.addWidget(self.game_cbx, 0, 1)
+        row.addWidget(self.game_cbx)
         lbl2 = QLabel("性能模式：")
         lbl2.setProperty("class", "fieldLabel")
-        row.addWidget(lbl2, 0, 2)
+        row.addWidget(lbl2)
         self.mode_cbx = QComboBox()
+        self.mode_cbx.setMinimumWidth(100)
+        self.mode_cbx.setMaximumWidth(150)
         self.mode_cbx.currentTextChanged.connect(self._refresh)
-        row.addWidget(self.mode_cbx, 0, 3)
+        row.addWidget(self.mode_cbx)
         self.save_as_btn = QPushButton("另存为修改后的XML")
         self.save_as_btn.setObjectName("browseButton")
         self.save_as_btn.setFixedHeight(28)
         self.save_as_btn.clicked.connect(self._on_save_as)
         self.save_as_btn.setEnabled(False)
-        row.addWidget(self.save_as_btn, 0, 4)
+        row.addWidget(self.save_as_btn)
+        row.addStretch()
         card_layout.addLayout(row)
+
+        # 当前数据备注说明（push 时随 JSON 一并保存）
+        row2 = QHBoxLayout()
+        row2.setSpacing(6)
+        lbl_adv = QLabel("当前数据备注：")
+        lbl_adv.setProperty("class", "fieldLabel")
+        row2.addWidget(lbl_adv)
+        self._advantage_input = QLineEdit()
+        self._advantage_input.setPlaceholderText("可填写本配置的备注说明，push 时随 JSON 一并保存到以游戏包名命名的文件夹")
+        self._advantage_input.setObjectName("fileInput")
+        self._advantage_input.setFixedHeight(28)
+        row2.addWidget(self._advantage_input, 1)
+        card_layout.addLayout(row2)
         parent_layout.addWidget(card)
 
     def _create_table_section(self, parent_layout: QVBoxLayout):
@@ -629,14 +675,66 @@ class GamePerfToolTab(QWidget):
                 "文件名须包含 gameperfconfig 且扩展名为 .xml",
             )
             return
+        # push 前将当前编辑内容写回原 gameperfconfig.xml
+        if self.parser and self.parser.original_tree and self.parser.xml_path == filepath:
+            if not self.parser.write_to_path(filepath):
+                QMessageBox.warning(
+                    self.window(), "保存失败", "无法将修改写回原文件，请检查文件是否被占用。"
+                )
+                return
+        # push 时自动以 JSON 保存当前数据 + 当前数据备注说明，按游戏包名建文件夹、时间戳命名
+        self._save_push_record_json()
         self._log_area.clear()
         self._set_progress(0)
         self._update_push_button_states(False)
         self._push_service.push(filepath)
 
+    def _save_push_record_json(self):
+        """push 时自动以 JSON 保存当前数据及「当前数据备注」说明，按游戏包名建文件夹、时间戳命名。"""
+        if not self.parser or self.parser.df is None or self.parser.df.empty:
+            return
+        game_name = self.game_cbx.currentText()
+        mode_name = self.mode_cbx.currentText()
+        df_sub = self.parser.df[
+            (self.parser.df["游戏名称"] == game_name)
+            & (self.parser.df["性能模式"] == mode_name)
+        ]
+        if df_sub.empty:
+            return
+        package_name = df_sub["原始包名"].iloc[0]
+        advantage_note = self._advantage_input.text().strip()
+
+        # 导出表格数据（去掉不可序列化的 xml_node）
+        cols = [c for c in df_sub.columns if c != "xml_node"]
+        data_rows = df_sub[cols].to_dict(orient="records")
+
+        payload = {
+            "game": game_name,
+            "package": package_name,
+            "mode": mode_name,
+            "advantage_note": advantage_note,
+            "saved_at": datetime.now().isoformat(),
+            "data": data_rows,
+        }
+        safe_package = re.sub(r'[\\/:*?"<>|]', "_", package_name)
+        record_dir = os.path.join(self._data_dir, "push_records", safe_package)
+        os.makedirs(record_dir, exist_ok=True)
+        filename = datetime.now().strftime("%Y%m%d_%H%M%S") + ".json"
+        path = os.path.join(record_dir, filename)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
     @pyqtSlot()
     def _on_push_clear(self):
-        self._file_input.clear()
+        # 仅清空游戏、性能模式、频点配置表、备注；保留配置文件路径，以便仍可 Start/Reset 上一次文件
+        self.game_cbx.clear()
+        self.mode_cbx.clear()
+        self.config_table.setRowCount(0)
+        if hasattr(self, "_advantage_input"):
+            self._advantage_input.clear()
 
     @pyqtSlot()
     def _on_push_reset(self):
@@ -677,6 +775,8 @@ class GamePerfToolTab(QWidget):
     def _on_push_finished(self, success: bool, message: str):
         if success:
             self._set_progress(100)
+            # 设备重启后需延迟刷新，否则当前设备信息与连接状态不更新
+            self.refresh_device_requested.emit()
         self._update_push_button_states(self._current_state.is_connected)
 
     def on_device_connected(self, serial: str, state: DeviceState):
@@ -772,11 +872,29 @@ class GamePerfToolTab(QWidget):
     def _on_cell_changed(self, row: int, col: int):
         if not self.parser or self.current_filtered_df is None:
             return
+        original_idx = self.current_filtered_df.index[row]
+        new_val = self.config_table.item(row, col).text().strip()
+
+        if col == 1:
+            # 触发温度(℃)：可编辑，写回 XML temp 属性
+            try:
+                t = int(new_val)
+                if t < 0 or t > 200:
+                    raise ValueError("温度应在 0～200 之间")
+            except ValueError:
+                QMessageBox.warning(
+                    self.window(), "格式错误", "触发温度请填写 0～200 的整数（单位 ℃）"
+                )
+                self._refresh()
+                return
+            self.parser.df.at[original_idx, "触发温度(℃)"] = t
+            self.parser.update_xml_node(original_idx)
+            self._refresh()
+            return
+
         if col not in [4, 7, 10]:
             self._refresh()
             return
-        original_idx = self.current_filtered_df.index[row]
-        new_val = self.config_table.item(row, col).text()
         if "_" not in new_val:
             QMessageBox.warning(
                 self.window(), "格式错误", "索引必须为 start_end 格式（如 2_8）！"
@@ -826,7 +944,7 @@ class GamePerfToolTab(QWidget):
             self.config_table.setItem(row_idx, 10, QTableWidgetItem(row["GPU索引"]))
             for c in range(11):
                 item = self.config_table.item(row_idx, c)
-                if c in [4, 7, 10]:
+                if c in [1, 4, 7, 10]:
                     item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
                 else:
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)

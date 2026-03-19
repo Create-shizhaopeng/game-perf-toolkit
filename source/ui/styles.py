@@ -466,6 +466,10 @@ QMessageBox QPushButton:default:hover {
     border-bottom: 1px solid #3c3c3c;
     border-right: 1px solid #3c3c3c;
 }
+#configTable QLineEdit {
+    color: #000000;
+    background-color: #ffffff;
+}
 """
 
 
@@ -743,6 +747,10 @@ QComboBox QAbstractItemView {
     border: none;
     border-bottom: 1px solid #e0e0e0;
     border-right: 1px solid #e0e0e0;
+}
+#configTable QLineEdit {
+    color: #333333;
+    background-color: #ffffff;
 }
 
 /* Progress bar */

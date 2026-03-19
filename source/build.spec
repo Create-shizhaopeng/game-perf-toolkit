@@ -27,6 +27,7 @@ a = Analysis(
         'ui.device_popup',
         'ui.settings_menu',
         'ui.push_policy_tab',
+        'ui.game_perf_tab',
         'ui.styles',
     ],
     hookspath=[],

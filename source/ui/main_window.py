@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QProgressBar, QFrame, QMessageBox, QSizePolicy, QCompleter,
     QTabWidget,
 )
-from PyQt6.QtCore import Qt, pyqtSlot, QSize, QStringListModel
+from PyQt6.QtCore import Qt, pyqtSlot, QSize, QStringListModel, QTimer
 from PyQt6.QtGui import QTextCursor, QColor, QTextCharFormat, QFont
 
 from core.adb_manager import AdbManager, DeviceMonitor
@@ -79,6 +79,7 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         self._tab_widget.addTab(self._game_perf_tab, "游戏性能配置")
+        self._game_perf_tab.refresh_device_requested.connect(self._on_push_finished_request_refresh_device)
 
         # 右侧占位，避免标签栏空白区域看起来像“空标签”
         tab_corner = QWidget()
@@ -412,6 +413,22 @@ class MainWindow(QMainWindow):
         self._update_button_states(False)
 
         self._game_perf_tab.on_device_disconnected()
+
+    @pyqtSlot()
+    def _on_push_finished_request_refresh_device(self):
+        """push 完成且设备重启后，延迟刷新当前设备信息与连接状态。"""
+        QTimer.singleShot(5000, self._refresh_device_after_reboot)
+
+    def _refresh_device_after_reboot(self):
+        """重启后重新读取设备状态并更新所有 Tab 的当前设备信息。"""
+        try:
+            devices = self._adb.get_connected_devices()
+            if not devices:
+                return
+            state = self._device_service.get_device_state()
+            self._on_device_connected(devices[0])
+        except Exception:
+            pass
 
     # ── Action Slots ─────────────────────────────────────────────
     @pyqtSlot()
