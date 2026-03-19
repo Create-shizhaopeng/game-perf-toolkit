@@ -43,3 +43,10 @@ lv-game-toolkit-commit.txt
 # PyInstaller 本地分析报告（若生成在仓库路径内）
 warn-build.txt
 xref-*.html
+
+# 本地 UI 示意图与配套说明（不推远程，协作者按需自备）
+/UI.jpg
+/ui.png
+/ui2.png
+/ui3.png
+/model名修改重置工具.md

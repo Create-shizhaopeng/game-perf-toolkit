@@ -141,6 +141,7 @@ ModifyModelNameTool/
 ├── data-model.md                # 数据模型
 ├── research.md                  # 技术决策
 ├── quickstart.md                # 快速上手
-├── model名修改重置工具.md       # 设备伪装功能说明
 └── tasks.md                     # 任务列表
+
+（根目录 `UI.jpg` / `ui*.png` / `model名修改重置工具.md` 为本地示意图与说明，已列入 `.gitignore`，不入库；设备伪装需求见 `spec.md`、`design/ui-design.md`。）
 ```

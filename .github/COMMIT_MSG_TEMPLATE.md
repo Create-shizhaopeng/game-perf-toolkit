@@ -32,7 +32,7 @@ git config commit.template .github/COMMIT_MSG_TEMPLATE.md
 
 ### 协作者必读（与 .gitignore 配合）
 
-1. **`git pull`** 后应能看到 `.github/COMMIT_MSG_TEMPLATE.md` 与根目录 `.gitignore`；二者**不要**加入 `.gitignore`，需随仓库同步。
+1. **`git pull`** 后应能看到 `.github/COMMIT_MSG_TEMPLATE.md` 与根目录 `.gitignore`；二者**不要**加入 `.gitignore`，需随仓库同步。根目录 `UI.jpg`、`ui.png`、`ui2.png`、`ui3.png`、`model名修改重置工具.md` 为**本地资源**（已在 `.gitignore`），远程不包含，需要时请自备或从设计/产品侧获取。
 2. 提交前确认 **`git status`** 中仅包含**有意提交的源码/文档**；`source/dist/`、`source/build/`、`source/.venv/`、`source/data/backups/`、`source/data/config.json` 等已被忽略，**勿强行 `git add -f`**。
 3. 使用模板提交示例：
 
