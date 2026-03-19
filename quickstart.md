@@ -71,7 +71,7 @@ Toolkit 为多功能桌面工具，包含两个选项卡：**ModifyModelNameTool
 ### 安装开发依赖
 
 ```bash
-cd ModifyModelNameTool/source
+cd source
 pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
 ```
 
@@ -85,14 +85,14 @@ pyinstaller>=6.0.0
 ### 开发模式启动
 
 ```bash
-cd ModifyModelNameTool/source
+cd source
 python main.py
 ```
 
 ### 构建 exe
 
 ```bash
-cd ModifyModelNameTool/source
+cd source
 python build.py
 ```
 
@@ -101,7 +101,7 @@ python build.py
 ### 项目结构
 
 ```
-ModifyModelNameTool/
+Toolkit/
 ├── source/                      # 源代码与依赖
 │   ├── main.py                  # 应用入口（ApplicationName: Toolkit）
 │   ├── requirements.txt         # Python 依赖
@@ -143,5 +143,5 @@ ModifyModelNameTool/
 ├── quickstart.md                # 快速上手
 └── tasks.md                     # 任务列表
 
-（根目录 `UI.jpg` / `ui*.png` / `model名修改重置工具.md` 为本地示意图与说明，已列入 `.gitignore`，不入库；设备伪装需求见 `spec.md`、`design/ui-design.md`。）
+（根目录 `UI示意图/`、`UI.jpg` / `ui*.png` / `model名修改重置工具.md` 为本地示意图与说明，已列入 `.gitignore`，不入库；设备伪装需求见 `spec.md`、`design/ui-design.md`。）
 ```

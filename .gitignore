@@ -45,6 +45,7 @@ warn-build.txt
 xref-*.html
 
 # 本地 UI 示意图与配套说明（不推远程，协作者按需自备）
+UI示意图/
 /UI.jpg
 /ui.png
 /ui2.png
