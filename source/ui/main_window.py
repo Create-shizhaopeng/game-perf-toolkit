@@ -15,7 +15,7 @@ from ui.save_dialog import SaveDialog
 from ui.device_popup import DevicePopup
 from ui.settings_menu import SettingsMenu
 from ui.styles import apply_theme
-from ui.push_policy_tab import PushPolicyTab
+from ui.game_perf_tab import GamePerfToolTab
 
 
 class MainWindow(QMainWindow):
@@ -72,13 +72,19 @@ class MainWindow(QMainWindow):
 
         self._tab_widget.addTab(model_tab, "ModifyModelNameTool")
 
-        # Tab 1: push policy
-        self._push_policy_tab = PushPolicyTab(
+        # Tab 1: 游戏性能配置（编辑 gameperfconfig.xml + 推送到设备）
+        self._game_perf_tab = GamePerfToolTab(
             adb_manager=self._adb,
             config_manager=self._config_manager,
             parent=self,
         )
-        self._tab_widget.addTab(self._push_policy_tab, "push policy")
+        self._tab_widget.addTab(self._game_perf_tab, "游戏性能配置")
+
+        # 右侧占位，避免标签栏空白区域看起来像“空标签”
+        tab_corner = QWidget()
+        tab_corner.setObjectName("tabBarCorner")
+        tab_corner.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self._tab_widget.setCornerWidget(tab_corner, Qt.Corner.TopRightCorner)
 
         main_layout.addWidget(self._tab_widget, 1)
 
@@ -391,7 +397,7 @@ class MainWindow(QMainWindow):
             self._update_badge(state.is_disguised)
             self._update_button_states(True)
 
-            self._push_policy_tab.on_device_connected(serial, state)
+            self._game_perf_tab.on_device_connected(serial, state)
         except Exception as e:
             self._append_log(f"✗ 读取设备信息失败: {e}", "red")
 
@@ -405,7 +411,7 @@ class MainWindow(QMainWindow):
         self._badge.setVisible(False)
         self._update_button_states(False)
 
-        self._push_policy_tab.on_device_disconnected()
+        self._game_perf_tab.on_device_disconnected()
 
     # ── Action Slots ─────────────────────────────────────────────
     @pyqtSlot()

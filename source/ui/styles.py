@@ -61,6 +61,11 @@ QWidget {
     background-color: #383838;
     color: #cccccc;
 }
+#mainTabWidget #tabBarCorner {
+    background-color: #2d2d2d;
+    border: none;
+    border-bottom: 2px solid transparent;
+}
 
 /* Section Cards */
 .sectionCard {
@@ -431,6 +436,36 @@ QMessageBox QPushButton:default {
 QMessageBox QPushButton:default:hover {
     background-color: #1177bb;
 }
+
+/* Game perf tab: config table (dark) */
+#configTable {
+    background-color: #1e1e1e;
+    border: 1px solid #3c3c3c;
+    border-radius: 3px;
+    color: #d4d4d4;
+    gridline-color: #3c3c3c;
+    font-size: 12px;
+}
+#configTable::item {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    padding: 4px 8px;
+}
+#configTable QHeaderView::section {
+    background-color: #2d2d2d;
+    color: #d4d4d4;
+    border: none;
+    border-bottom: 1px solid #3c3c3c;
+    border-right: 1px solid #3c3c3c;
+    padding: 6px 8px;
+    font-weight: 600;
+}
+#configTable QTableCornerButton::section {
+    background-color: #2d2d2d;
+    border: none;
+    border-bottom: 1px solid #3c3c3c;
+    border-right: 1px solid #3c3c3c;
+}
 """
 
 
@@ -493,6 +528,11 @@ QWidget {
 #mainTabWidget > QTabBar::tab:hover:!selected {
     background-color: #d8d8d8;
     color: #555555;
+}
+#mainTabWidget #tabBarCorner {
+    background-color: #e8e8e8;
+    border: none;
+    border-bottom: 2px solid transparent;
 }
 
 /* Section Cards */
@@ -673,6 +713,36 @@ QComboBox QAbstractItemView {
     font-family: 'Consolas', 'Microsoft YaHei';
     font-size: 12px;
     padding: 8px;
+}
+
+/* Game perf tab: config table */
+#configTable {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 3px;
+    color: #333333;
+    gridline-color: #e0e0e0;
+    font-size: 12px;
+}
+#configTable::item {
+    background-color: #ffffff;
+    color: #333333;
+    padding: 4px 8px;
+}
+#configTable QHeaderView::section {
+    background-color: #f3f3f3;
+    color: #333333;
+    border: none;
+    border-bottom: 1px solid #e0e0e0;
+    border-right: 1px solid #e0e0e0;
+    padding: 6px 8px;
+    font-weight: 600;
+}
+#configTable QTableCornerButton::section {
+    background-color: #f3f3f3;
+    border: none;
+    border-bottom: 1px solid #e0e0e0;
+    border-right: 1px solid #e0e0e0;
 }
 
 /* Progress bar */
