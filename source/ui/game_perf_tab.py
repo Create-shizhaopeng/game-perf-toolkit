@@ -4,6 +4,10 @@
 import os
 import re
 import json
+import functools
+from collections import defaultdict
+from typing import Optional
+
 import pandas as pd
 from datetime import datetime
 from lxml import etree
@@ -11,6 +15,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QComboBox, QLabel,
     QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
     QFrame, QLineEdit, QGridLayout, QTextEdit, QProgressBar, QSizePolicy,
+    QScrollArea,
 )
 from PyQt6.QtCore import Qt, pyqtSlot, QMimeData, pyqtSignal, QTimer
 from PyQt6.QtGui import QTextCursor, QColor, QTextCharFormat, QFont, QDragEnterEvent, QDropEvent
@@ -36,6 +41,80 @@ class GamePerfParser:
 
     def _parent_or_none(self):
         return self._parent.window() if self._parent else None
+
+    def _flatten_element_kv(self, el: etree._Element) -> list:
+        """将 XML 子树展平为若干列：表头为路径+@属性名，单元格为属性值或叶子文本（非整段 XML 字符串）。"""
+        root_tag = el.tag
+        out = []
+
+        def walk(node: etree._Element, segments: list) -> None:
+            if segments:
+                disp_path = f"{root_tag}/{'/'.join(segments)}"
+            else:
+                disp_path = root_tag
+            for ak, av in sorted(node.attrib.items()):
+                out.append({
+                    "header": f"{disp_path}@{ak}",
+                    "value": str(av),
+                    "dom": node,
+                    "mode": "attr",
+                    "attr": ak,
+                })
+            if len(node) == 0:
+                tx = (node.text or "").strip()
+                if tx:
+                    out.append({
+                        "header": disp_path,
+                        "value": tx,
+                        "dom": node,
+                        "mode": "text",
+                        "attr": None,
+                    })
+                return
+            by_tag = defaultdict(list)
+            for ch in node:
+                by_tag[ch.tag].append(ch)
+            for tname, chlist in by_tag.items():
+                for i, ch in enumerate(chlist):
+                    seg = f"{tname}[{i}]" if len(chlist) > 1 else tname
+                    walk(ch, segments + [seg])
+
+        walk(el, [])
+        return out
+
+    def _apply_mode_sync_flags(self, mchild: etree._Element, pairs: list) -> None:
+        """标记与频率表 df 列同步的单元格（ThermalSceneCode / PerfHint 文本）。"""
+        if mchild.tag == "ThermalSceneCode":
+            for p in pairs:
+                dom = p.get("dom")
+                if (
+                    p.get("mode") == "text"
+                    and dom is not None
+                    and getattr(dom, "tag", None) == "ThermalSceneCode"
+                ):
+                    p["sync_df"] = "ThermalSceneCode"
+        elif mchild.tag == "PerfHint":
+            for p in pairs:
+                dom = p.get("dom")
+                if (
+                    dom is not None
+                    and getattr(dom, "tag", None) == "opcode"
+                    and p.get("mode") == "text"
+                ):
+                    p["sync_df"] = "PerfHint"
+
+    def apply_strategy_kv_edit(self, dom: etree._Element, mode: str, attr: Optional[str], value: str) -> bool:
+        """根据展平项写回 XML：属性或叶子文本。"""
+        try:
+            if mode == "attr" and attr:
+                dom.set(attr, value)
+                return True
+            if mode == "text":
+                dom.text = value
+                return True
+        except Exception:
+            return False
+        return False
 
     def parse(self):
         try:
@@ -78,10 +157,42 @@ class GamePerfParser:
         except Exception:
             pass
 
+        data = self._parse_game_policy_section(root)
+        self.df = pd.DataFrame(data)
+
+    def _parse_game_policy_section(self, root: etree._Element) -> list:
+        """解析 GamePolicy：更新 game_full_xml / game_level_data / mode_level_data，返回频率表行列表。"""
+        data: list = []
+        self.game_full_xml = {}
+        self.game_level_data = {}
+        self.mode_level_data = {}
         try:
             game_policies = root.find("GamePolicy").findall("Game")
             for game in game_policies:
                 game_name = game.get("name")
+                self.game_full_xml[game_name] = etree.tostring(
+                    game, encoding="unicode", pretty_print=True
+                ).strip()
+                game_level_items = []
+                for child in game:
+                    if child.tag in ("Mode", "Policy"):
+                        continue
+                    pairs = self._flatten_element_kv(child)
+                    if not pairs:
+                        pairs = [{
+                            "header": child.tag,
+                            "value": "",
+                            "dom": child,
+                            "mode": "text",
+                            "attr": None,
+                        }]
+                    game_level_items.append({
+                        "tag": child.tag,
+                        "pairs": pairs,
+                        "element": child,
+                    })
+                self.game_level_data[game_name] = game_level_items
+
                 game_alias = (
                     game_name
                     if not game_name.startswith("com.")
@@ -94,17 +205,53 @@ class GamePerfParser:
 
                 for mode in game.findall("Mode"):
                     mode_name = mode.get("name")
-                    for temp_level in mode.find("Policy").findall("TempLevel"):
+                    mode_key = (game_name, mode_name)
+                    mode_items = []
+                    for mchild in mode:
+                        if mchild.tag == "Policy":
+                            continue
+                        pairs = self._flatten_element_kv(mchild)
+                        if not pairs:
+                            pairs = [{
+                                "header": mchild.tag,
+                                "value": "",
+                                "dom": mchild,
+                                "mode": "text",
+                                "attr": None,
+                            }]
+                        self._apply_mode_sync_flags(mchild, pairs)
+                        mode_items.append({
+                            "tag": mchild.tag,
+                            "pairs": pairs,
+                            "element": mchild,
+                        })
+                    self.mode_level_data[mode_key] = mode_items
+
+                    policy_elem = mode.find("Policy")
+                    temp_levels = policy_elem.findall("TempLevel") if policy_elem is not None else []
+                    if not temp_levels:
+                        continue
+                    thermal_scene_elem = mode.find("ThermalSceneCode")
+                    thermal_scene_code = (thermal_scene_elem.text or "").strip() if thermal_scene_elem is not None else ""
+                    perf_hint_elem = mode.find("PerfHint")
+                    perf_hint_value = ""
+                    if perf_hint_elem is not None:
+                        opcode = perf_hint_elem.find("opcode")
+                        if opcode is not None and opcode.text:
+                            perf_hint_value = (opcode.text or "").strip()
+
+                    for temp_level in temp_levels:
                         level = temp_level.get("level")
                         temp = temp_level.get("temp")
-
                         gold_min, gold_max, gold_idx = 0, 0, ""
                         prime_min, prime_max, prime_idx = 0, 0, ""
                         gpu_min, gpu_max, gpu_idx = 0, 0, ""
 
                         for item in temp_level.findall("item"):
                             item_name = item.get("name")
-                            freq_range = item.text.strip()
+                            freq_range = (item.text or "").strip()
+                            if not freq_range:
+                                continue
                             try:
                                 start_idx, end_idx = map(int, freq_range.split("_"))
                                 if item_name == "Gold" and "Gold" in self.cpu_clusters:
@@ -135,6 +282,8 @@ class GamePerfParser:
                             "游戏名称": game_alias,
                             "原始包名": game_name,
                             "性能模式": mode_name,
+                            "ThermalSceneCode": thermal_scene_code,
+                            "PerfHint": perf_hint_value,
                             "温度等级": level,
                             "触发温度(℃)": temp,
                             "Gold下限(Hz)": gold_min,
@@ -147,13 +296,48 @@ class GamePerfParser:
                             "Prime索引": prime_idx,
                             "GPU索引": gpu_idx,
                             "xml_node": temp_level,
+                            "mode_xml_node": mode,
                         })
         except Exception as e:
             QMessageBox.warning(
                 self._parent_or_none(), "解析警告", f"GamePolicy解析异常：{str(e)}"
             )
+        return data
 
+    def refresh_game_policy_data(self) -> bool:
+        """内存 XML 树发生结构性变更后，重建 GamePolicy 相关结构与频率表（不重新读盘）。"""
+        if self.original_tree is None:
+            return False
+        if not isinstance(self.original_tree, etree._ElementTree):
+            return False
+        root = self.original_tree.getroot()
+        data = self._parse_game_policy_section(root)
         self.df = pd.DataFrame(data)
+        return True
+
+    def remove_xml_subtree(self, el: etree._Element) -> bool:
+        """从树中移除节点并刷新 GamePolicy 内存数据。"""
+        parent = el.getparent()
+        if parent is None:
+            return False
+        parent.remove(el)
+        return self.refresh_game_policy_data()
+
+    def append_bindcore_child_row(self, bind_root: etree._Element) -> bool:
+        """在 BindCore 下追加一条子节点：标签与同层已有子节点一致（无则默认为 tid），name 与文本为空。"""
+        if bind_root is None:
+            return False
+        if getattr(bind_root, "tag", None) != "BindCore":
+            return False
+        child_tag = "tid"
+        for ch in bind_root:
+            child_tag = ch.tag
+            break
+        el = etree.SubElement(bind_root, child_tag)
+        el.set("name", "")
+        # 占位文本，便于与 name 合并成「键/值」双列且均可编辑；可改为任意掩码如 c0
+        el.text = "0"
+        return self.refresh_game_policy_data()
 
     def recalculate_freq_limits(self, row_idx: int) -> bool:
         if row_idx < 0 or row_idx >= len(self.df):
@@ -212,9 +396,27 @@ class GamePerfParser:
                     item.text = row["Prime索引"]
                 elif item_name == "Gpu":
                     item.text = row["GPU索引"]
+            mode_node = row.get("mode_xml_node")
+            if mode_node is not None:
+                thermal_elem = mode_node.find("ThermalSceneCode")
+                if thermal_elem is not None:
+                    thermal_elem.text = str(row.get("ThermalSceneCode", ""))
+                perf_elem = mode_node.find("PerfHint")
+                if perf_elem is not None:
+                    opcode = perf_elem.find("opcode")
+                    if opcode is not None:
+                        opcode.text = str(row.get("PerfHint", ""))
             return True
         except Exception:
             return False
+
+    def _sync_mode_fields_to_df(self, game_pkg: str, mode_name: str, col_name: str, value: str) -> None:
+        """ThermalSceneCode / PerfHint 等与频率表列一致时，同步该模式下所有 TempLevel 行。"""
+        if self.df is None or self.df.empty or col_name not in self.df.columns:
+            return
+        mask = (self.df["原始包名"] == game_pkg) & (self.df["性能模式"] == mode_name)
+        for idx in self.df.index[mask]:
+            self.df.at[idx, col_name] = value
 
     def save_as_new_xml(self, parent: QWidget = None) -> bool:
         if not self.original_tree:
@@ -336,12 +538,28 @@ class GamePerfToolTab(QWidget):
         self._create_log_section(left_layout)
         self._create_button_section(left_layout)
 
-        right_layout = QVBoxLayout()
-        right_layout.setSpacing(8)
-        self._create_freq_lists_section(right_layout)
+        # 右侧：三列表并排；整体贴顶，高度随内容变化，不随左侧拉满整窗
+        right_wrap = QWidget()
+        right_wrap.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        right_wrap.setFixedWidth(558)
+        freq_row = QHBoxLayout(right_wrap)
+        freq_row.setContentsMargins(0, 0, 0, 0)
+        freq_row.setSpacing(6)
+        self._create_freq_lists_section(freq_row)
 
-        layout.addLayout(left_layout, 3)
-        layout.addLayout(right_layout, 1)
+        right_container = QWidget()
+        right_container.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        right_container.setFixedWidth(558)
+        right_container.setMinimumHeight(200)
+        rv = QVBoxLayout(right_container)
+        rv.setContentsMargins(0, 0, 0, 0)
+        rv.setSpacing(8)
+        rv.addWidget(right_wrap, 0, Qt.AlignmentFlag.AlignTop)
+        # 整体策略 + 性能模式策略：与频率列表共分右侧纵向空间，避免被压扁
+        self._create_strategy_sections(rv)
+
+        layout.addLayout(left_layout, 1)
+        layout.addWidget(right_container, 0)
 
     def _create_device_info_section(self, parent_layout: QVBoxLayout):
         card = QFrame()
@@ -486,6 +704,449 @@ class GamePerfToolTab(QWidget):
         card_layout.addLayout(row2)
         parent_layout.addWidget(card)
 
+    def _create_strategy_sections(self, parent_layout: QVBoxLayout):
+        """右侧：按节点分组，每组标题 + 「键(Key)/值(Value)」竖向表单（与示意图一致）。"""
+        def _make_strategy_card(title_text: str, hint_text: str, scroll_attr: str, layout_attr: str):
+            card = QFrame()
+            card.setProperty("class", "strategyPolicySection")
+            card.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+            )
+            cl = QVBoxLayout(card)
+            cl.setContentsMargins(12, 8, 12, 8)
+            cl.setSpacing(4)
+            t_title = QLabel(title_text)
+            t_title.setProperty("class", "sectionTitleBlue")
+            cl.addWidget(t_title)
+            hint = QLabel(hint_text)
+            hint.setProperty("class", "fieldLabel")
+            hint.setStyleSheet("font-size: 10px; font-style: italic;")
+            hint.setWordWrap(True)
+            hint.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+            cl.addWidget(hint)
+            scroll = QScrollArea()
+            scroll.setProperty("class", "strategyPolicyScroll")
+            scroll.setWidgetResizable(True)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            scroll.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+            )
+            scroll.setMinimumHeight(96)
+            inner = QWidget()
+            inner.setProperty("class", "strategyPolicyInner")
+            inner.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding
+            )
+            inner_layout = QVBoxLayout(inner)
+            inner_layout.setContentsMargins(2, 2, 2, 2)
+            inner_layout.setSpacing(10)
+            scroll.setWidget(inner)
+            cl.addWidget(scroll, 1)
+            setattr(self, scroll_attr, scroll)
+            setattr(self, layout_attr, inner_layout)
+            return card
+
+        self._overall_strategy_card = _make_strategy_card(
+            "整体策略",
+            "按 XML 节点分组；每组下列出 键(Key) 与可编辑的 值(Value)",
+            "_overall_strategy_scroll",
+            "_overall_strategy_inner_layout",
+        )
+        parent_layout.addWidget(self._overall_strategy_card, 1)
+
+        self._mode_strategy_card = _make_strategy_card(
+            "性能模式策略",
+            "当前性能模式下各节点（如 PerfHint）同上；切换模式后表单会更新",
+            "_mode_strategy_scroll",
+            "_mode_strategy_inner_layout",
+        )
+        parent_layout.addWidget(self._mode_strategy_card, 1)
+
+    def _clear_strategy_inner_layout(self, layout: QVBoxLayout) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+            elif item.layout() is not None:
+                # 子布局一般不会出现；保险处理
+                self._clear_strategy_inner_layout(item.layout())
+
+    def _strategy_key_label(self, p: dict) -> str:
+        """键列：属性行只写属性名（如 name）；文本/叶子行写元素标签名（如 RenderThread）。
+
+        不再用 XML 属性 name= 的值拼进 Key（否则会显示成 RenderThread·name 等）。"""
+        dom = p.get("dom")
+        if p.get("mode") == "attr" and p.get("attr"):
+            return str(p["attr"])
+        if dom is not None and getattr(dom, "tag", None):
+            return str(dom.tag)
+        h = str(p.get("header", ""))
+        if "@" in h:
+            return h.rsplit("@", 1)[-1]
+        return h.rsplit("/", 1)[-1]
+
+    def _iter_strategy_kv_rows(self, pairs: list):
+        """展平后的 pairs 顺序输出；同一元素上 name 属性 + 叶子文本合并为一行（两格均可编辑）。"""
+        plist = [
+            p
+            for p in (pairs or [])
+            if isinstance(p, dict) and p.get("dom") is not None
+        ]
+        skip_text_dom_ids: set = set()
+        i, n = 0, len(plist)
+        while i < n:
+            p = plist[i]
+            dom = p.get("dom")
+            if p.get("mode") == "text" and id(dom) in skip_text_dom_ids:
+                i += 1
+                continue
+            if (
+                p.get("mode") == "attr"
+                and p.get("attr") == "name"
+                and dom is not None
+            ):
+                text_p = None
+                for j in range(i + 1, n):
+                    q = plist[j]
+                    if q.get("dom") is dom and q.get("mode") == "text":
+                        text_p = q
+                        break
+                if text_p is not None:
+                    skip_text_dom_ids.add(id(dom))
+                    yield ("merged_name_text", p, text_p)
+                    i += 1
+                    continue
+            yield ("single", p)
+            i += 1
+
+    def _normalize_strategy_pairs(self, rec: dict) -> list:
+        """保证每项含 header/value/dom/mode/attr；兼容仅有 tag+value+element 的旧结构。"""
+        raw = rec.get("pairs")
+        out = []
+        if isinstance(raw, list):
+            for p in raw:
+                if not isinstance(p, dict):
+                    continue
+                dom = p.get("dom")
+                mode = p.get("mode", "text")
+                attr = p.get("attr")
+                if dom is None:
+                    continue
+                out.append({
+                    "header": str(p.get("header", "")),
+                    "value": str(p.get("value", "")),
+                    "dom": dom,
+                    "mode": mode if mode in ("attr", "text") else "text",
+                    "attr": attr,
+                    "sync_df": p.get("sync_df"),
+                })
+        if not out:
+            el = rec.get("element")
+            tag = rec.get("tag") or (el.tag if el is not None else "?")
+            if el is not None:
+                out.append({
+                    "header": str(tag),
+                    "value": str(rec.get("value", "")),
+                    "dom": el,
+                    "mode": "text",
+                    "attr": None,
+                    "sync_df": rec.get("sync_df"),
+                })
+        return out
+
+    def _strategy_block_separator(self) -> QFrame:
+        sep = QFrame()
+        sep.setProperty("class", "separator")
+        sep.setFrameShape(QFrame.Shape.HLine)
+        return sep
+
+    def _append_perfhint_wireframe_block(
+        self,
+        parent_layout: QVBoxLayout,
+        title_text: str,
+        opcode_el: etree._Element,
+        mode_context: bool,
+    ) -> None:
+        """PerfHint：居中标题 + 横线 + 并排两栏（id / time），下有可选数据文本。"""
+        block = QFrame()
+        block.setProperty("class", "strategyNodeBlock")
+        bl = QVBoxLayout(block)
+        bl.setContentsMargins(8, 12, 8, 12)
+        bl.setSpacing(8)
+        st = QLabel(title_text)
+        st.setProperty("class", "sectionTitleBlue")
+        st.setAlignment(
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
+        )
+        bl.addWidget(st)
+        bl.addWidget(self._strategy_block_separator())
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        meta_id = {
+            "header": "id",
+            "value": str(opcode_el.get("id", "") or ""),
+            "dom": opcode_el,
+            "mode": "attr",
+            "attr": "id",
+        }
+        ed_id = QLineEdit(meta_id["value"])
+        ed_id.setObjectName("fileInput")
+        ed_id.setMinimumHeight(28)
+        ed_id.editingFinished.connect(
+            functools.partial(self._commit_strategy_kv, meta_id, ed_id, mode_context)
+        )
+        meta_time = {
+            "header": "time",
+            "value": str(opcode_el.get("time", "") or ""),
+            "dom": opcode_el,
+            "mode": "attr",
+            "attr": "time",
+        }
+        ed_time = QLineEdit(meta_time["value"])
+        ed_time.setObjectName("fileInput")
+        ed_time.setMinimumHeight(28)
+        ed_time.editingFinished.connect(
+            functools.partial(self._commit_strategy_kv, meta_time, ed_time, mode_context)
+        )
+        row.addWidget(ed_id, 1)
+        row.addWidget(ed_time, 1)
+        bl.addLayout(row)
+        body = (opcode_el.text or "").strip()
+        meta_txt = {
+            "header": "opcode",
+            "value": body,
+            "dom": opcode_el,
+            "mode": "text",
+            "attr": None,
+            "sync_df": "PerfHint",
+        }
+        row2 = QHBoxLayout()
+        row2.setSpacing(6)
+        lbl_d = QLabel("数据")
+        lbl_d.setProperty("class", "fieldLabel")
+        ed_body = QLineEdit(body)
+        ed_body.setObjectName("fileInput")
+        ed_body.setMinimumHeight(28)
+        ed_body.editingFinished.connect(
+            functools.partial(self._commit_strategy_kv, meta_txt, ed_body, mode_context)
+        )
+        row2.addWidget(lbl_d)
+        row2.addWidget(ed_body, 1)
+        bl.addLayout(row2)
+        parent_layout.addWidget(block)
+
+    def _bindcore_direct_child_for_dom(
+        self,
+        dom: Optional[etree._Element],
+        bind_root: Optional[etree._Element],
+    ) -> Optional[etree._Element]:
+        """找到 dom 在 BindCore(bind_root) 下的直接子节点（如 tid），用于删整行。"""
+        if dom is None or bind_root is None or dom is bind_root:
+            return None
+        cur: Optional[etree._Element] = dom
+        while cur is not None:
+            par = cur.getparent()
+            if par is bind_root:
+                return cur
+            cur = par
+        return None
+
+    def _on_bindcore_delete_row(self, target_el: etree._Element, _mode_context: bool) -> None:
+        if not self.parser:
+            return
+        r = QMessageBox.question(
+            self.window(),
+            "确认删除",
+            "删除该条绑核配置（对应 XML 子节点）？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if r != QMessageBox.StandardButton.Yes:
+            return
+        if self.parser.remove_xml_subtree(target_el):
+            self._refresh()
+        else:
+            QMessageBox.warning(self.window(), "删除失败", "无法从 XML 树中移除该节点。")
+
+    def _on_bindcore_delete_whole(self, root_el: etree._Element, _mode_context: bool) -> None:
+        if not self.parser:
+            return
+        r = QMessageBox.question(
+            self.window(),
+            "确认删除",
+            "删除整个 BindCore 节点及其所有子项？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if r != QMessageBox.StandardButton.Yes:
+            return
+        if self.parser.remove_xml_subtree(root_el):
+            self._refresh()
+        else:
+            QMessageBox.warning(self.window(), "删除失败", "无法移除 BindCore 节点。")
+
+    def _make_bindcore_delete_row_button(self) -> QPushButton:
+        btn = QPushButton("×")
+        btn.setObjectName("bindcoreDeleteXBtn")
+        btn.setFixedSize(28, 26)
+        btn.setToolTip("删除该行")
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        return btn
+
+    def _on_bindcore_add_row(self, root_el: etree._Element, _mode_context: bool) -> None:
+        if not self.parser:
+            return
+        if self.parser.append_bindcore_child_row(root_el):
+            self._refresh()
+        else:
+            QMessageBox.warning(
+                self.window(),
+                "添加失败",
+                "无法在 BindCore 下添加子项（请确认当前节点为 BindCore）。",
+            )
+
+    def _append_kv_node_block(
+        self,
+        parent_layout: QVBoxLayout,
+        node_tag: str,
+        pairs: list,
+        mode_context: bool,
+        root_element: Optional[etree._Element] = None,
+    ) -> None:
+        """单个节点：居中标题 + 分隔线；PerfHint+opcode 用并排两栏示意，其余用键(Key)/值(Value) 表。
+
+        BindCore：标题栏「添加绑核项」「删除整块」；每行红色 × 删除对应子节点。"""
+        if (
+            node_tag == "PerfHint"
+            and root_element is not None
+        ):
+            opcode = root_element.find("opcode")
+            if opcode is not None:
+                self._append_perfhint_wireframe_block(
+                    parent_layout, node_tag, opcode, mode_context
+                )
+                return
+        is_bindcore = node_tag == "BindCore" and root_element is not None
+        block = QFrame()
+        block.setProperty("class", "strategyNodeBlock")
+        bl = QVBoxLayout(block)
+        bl.setContentsMargins(8, 8, 8, 8)
+        bl.setSpacing(6)
+        if is_bindcore:
+            title_row = QHBoxLayout()
+            st = QLabel(node_tag)
+            st.setProperty("class", "sectionTitleBlue")
+            title_row.addWidget(st)
+            title_row.addStretch()
+            add_btn = QPushButton("添加绑核项")
+            add_btn.setObjectName("browseButton")
+            add_btn.setFixedHeight(26)
+            add_btn.clicked.connect(
+                functools.partial(
+                    self._on_bindcore_add_row, root_element, mode_context
+                )
+            )
+            title_row.addWidget(add_btn)
+            del_all = QPushButton("删除整块BindCore")
+            del_all.setObjectName("browseButton")
+            del_all.setFixedHeight(26)
+            del_all.clicked.connect(
+                functools.partial(
+                    self._on_bindcore_delete_whole, root_element, mode_context
+                )
+            )
+            title_row.addWidget(del_all)
+            bl.addLayout(title_row)
+        else:
+            st = QLabel(node_tag)
+            st.setProperty("class", "sectionTitleBlue")
+            st.setAlignment(
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
+            )
+            bl.addWidget(st)
+        bl.addWidget(self._strategy_block_separator())
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(6)
+        grid.setVerticalSpacing(4)
+        hk = QLabel("键(Key)")
+        hv = QLabel("值(Value)")
+        hk.setProperty("class", "fieldLabel")
+        hv.setProperty("class", "fieldLabel")
+        if is_bindcore:
+            h_del = QLabel("")
+            h_del.setFixedWidth(34)
+            grid.addWidget(h_del, 0, 0)
+            grid.addWidget(hk, 0, 1)
+            grid.addWidget(hv, 0, 2)
+            grid.setColumnStretch(0, 0)
+            grid.setColumnStretch(1, 2)
+            grid.setColumnStretch(2, 3)
+        else:
+            grid.addWidget(hk, 0, 0)
+            grid.addWidget(hv, 0, 1)
+            grid.setColumnStretch(0, 2)
+            grid.setColumnStretch(1, 3)
+        row_idx = 1
+        kc0, kc1 = (1, 2) if is_bindcore else (0, 1)
+
+        def _add_bindcore_delete_btn(dom_for_row: Optional[etree._Element]) -> None:
+            nonlocal row_idx
+            tgt = self._bindcore_direct_child_for_dom(dom_for_row, root_element)
+            if tgt is not None:
+                btn = self._make_bindcore_delete_row_button()
+                btn.clicked.connect(
+                    functools.partial(self._on_bindcore_delete_row, tgt, mode_context)
+                )
+                grid.addWidget(btn, row_idx, 0, Qt.AlignmentFlag.AlignCenter)
+            else:
+                ph = QLabel("")
+                ph.setFixedWidth(34)
+                grid.addWidget(ph, row_idx, 0)
+
+        for row in self._iter_strategy_kv_rows(pairs):
+            if row[0] == "merged_name_text":
+                _, name_p, text_p = row
+                if is_bindcore:
+                    _add_bindcore_delete_btn(name_p.get("dom"))
+                ed_key = QLineEdit(str(name_p.get("value", "")))
+                ed_key.setObjectName("fileInput")
+                ed_key.setMinimumHeight(26)
+                ed_val = QLineEdit(str(text_p.get("value", "")))
+                ed_val.setObjectName("fileInput")
+                ed_val.setMinimumHeight(26)
+                grid.addWidget(ed_key, row_idx, kc0)
+                grid.addWidget(ed_val, row_idx, kc1)
+                ed_key.editingFinished.connect(
+                    functools.partial(
+                        self._commit_strategy_kv, name_p, ed_key, mode_context
+                    )
+                )
+                ed_val.editingFinished.connect(
+                    functools.partial(
+                        self._commit_strategy_kv, text_p, ed_val, mode_context
+                    )
+                )
+                row_idx += 1
+                continue
+            _, p = row
+            if is_bindcore:
+                _add_bindcore_delete_btn(p.get("dom"))
+            kl = QLabel(self._strategy_key_label(p))
+            kl.setProperty("class", "fieldLabel")
+            kl.setWordWrap(True)
+            ed = QLineEdit(str(p.get("value", "")))
+            ed.setObjectName("fileInput")
+            ed.setMinimumHeight(26)
+            grid.addWidget(kl, row_idx, kc0)
+            grid.addWidget(ed, row_idx, kc1)
+            ed.editingFinished.connect(
+                functools.partial(self._commit_strategy_kv, p, ed, mode_context)
+            )
+            row_idx += 1
+        bl.addLayout(grid)
+        parent_layout.addWidget(block)
+
     def _create_table_section(self, parent_layout: QVBoxLayout):
         card = QFrame()
         card.setProperty("class", "sectionCard")
@@ -567,7 +1228,8 @@ class GamePerfToolTab(QWidget):
         card_layout.addStretch()
         parent_layout.addWidget(card)
 
-    def _create_freq_lists_section(self, parent_layout: QVBoxLayout):
+    def _create_freq_lists_section(self, parent_layout: QHBoxLayout):
+        """Gold / Prime / GPU 三个列表并排一行（与红框示意一致）。"""
         for title_text, attr in [
             ("Gold 频率列表（索引→Hz）", "gold_freq_text"),
             ("Prime 频率列表（索引→Hz）", "prime_freq_text"),
@@ -575,18 +1237,47 @@ class GamePerfToolTab(QWidget):
         ]:
             card = QFrame()
             card.setProperty("class", "sectionCard")
+            card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(16, 10, 16, 10)
-            card_layout.setSpacing(6)
+            card_layout.setContentsMargins(8, 8, 8, 8)
+            card_layout.setSpacing(4)
             title = QLabel(title_text)
             title.setProperty("class", "sectionTitleBlue")
+            title.setWordWrap(True)
             card_layout.addWidget(title)
             text = QTextEdit()
             text.setReadOnly(True)
             text.setObjectName("logArea")
-            card_layout.addWidget(text, 1)
+            text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+            text.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            text.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            card_layout.addWidget(text, 0)
             setattr(self, attr, text)
             parent_layout.addWidget(card, 1)
+
+    def _resize_freq_list_edit(self, edit: QTextEdit) -> None:
+        """按文档行数自适应列表高度，避免右侧被拉满整窗。"""
+        doc = edit.document()
+        w = edit.viewport().width()
+        if w < 40:
+            w = 145
+        doc.setTextWidth(w)
+        h = int(doc.size().height())
+        extra = (
+            edit.frameWidth() * 2
+            + edit.contentsMargins().top()
+            + edit.contentsMargins().bottom()
+            + 10
+        )
+        h = max(72, min(h + extra, 520))
+        edit.setFixedHeight(h)
+
+    def _apply_freq_list_heights(self) -> None:
+        for attr in ("gold_freq_text", "prime_freq_text", "gpu_freq_text"):
+            edit = getattr(self, attr, None)
+            if isinstance(edit, QTextEdit):
+                self._resize_freq_list_edit(edit)
 
     def _open_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -622,7 +1313,102 @@ class GamePerfToolTab(QWidget):
             ]
             self.gpu_freq_text.setPlainText("\n".join(gpu_list))
 
+        # 布局后再量高度，避免 viewport 宽度为 0
+        QTimer.singleShot(0, self._apply_freq_list_heights)
+        QTimer.singleShot(80, self._apply_freq_list_heights)
+
         self._update_mode_combo()
+        self._update_strategy_displays()
+        self._refresh()
+
+    def _update_strategy_displays(self):
+        self._update_overall_strategy_display()
+        self._update_mode_strategy_display()
+
+    def _update_overall_strategy_display(self):
+        """整体策略：按节点分块，键(Key)/值(Value) 竖向表单。"""
+        if not hasattr(self, "_overall_strategy_inner_layout"):
+            return
+        lay = self._overall_strategy_inner_layout
+        self._clear_strategy_inner_layout(lay)
+        if not self.parser or self.parser.df is None or self.parser.df.empty:
+            return
+        game_alias = self.game_cbx.currentText()
+        if not game_alias:
+            return
+        df = self.parser.df
+        pkg_row = df[df["游戏名称"] == game_alias]
+        if pkg_row.empty:
+            return
+        pkg = pkg_row["原始包名"].iloc[0]
+        items = getattr(self.parser, "game_level_data", None) or {}
+        for rec in items.get(pkg, []):
+            if not isinstance(rec, dict):
+                continue
+            tag = rec.get("tag") or "?"
+            pairs = self._normalize_strategy_pairs(rec)
+            self._append_kv_node_block(lay, tag, pairs, False, rec.get("element"))
+        lay.addStretch(1)
+
+    def _update_mode_strategy_display(self):
+        """性能模式策略：同上，随当前模式切换内容。"""
+        if not hasattr(self, "_mode_strategy_inner_layout"):
+            return
+        lay = self._mode_strategy_inner_layout
+        self._clear_strategy_inner_layout(lay)
+        if not self.parser or self.parser.df is None or self.parser.df.empty:
+            return
+        game_alias = self.game_cbx.currentText()
+        mode_name = self.mode_cbx.currentText()
+        if not game_alias or not mode_name:
+            return
+        pkg_row = self.parser.df[self.parser.df["游戏名称"] == game_alias]
+        if pkg_row.empty:
+            return
+        pkg = pkg_row["原始包名"].iloc[0]
+        mdata = getattr(self.parser, "mode_level_data", None) or {}
+        for rec in mdata.get((pkg, mode_name), []):
+            if not isinstance(rec, dict):
+                continue
+            tag = rec.get("tag") or "?"
+            pairs = self._normalize_strategy_pairs(rec)
+            self._append_kv_node_block(lay, tag, pairs, True, rec.get("element"))
+        lay.addStretch(1)
+
+    def _commit_strategy_kv(self, meta: dict, edit: QLineEdit, mode_context: bool) -> None:
+        """表单中某行 值 编辑完成，写回 XML。"""
+        if not self.parser or not isinstance(meta, dict):
+            return
+        dom = meta.get("dom")
+        mode = meta.get("mode", "text")
+        if dom is None:
+            return
+        new_val = edit.text().strip()
+        if new_val == str(meta.get("value", "")):
+            return
+        if not self.parser.apply_strategy_kv_edit(
+            dom, mode, meta.get("attr"), new_val
+        ):
+            edit.setText(str(meta.get("value", "")))
+            return
+        meta["value"] = new_val
+        if not mode_context:
+            return
+        game_alias = self.game_cbx.currentText()
+        mode_name = self.mode_cbx.currentText()
+        pkg_row = self.parser.df[self.parser.df["游戏名称"] == game_alias]
+        if pkg_row.empty:
+            return
+        pkg = pkg_row["原始包名"].iloc[0]
+        sync_col = meta.get("sync_df")
+        if sync_col:
+            self.parser._sync_mode_fields_to_df(pkg, mode_name, sync_col, new_val)
+        mode_df = self.parser.df[
+            (self.parser.df["游戏名称"] == game_alias) & (self.parser.df["性能模式"] == mode_name)
+        ]
+        if not mode_df.empty and sync_col in ("ThermalSceneCode", "PerfHint"):
+            pos = self.parser.df.index.get_loc(mode_df.index[0])
+            self.parser.update_xml_node(pos)
         self._refresh()
 
     def _connect_signals(self):
@@ -704,8 +1490,8 @@ class GamePerfToolTab(QWidget):
         package_name = df_sub["原始包名"].iloc[0]
         advantage_note = self._advantage_input.text().strip()
 
-        # 导出表格数据（去掉不可序列化的 xml_node）
-        cols = [c for c in df_sub.columns if c != "xml_node"]
+        # 导出表格数据（去掉不可序列化的 xml_node、mode_xml_node）
+        cols = [c for c in df_sub.columns if c not in ("xml_node", "mode_xml_node")]
         data_rows = df_sub[cols].to_dict(orient="records")
 
         payload = {
@@ -855,6 +1641,7 @@ class GamePerfToolTab(QWidget):
 
     def _on_game_changed(self):
         self._update_mode_combo()
+        self._update_strategy_displays()
         self._refresh()
 
     def _update_mode_combo(self):
@@ -870,13 +1657,12 @@ class GamePerfToolTab(QWidget):
         self.mode_cbx.blockSignals(False)
 
     def _on_cell_changed(self, row: int, col: int):
-        if not self.parser or self.current_filtered_df is None:
+        if not self.parser or self.current_filtered_df is None or self.current_filtered_df.empty:
             return
         original_idx = self.current_filtered_df.index[row]
         new_val = self.config_table.item(row, col).text().strip()
 
         if col == 1:
-            # 触发温度(℃)：可编辑，写回 XML temp 属性
             try:
                 t = int(new_val)
                 if t < 0 or t > 200:
@@ -901,14 +1687,15 @@ class GamePerfToolTab(QWidget):
             )
             self._refresh()
             return
+        pos = self.parser.df.index.get_loc(original_idx)
         if col == 4:
             self.parser.df.at[original_idx, "Gold索引"] = new_val
         elif col == 7:
             self.parser.df.at[original_idx, "Prime索引"] = new_val
         elif col == 10:
             self.parser.df.at[original_idx, "GPU索引"] = new_val
-        self.parser.recalculate_freq_limits(original_idx)
-        self.parser.update_xml_node(original_idx)
+        self.parser.recalculate_freq_limits(pos)
+        self.parser.update_xml_node(pos)
         self._refresh()
 
     def _on_save_as(self):
@@ -926,8 +1713,10 @@ class GamePerfToolTab(QWidget):
         ]
         if self.current_filtered_df.empty:
             self.config_table.setRowCount(0)
+            self._update_strategy_displays()
             return
 
+        # 频点按温度等级多行显示
         self.config_table.blockSignals(True)
         self.config_table.setRowCount(len(self.current_filtered_df))
         for row_idx, (original_idx, row) in enumerate(self.current_filtered_df.iterrows()):
@@ -949,3 +1738,4 @@ class GamePerfToolTab(QWidget):
                 else:
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.config_table.blockSignals(False)
+        self._update_strategy_displays()

@@ -74,6 +74,53 @@ QWidget {
     border-radius: 6px;
 }
 
+/* 游戏性能：整体/模式策略区块 — 黑底 */
+QFrame[class="strategyPolicySection"] {
+    background-color: #0a0a0a;
+    border: 1px solid #333333;
+    border-radius: 6px;
+}
+QFrame[class="strategyPolicySection"] .sectionTitleBlue {
+    color: #6cb2f0;
+}
+QFrame[class="strategyPolicySection"] .fieldLabel {
+    color: #b0b0b0;
+}
+QScrollArea[class="strategyPolicyScroll"] {
+    background-color: #0a0a0a;
+    border: none;
+}
+QScrollArea[class="strategyPolicyScroll"] QAbstractScrollArea::viewport {
+    background-color: #0a0a0a;
+}
+QWidget[class="strategyPolicyInner"] {
+    background-color: #0a0a0a;
+}
+QFrame[class="strategyNodeBlock"] {
+    background-color: #0a0a0a;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+}
+QFrame[class="strategyNodeBlock"] .fieldLabel {
+    color: #b0b0b0;
+}
+QFrame[class="strategyNodeBlock"] .sectionTitleBlue {
+    color: #6cb2f0;
+}
+QFrame[class="strategyNodeBlock"] QPushButton#bindcoreDeleteXBtn {
+    background-color: transparent;
+    border: none;
+    border-radius: 4px;
+    color: #f44747;
+    font-size: 18px;
+    font-weight: bold;
+    padding: 0;
+}
+QFrame[class="strategyNodeBlock"] QPushButton#bindcoreDeleteXBtn:hover {
+    background-color: #3c2a2a;
+    color: #ff6b6b;
+}
+
 /* Section Titles */
 .sectionTitleBlue {
     color: #569cd6;
@@ -544,6 +591,53 @@ QWidget {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
+}
+
+/* 游戏性能：整体/模式策略区块 — 黑底（浅色主题下仍用黑底） */
+QFrame[class="strategyPolicySection"] {
+    background-color: #0a0a0a;
+    border: 1px solid #333333;
+    border-radius: 6px;
+}
+QFrame[class="strategyPolicySection"] .sectionTitleBlue {
+    color: #6cb2f0;
+}
+QFrame[class="strategyPolicySection"] .fieldLabel {
+    color: #b0b0b0;
+}
+QScrollArea[class="strategyPolicyScroll"] {
+    background-color: #0a0a0a;
+    border: none;
+}
+QScrollArea[class="strategyPolicyScroll"] QAbstractScrollArea::viewport {
+    background-color: #0a0a0a;
+}
+QWidget[class="strategyPolicyInner"] {
+    background-color: #0a0a0a;
+}
+QFrame[class="strategyNodeBlock"] {
+    background-color: #0a0a0a;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+}
+QFrame[class="strategyNodeBlock"] .fieldLabel {
+    color: #b0b0b0;
+}
+QFrame[class="strategyNodeBlock"] .sectionTitleBlue {
+    color: #6cb2f0;
+}
+QFrame[class="strategyNodeBlock"] QPushButton#bindcoreDeleteXBtn {
+    background-color: transparent;
+    border: none;
+    border-radius: 4px;
+    color: #d32f2f;
+    font-size: 18px;
+    font-weight: bold;
+    padding: 0;
+}
+QFrame[class="strategyNodeBlock"] QPushButton#bindcoreDeleteXBtn:hover {
+    background-color: #3a2222;
+    color: #e53935;
 }
 
 /* Section Titles */
