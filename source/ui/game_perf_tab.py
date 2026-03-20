@@ -339,20 +339,21 @@ class GamePerfParser:
         el.text = "0"
         return self.refresh_game_policy_data()
 
-    def recalculate_freq_limits(self, row_idx: int) -> bool:
-        if row_idx < 0 or row_idx >= len(self.df):
+    def recalculate_freq_limits(self, row_label) -> bool:
+        """按 DataFrame 行标签（index）重算 Gold/Prime/GPU 频率上下限。"""
+        if self.df is None or self.df.empty or row_label not in self.df.index:
             return False
-        row = self.df.iloc[row_idx]
+        row = self.df.loc[row_label]
         try:
             gold_idx = row["Gold索引"]
             start_idx, end_idx = map(int, gold_idx.split("_"))
             freq_vals = self.cpu_clusters["Gold"][
                 min(start_idx, end_idx) : max(start_idx, end_idx) + 1
             ]
-            self.df.iloc[row_idx, self.df.columns.get_loc("Gold下限(Hz)")] = (
+            self.df.at[row_label, "Gold下限(Hz)"] = (
                 min(freq_vals) if freq_vals else 0
             )
-            self.df.iloc[row_idx, self.df.columns.get_loc("Gold上限(Hz)")] = (
+            self.df.at[row_label, "Gold上限(Hz)"] = (
                 max(freq_vals) if freq_vals else 0
             )
             prime_idx = row["Prime索引"]
@@ -360,10 +361,10 @@ class GamePerfParser:
             freq_vals = self.cpu_clusters["Prime"][
                 min(start_idx, end_idx) : max(start_idx, end_idx) + 1
             ]
-            self.df.iloc[row_idx, self.df.columns.get_loc("Prime下限(Hz)")] = (
+            self.df.at[row_label, "Prime下限(Hz)"] = (
                 min(freq_vals) if freq_vals else 0
             )
-            self.df.iloc[row_idx, self.df.columns.get_loc("Prime上限(Hz)")] = (
+            self.df.at[row_label, "Prime上限(Hz)"] = (
                 max(freq_vals) if freq_vals else 0
             )
             gpu_idx = row["GPU索引"]
@@ -371,20 +372,21 @@ class GamePerfParser:
             freq_vals = self.gpu_cluster["Gpu"][
                 min(start_idx, end_idx) : max(start_idx, end_idx) + 1
             ]
-            self.df.iloc[row_idx, self.df.columns.get_loc("GPU下限(Hz)")] = (
+            self.df.at[row_label, "GPU下限(Hz)"] = (
                 min(freq_vals) if freq_vals else 0
             )
-            self.df.iloc[row_idx, self.df.columns.get_loc("GPU上限(Hz)")] = (
+            self.df.at[row_label, "GPU上限(Hz)"] = (
                 max(freq_vals) if freq_vals else 0
             )
             return True
         except Exception:
             return False
 
-    def update_xml_node(self, row_idx: int) -> bool:
-        if row_idx < 0 or row_idx >= len(self.df):
+    def update_xml_node(self, row_label) -> bool:
+        """按 DataFrame 行标签（index）把当前行的温控/频点写回 XML 节点。"""
+        if self.df is None or self.df.empty or row_label not in self.df.index:
             return False
-        row = self.df.iloc[row_idx]
+        row = self.df.loc[row_label]
         try:
             xml_node = row["xml_node"]
             xml_node.set("temp", str(row["触发温度(℃)"]))
@@ -1407,8 +1409,7 @@ class GamePerfToolTab(QWidget):
             (self.parser.df["游戏名称"] == game_alias) & (self.parser.df["性能模式"] == mode_name)
         ]
         if not mode_df.empty and sync_col in ("ThermalSceneCode", "PerfHint"):
-            pos = self.parser.df.index.get_loc(mode_df.index[0])
-            self.parser.update_xml_node(pos)
+            self.parser.update_xml_node(mode_df.index[0])
         self._refresh()
 
     def _connect_signals(self):
@@ -1659,8 +1660,13 @@ class GamePerfToolTab(QWidget):
     def _on_cell_changed(self, row: int, col: int):
         if not self.parser or self.current_filtered_df is None or self.current_filtered_df.empty:
             return
+        if row < 0 or row >= len(self.current_filtered_df):
+            return
+        item = self.config_table.item(row, col)
+        if item is None:
+            return
         original_idx = self.current_filtered_df.index[row]
-        new_val = self.config_table.item(row, col).text().strip()
+        new_val = item.text().strip()
 
         if col == 1:
             try:
@@ -1673,7 +1679,8 @@ class GamePerfToolTab(QWidget):
                 )
                 self._refresh()
                 return
-            self.parser.df.at[original_idx, "触发温度(℃)"] = t
+            # 该列可能为 pandas StringDtype，赋 int 会 TypeError，统一存字符串
+            self.parser.df.at[original_idx, "触发温度(℃)"] = str(t)
             self.parser.update_xml_node(original_idx)
             self._refresh()
             return
@@ -1687,15 +1694,14 @@ class GamePerfToolTab(QWidget):
             )
             self._refresh()
             return
-        pos = self.parser.df.index.get_loc(original_idx)
         if col == 4:
             self.parser.df.at[original_idx, "Gold索引"] = new_val
         elif col == 7:
             self.parser.df.at[original_idx, "Prime索引"] = new_val
         elif col == 10:
             self.parser.df.at[original_idx, "GPU索引"] = new_val
-        self.parser.recalculate_freq_limits(pos)
-        self.parser.update_xml_node(pos)
+        self.parser.recalculate_freq_limits(original_idx)
+        self.parser.update_xml_node(original_idx)
         self._refresh()
 
     def _on_save_as(self):
