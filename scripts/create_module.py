@@ -9,6 +9,8 @@ from __future__ import annotations
 import argparse
 import io
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -110,14 +112,115 @@ def create_module(
     print(f"  显示名称: {display}")
     print(f"  CLI 命名空间: {cli_ns}")
     print(f"  类名: {class_name}Plugin / {class_name}Service / {class_name}Tab")
+
+    _init_speckit(module_dir, module_name, display, variables)
+
     print()
     print("下一步操作:")
-    print(f"  1. cd {module_dir}")
-    print('  2. uvx --from git+https://github.com/github/spec-kit.git specify init --here --no-git --ai cursor --script ps')
-    print("  3. 编辑 manifest.json 补充 description 和 author")
-    print("  4. 实现 src/service.py 中的核心业务逻辑")
+    print("  1. 编辑 manifest.json 补充 description 和 author")
+    print("  2. 实现 src/service.py 中的核心业务逻辑")
+    print("  3. 使用 /speckit.specify 创建功能规格")
 
     return module_dir
+
+
+def _init_speckit(module_dir: Path, module_name: str, display: str, variables: dict) -> None:
+    """在模块目录下初始化 speckit 并生成模块级 constitution。"""
+    uvx_path = shutil.which("uvx")
+    if not uvx_path:
+        print()
+        print("⚠ 未检测到 uvx 命令，跳过 speckit 自动初始化。")
+        print("  请手动执行:")
+        print(f"    cd {module_dir}")
+        print("    uvx --from git+https://github.com/github/spec-kit.git specify init --here --no-git --ai cursor-agent --script ps")
+        return
+
+    print()
+    print("初始化 speckit...")
+    try:
+        result = subprocess.run(
+            [
+                uvx_path, "--from", "git+https://github.com/github/spec-kit.git",
+                "specify", "init", "--here", "--no-git",
+                "--ai", "cursor-agent", "--script", "ps",
+            ],
+            cwd=str(module_dir),
+            input="y\n",
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode == 0:
+            print("✓ speckit 初始化成功")
+        else:
+            print(f"⚠ speckit 初始化返回非零码 ({result.returncode})，请检查输出")
+            if result.stderr:
+                print(f"  stderr: {result.stderr[:300]}")
+    except FileNotFoundError:
+        print("⚠ uvx 执行失败，请确认 uvx 已正确安装")
+        return
+    except subprocess.TimeoutExpired:
+        print("⚠ speckit 初始化超时（120s），请手动执行")
+        return
+
+    _write_module_constitution(module_dir, module_name, display, variables)
+
+
+def _write_module_constitution(
+    module_dir: Path, module_name: str, display: str, variables: dict,
+) -> None:
+    """生成模块级 constitution，继承主 constitution 并添加模块边界约束。"""
+    constitution_path = module_dir / ".specify" / "memory" / "constitution.md"
+    if not constitution_path.parent.exists():
+        constitution_path.parent.mkdir(parents=True, exist_ok=True)
+
+    prefix = module_name[:2] if len(module_name) >= 2 else module_name
+    short_prefixes = {
+        "device_disguise": "dd",
+        "game_perf": "gp",
+        "log_analysis": "la",
+        "trace_analysis": "ta",
+        "strategy_report": "sr",
+    }
+    prefix = short_prefixes.get(module_name, prefix)
+
+    content = f"""# {display}模块 Constitution
+
+## 目录
+
+- [继承关系](#继承关系)
+- [模块边界约束](#模块边界约束)
+- [技术约束](#技术约束)
+- [开发规范](#开发规范)
+
+## 继承关系
+
+本模块 Constitution 继承自项目根 Constitution（`../../.specify/memory/constitution.md`），所有根 Constitution 中定义的原则、技术栈约束和开发流程均 MUST 适用于本模块。
+
+以下仅补充模块级约束，不重复根级内容。
+
+## 模块边界约束
+
+- ✅ 可以修改：`src/`、`tests/`、`specs/`、`fixtures/`
+- ❌ 禁止修改：`toolkit/`、其他模块目录、项目根配置文件
+- ✅ 可以导入：`toolkit.sdk.*`、`toolkit.core.hookspecs`
+- ❌ 禁止导入：`toolkit.core` 内部实现（plugin_manager、db_manager 等）、其他模块的 `src/`
+- 插件 context 键名 MUST 使用 `{prefix}_` 前缀（如 `{prefix}_service`、`{prefix}_adb`）
+
+## 技术约束
+
+[根据模块需求补充具体技术约束]
+
+## 开发规范
+
+- 遵循项目根 `scripts/doc/development-pitfalls.md` 中列出的踩坑指南
+- 后台耗时操作 MUST 使用 `QThread` + `pyqtSignal` 与 GUI 线程通信
+- service 层纯同步，MUST NOT 包含 PyQt6 代码
+
+**Version**: 1.0.0 | **Last Updated**: auto-generated
+"""
+    constitution_path.write_text(content, encoding="utf-8")
+    print(f"✓ 模块 constitution 已生成: {constitution_path}")
 
 
 def main() -> None:

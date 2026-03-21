@@ -41,8 +41,20 @@ Step 3 仅在涉及 GUI/界面时必须执行。
 6. spec implement → 执行修复
 7. spec analysis（最终）→ 代码对齐 spec + constitution
 
+## Bug 修复方法论
+
+修复任何 Bug 时 MUST 遵循：
+1. **分析根因**：通过日志、命令输出、代码追踪定位根本原因
+2. **记录诊断**：在进度回调/日志中输出关键返回值和状态信息
+3. **基于根因修复**：针对确认的根因编写修复代码，MUST NOT 盲目尝试
+4. **验证修复**：通过测试和手动验证确认问题已解决
+5. **更新文档**：涉及流程/逻辑变更时同步更新 spec 文档
+
 ## 通用约束
 
 - 每次 analysis 必须 FAIL 项清零方可进入下一阶段
 - 所有 clarify 决策必须回写到 spec.md 的 Clarifications 章节
 - Constitution 是最高治理文档，实现不得违反其原则
+- 新模块开发前 MUST 阅读 `scripts/doc/development-pitfalls.md` 避免重复踩坑
+- 插件 context 键名 MUST 使用模块前缀命名空间（如 `dd_service`、`gp_adb`）
+- GUI 后台线程 MUST 通过 `pyqtSignal` 通信，MUST NOT 直接操作 UI 控件

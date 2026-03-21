@@ -31,6 +31,8 @@ class {{class_name}}Plugin(BasePlugin):
     @hookimpl
     def on_startup(self, context: dict):
         self.context = context
+        # 使用模块前缀注册 context 键，避免跨模块冲突
+        # context["{{module_name}}_service"] = {{class_name}}Service(...)
 
     @hookimpl
     def on_shutdown(self):

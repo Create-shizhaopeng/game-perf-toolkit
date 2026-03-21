@@ -9,16 +9,18 @@
 
 ## 功能概述
 
-根据 `scripts/templates/` 下的模板文件，自动生成新模块的完整目录结构，包括：
+根据 `scripts/templates/` 下的模板文件，自动生成新模块的完整目录结构，并自动初始化 speckit。包括：
 
 - `manifest.json` — 模块元数据
-- `src/plugin.py` — 插件注册入口
+- `src/plugin.py` — 插件注册入口（预填命名空间 context 键）
 - `src/service.py` — 服务层骨架
 - `src/cli_commands.py` — CLI 子命令骨架
 - `src/gui_tab.py` — GUI 页面骨架
-- `AGENTS.md` — AI 开发规则
+- `AGENTS.md` — AI 开发规则（含踩坑指南引用）
 - `tests/` — 测试目录及基础测试
 - `specs/`、`fixtures/`、`assets/` — 辅助目录
+- `.specify/` — speckit 管理目录（自动初始化，含模块级 constitution）
+- `.cursor/commands/` — speckit slash 命令
 
 ## 参数说明
 
@@ -46,3 +48,12 @@ python scripts/create_module.py -h
 - 成功时打印创建的目录路径和后续操作指引
 - 模块名不合法（非小写字母+下划线）时报错退出
 - 目录已存在时报错退出，防止覆盖
+- speckit 初始化失败时打印警告，不阻断骨架创建（可后续手动初始化）
+
+## 自动化行为
+
+脚手架创建完成后会自动执行以下操作（需要 `uvx` 命令可用）：
+
+1. 运行 `uvx --from git+https://github.com/github/spec-kit.git specify init --here --no-git --ai cursor-agent --script ps`
+2. 生成模块级 `constitution.md`（继承主 Constitution，预填模块前缀和边界约束）
+3. 如果 `uvx` 不可用，打印手动初始化命令

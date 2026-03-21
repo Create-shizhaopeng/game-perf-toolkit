@@ -1,34 +1,58 @@
-﻿---
+---
 description: Project Development Guidelines
 globs: ["**/*"]
 alwaysApply: true
 ---
 # lv-game-toolkit Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-03-20
+Last updated: 2026-03-21
 
 ## Active Technologies
 
-- Python 3.12+ + PyQt6, Typer, Rich, Pydantic, pluggy (001-framework-completion)
+- Python 3.12+ + PyQt6, Typer, Rich, Pydantic, pluggy, lxml
+- 数据库: SQLite + JSON + 文件系统
+- 包管理: uv / pip
+- 测试: pytest + unittest.mock
+- 构建: PyInstaller (onedir)
 
 ## Project Structure
 
 ```text
-src/
-tests/
+toolkit/          # 核心框架（禁止模块修改）
+modules/          # 功能模块（插件）
+tests/            # 主项目测试
+scripts/          # 工具脚本
+specs/            # 主 speckit 规格文档
+.specify/         # speckit 配置
+.cursor/rules/    # 开发规则
 ```
 
 ## Commands
 
-cd src; pytest; ruff check .
+```bash
+# 启动 GUI
+python -m toolkit.app
+
+# 运行全部测试
+python scripts/run_all_tests.py
+
+# 创建新模块
+python scripts/create_module.py <name>
+```
 
 ## Code Style
 
-Python 3.12+: Follow standard conventions
+- Python 3.12+: 类型注解覆盖所有公共方法
+- 中文注释和文档字符串
+- UTF-8 编码
+- 插件 context 键使用模块前缀（dd_, gp_, pe_ 等）
 
-## Recent Changes
+## Key Rules
 
-- 001-framework-completion: Added Python 3.12+ + PyQt6, Typer, Rich, Pydantic, pluggy
+- 模块 MUST NOT 修改 toolkit/ 目录
+- Service 层纯同步，不依赖 GUI 框架
+- GUI 后台操作使用 QThread + pyqtSignal
+- 踩坑指南: scripts/doc/development-pitfalls.md
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

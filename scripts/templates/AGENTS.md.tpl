@@ -16,9 +16,11 @@
 
 > 本模块遵循项目全局编码规范（详见项目根 `.cursor/rules/`）
 > - Python 3.12+，类型注解覆盖所有公共方法
-> - 数据模型使用 Pydantic，输入输出结构化
+> - 数据模型：公共 API 用 Pydantic，模块内部用 dataclass
 > - 中文注释和文档字符串
-> - 所有 CLI 输出支持 JSON 格式
+> - CLI 输出 SHOULD 支持 JSON 格式（渐进落地）
+> - 插件 context 键名使用模块前缀（如 `{{module_name}}_service`）
+> - 开发前 MUST 阅读 `scripts/doc/development-pitfalls.md`
 
 ## 模块边界约束
 

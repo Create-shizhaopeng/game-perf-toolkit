@@ -74,7 +74,8 @@ lv-game-toolkit/
 │       └── constants.py
 ├── modules/                # 功能模块（插件）
 │   ├── device_disguise/    # 设备伪装模块
-│   └── game_perf/          # 游戏性能配置模块
+│   ├── game_perf/          # 游戏性能配置模块
+│   └── perfetto_capture/   # Perfetto 卡顿抓取模块
 ├── tests/                  # 自动化测试
 ├── scripts/                # 工具脚本
 │   ├── create_module.py    # 模块脚手架
@@ -85,7 +86,9 @@ lv-game-toolkit/
 │   ├── commands/           # speckit 命令
 │   ├── skills/             # speckit 技能
 │   └── rules/              # 开发规则
-├── doc/                    # 旧项目文档（迁移参考）
+├── doc/                    # 文档中心
+│   ├── architecture/      #   架构设计文档
+│   └── legacy/            #   旧版文档归档（迁移参考）
 ├── _archived_source/       # 旧代码归档（迁移参考）
 └── pyproject.toml          # 项目配置
 ```
@@ -107,40 +110,56 @@ lv-game-toolkit/
 ### 创建新模块
 
 ```bash
-python scripts/create_module.py <模块名>
+python scripts/create_module.py <模块名> --display-name "显示名称"
 ```
 
-生成的模块骨架包含：`manifest.json`、`plugin.py`、`service.py`、`cli_commands.py`、`gui_tab.py`、`AGENTS.md` 和测试文件。
+脚手架自动完成：生成模块骨架、初始化 speckit、生成模块级 Constitution。
 
 ### Spec-Driven 开发流程
 
-每个模块使用独立的 speckit 工作流：
+每个模块使用独立的 speckit 工作流（8 步）：
 
-```bash
-cd modules/<模块名>
-uvx --from git+https://github.com/github/spec-kit.git specify init --here --no-git --ai cursor-agent --script ps
-```
+specify → clarify → UE/UI design → plan → tasks → analysis → implement → analysis
 
-然后按流程执行：specify → plan → tasks → implement → analysis。
+### 开发文档
 
-详见 Constitution 文档：[.specify/memory/constitution.md](.specify/memory/constitution.md)
+| 文档 | 说明 |
+|------|------|
+| [架构设计文档](doc/architecture/architecture-overview.md) | 项目完整架构设计（11 章） |
+| [技术决策记录](doc/architecture/technical-decisions.md) | 12 项 ADR 决策记录 |
+| [模块开发指导手册](scripts/doc/module-development-guide.md) | 端到端开发流程、代码模板、命令速查 |
+| [常见踩坑指南](scripts/doc/development-pitfalls.md) | 14 项常见问题及解决方案 |
+| [构建脚本文档](scripts/doc/build.md) | PyInstaller 构建流程与产物说明 |
+| [Constitution](.specify/memory/constitution.md) | 项目最高治理文档 |
+| [脚手架说明](scripts/doc/create_module.md) | create_module.py 使用说明 |
+| [文档中心索引](doc/README.md) | 所有文档的结构化索引 |
 
 ## 测试
 
 ```bash
-# 运行全部测试（83 项）
-.venv\Scripts\python.exe -m pytest tests/ -v
+# 运行全部测试（180 项，含主项目+所有模块）
+python scripts/run_all_tests.py
 
-# 运行特定测试
-.venv\Scripts\python.exe -m pytest tests/test_config_manager.py -v
+# 运行特定模块测试
+.venv\Scripts\python.exe -m pytest modules/game_perf/tests/ -v
 ```
 
 ## 构建
 
 ```bash
-# PyInstaller onedir 模式
-pyinstaller --noconfirm --onedir toolkit/app.py
+# 完整构建（GUI + CLI + 打包）
+python scripts/build.py
+
+# 仅构建 GUI 用于测试
+python scripts/build.py --gui-only --no-package
 ```
+
+构建产物：
+- `Toolkit.exe` — GUI 入口（双击启动，无控制台窗口）
+- `toolkit-cli.exe` — CLI 入口（终端使用）
+- `dist/lv-game-toolkit-v1.0.0-windows.zip` — 最终分发包
+
+详细说明参见 [构建脚本文档](scripts/doc/build.md)。
 
 ## Git 与提交规范
 
@@ -156,7 +175,7 @@ git config commit.template .github/COMMIT_MSG_TEMPLATE.md
 
 ### 分支策略
 
-- `master`：稳定发布分支
+- `main` / `master`：稳定发布分支
 - `refactoring`：架构重构分支（当前活跃）
 - `feat/<module>-<feature>`：特性开发分支
 

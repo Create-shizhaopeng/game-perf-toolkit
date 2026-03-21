@@ -1,6 +1,9 @@
 # PyInstaller / 编译产物
 source/dist/
 source/build/
+dist/
+build/
+*.spec
 *.spec.bak
 
 # 虚拟环境
@@ -60,5 +63,4 @@ UI示意图/
 /ui3.png
 /model名修改重置工具.md
 
-# 架构设计文档（项目约定不纳入 Git）
-项目架构设计/
+# 架构设计文档已迁移至 doc/architecture/（纳入 Git 管理）

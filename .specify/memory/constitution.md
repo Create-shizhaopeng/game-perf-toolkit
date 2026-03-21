@@ -1,15 +1,10 @@
 <!--
 Sync Impact Report
-- Version: N/A → 1.0.0
-- Added principles: Plugin-First, Three-Surface Unity, Agent-Driven,
-  Dependency Inversion, Presentation Separation, Open-Closed, Spec-Driven
-- Added sections: Technology Stack Constraints, Development Workflow
-- Templates:
-  - .specify/templates/plan-template.md ⚠ pending (customization deferred)
-  - .specify/templates/spec-template.md ⚠ pending (customization deferred)
-  - .specify/templates/tasks-template.md ⚠ pending (customization deferred)
-- Follow-up TODOs: Customize plan/spec/tasks templates to reflect
-  module-oriented project structure
+- Version: 1.3.0
+- Modules: device_disguise (dd_), game_perf (gp_), perfetto_capture (pe_)
+- Quality Gates: context 前缀、ADB None 保护、QThread 信号通信
+- Templates: plan/spec/tasks 模板已就绪
+- Pitfalls doc: scripts/doc/development-pitfalls.md
 -->
 
 # LV Game Toolkit Constitution
@@ -150,6 +145,15 @@ Agent MUST 按顺序执行：
 6. `spec implement` → 执行修复
 7. `spec analysis`（最终） → 确保修复后的代码对齐 spec 和 constitution
 
+#### Bug 修复方法论
+
+Agent 在修复 Bug 时 MUST 遵循以下流程：
+1. **分析根因**：通过日志、ADB 命令输出、代码追踪等手段定位问题的根本原因
+2. **记录诊断**：在进度回调或日志中输出关键的命令返回值和状态信息，便于后续诊断
+3. **基于根因修复**：针对确认的根因编写修复代码，MUST NOT 盲目尝试
+4. **验证修复**：修复后通过测试和手动验证确认问题已解决
+5. **更新文档**：如修复涉及流程或逻辑变更，同步更新 spec 文档
+
 #### 通用约束
 
 - 每次 `spec analysis` 的结果 MUST 达到 **FAIL 项清零** 方可进入下一阶段
@@ -162,6 +166,10 @@ Agent MUST 按顺序执行：
 - CLI 输出 SHOULD 支持 JSON 格式（渐进落地，模块实现时逐步添加）
 - Pydantic 模型 MUST 用于所有公共 API 的入参和返回值
 - 中文文档和注释 MUST 使用 UTF-8 编码
+- 插件 context 键名 MUST 使用模块前缀命名空间（如 `dd_service`、`gp_adb`），避免跨模块键名冲突
+- ADB 命令输出（stdout/stderr）访问时 MUST 使用 `or ""` 保护，防止 None 拼接异常
+- GUI 后台线程 MUST 通过 `pyqtSignal` 与主线程通信，MUST NOT 直接操作 UI 控件
+- 已知踩坑问题汇总见 `scripts/doc/development-pitfalls.md`
 
 ## Governance
 
@@ -171,4 +179,4 @@ Agent MUST 按顺序执行：
 - 所有 PR 和代码审查 MUST 验证是否符合 Constitution 原则
 - 复杂度增加 MUST 有合理理由，优先选择简单方案
 
-**Version**: 1.2.0 | **Ratified**: 2026-03-20 | **Last Amended**: 2026-03-21
+**Version**: 1.3.0 | **Ratified**: 2026-03-20 | **Last Amended**: 2026-03-21
