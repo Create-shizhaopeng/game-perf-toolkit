@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from toolkit.sdk.exceptions import AdbError, DeviceNotFoundError, DeviceOfflineError
@@ -90,6 +91,57 @@ class AdbManager:
             "manufacturer": props.get("ro.product.odm.manufacturer", ""),
             "model": props.get("ro.product.odm.model", ""),
         }
+
+    def _serial_args(self, serial: str) -> list[str]:
+        """构造 -s serial 前缀参数。"""
+        return ["-s", serial]
+
+    def root(self, serial: str) -> str:
+        """在设备上获取 root 权限。"""
+        return self.run_cmd([*self._serial_args(serial), "root"], timeout=15)
+
+    def remount(self, serial: str) -> str:
+        """重新挂载设备文件系统为可读写。"""
+        return self.run_cmd([*self._serial_args(serial), "remount"], timeout=15)
+
+    def push(self, serial: str, local_path: str, remote_path: str) -> str:
+        """将本地文件推送到设备。推送前检查本地文件是否存在。"""
+        if not Path(local_path).is_file():
+            raise AdbError(f"本地文件不存在: {local_path}")
+        return self.run_cmd(
+            [*self._serial_args(serial), "push", local_path, remote_path], timeout=30
+        )
+
+    def pull(self, serial: str, remote_path: str, local_path: str) -> str:
+        """从设备拉取文件到本地。"""
+        return self.run_cmd(
+            [*self._serial_args(serial), "pull", remote_path, local_path], timeout=30
+        )
+
+    def reboot(self, serial: str) -> str:
+        """重启设备。"""
+        return self.run_cmd([*self._serial_args(serial), "reboot"], timeout=15)
+
+    def wait_for_device(self, serial: str, timeout: int = 120) -> None:
+        """轮询等待设备恢复到 device 状态，超时抛出异常。"""
+        start = time.monotonic()
+        while time.monotonic() - start < timeout:
+            try:
+                output = self.run_cmd(
+                    [*self._serial_args(serial), "get-state"], timeout=5
+                )
+                if output.strip() == "device":
+                    return
+            except AdbError:
+                pass
+            time.sleep(2)
+        raise AdbError(f"等待设备 {serial} 恢复超时（{timeout}s）")
+
+    def shell(self, serial: str, command: str) -> str:
+        """在设备上执行 shell 命令。"""
+        return self.run_cmd(
+            [*self._serial_args(serial), "shell", command], timeout=30
+        )
 
     def run_cmd(self, args: list[str], timeout: int = 30) -> str:
         """执行 adb 命令并返回 stdout。"""

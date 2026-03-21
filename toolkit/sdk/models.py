@@ -38,6 +38,28 @@ class AnalysisResult(BaseModel):
     report_file: str | None = None
 
 
+class DeviceState(BaseModel):
+    """设备伪装状态 — 对比 ODM (current) 与 vendor (original) 属性判断是否伪装"""
+
+    is_connected: bool = False
+    current_brand: str = ""
+    current_manufacturer: str = ""
+    current_model: str = ""
+    original_brand: str = ""
+    original_manufacturer: str = ""
+    original_model: str = ""
+
+    @property
+    def is_disguised(self) -> bool:
+        if not self.is_connected:
+            return False
+        return (
+            self.current_brand != self.original_brand
+            or self.current_manufacturer != self.original_manufacturer
+            or self.current_model != self.original_model
+        )
+
+
 class CLIResponse(BaseModel):
     """CLI 统一响应格式"""
 

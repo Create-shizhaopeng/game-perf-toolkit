@@ -6,35 +6,40 @@ alwaysApply: true
 # Spec-Driven Agent 工作流规范
 
 本规则定义 Agent 在 spec-driven 开发中的必须遵循的闭环流程。
-详见 `.specify/memory/constitution.md` § Agent 实现与验收工作流。
+详见 `.specify/memory/constitution.md` § Spec-Driven 标准开发流程。
 
-## 实现后自检（必须）
+## 标准开发流程（主 spec / 子 spec 均适用）
 
-Agent 完成 `speckit.implement` 后必须：
-1. 自动执行 `spec analysis`
-2. 确认 FAIL 项清零；若有 FAIL，修复后重新 analysis
-3. WARN 项尽量修复，允许记录为已知限制后跳过
+| 步骤 | 动作 | 说明 |
+|------|------|------|
+| Step 1 | specify | 创建功能规格文档 |
+| Step 2 | clarify | 需求澄清，与用户交互定好不清晰的需求 |
+| Step 3 | UE/UI 设计 | 涉及界面时设计 2-3 种方案供用户选择，子模块风格与主模块一致 |
+| Step 4 | plan | 制定实现计划 |
+| Step 5 | tasks | 生成任务清单 |
+| Step 6 | analysis | 需求/计划/任务一致性，FAIL 清零后方可实现 |
+| Step 7 | implement | 执行实现 |
+| Step 8 | analysis | 实现后验证，FAIL 清零 |
+
+Step 3 仅在涉及 GUI/界面时必须执行。
 
 ## 用户验收 — 简单 Bug
 
-满足以下条件的反馈：不涉及功能变更、不涉及需求补充、属简单修复
-
-处理流程：
-1. `spec task` + Bug 描述 → 修复任务
-2. `spec implement` → 修复
-3. `spec analysis` → 确认一致性
+不涉及功能变更、需求补充的简单修复：
+1. spec task + Bug 描述 → 修复任务
+2. spec implement → 修复
+3. spec analysis → 确认一致性
 
 ## 用户验收 — 需求变更或设计调整
 
-涉及需求补充、功能变更、设计调整的反馈
-
-处理流程（按顺序执行）：
-1. `spec clarify` → 需求澄清
-2. `spec plan` → 修复计划
-3. `spec task` → 具体任务
-4. `spec analysis` → clarify 与 task 一致性
-5. `spec implement` → 执行修复
-6. `spec analysis`（最终）→ 代码对齐 spec + constitution
+涉及需求补充、功能变更、设计调整：
+1. spec clarify → 需求澄清
+2. 涉及 UI 时 → 更新 UE/UI 设计
+3. spec plan → 修复计划
+4. spec task → 具体任务
+5. spec analysis → clarify 与 task 一致性
+6. spec implement → 执行修复
+7. spec analysis（最终）→ 代码对齐 spec + constitution
 
 ## 通用约束
 

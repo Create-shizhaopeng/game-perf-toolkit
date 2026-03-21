@@ -95,19 +95,34 @@ Sync Impact Report
 
 1. 使用脚手架 `python scripts/create_module.py <name>` 生成模块骨架
 2. 在模块目录执行 `uvx --from git+https://github.com/github/spec-kit.git specify init --here --no-git --ai cursor-agent --script ps`
-3. 按 speckit 工作流编写 spec → plan → tasks → implement
+3. 按 speckit 工作流开发（见下方「Spec-Driven 标准开发流程」）
 4. 模块内测试 MUST 通过后才可提交 PR
 
-### Agent 实现与验收工作流
+### Spec-Driven 标准开发流程
 
-Agent（AI 或人类开发者借助 AI）在执行 spec-driven 开发时 MUST 遵循以下闭环流程：
+以下流程对主 spec（根 speckit）和子 spec（模块 speckit）均 MUST 生效：
 
-#### 阶段一：实现后自检
+| 步骤 | 动作 | 说明 |
+|------|------|------|
+| **Step 1** | `spec specify` | 创建功能规格文档（FR、SC、Edge Cases） |
+| **Step 2** | `spec clarify` | 需求澄清：针对需求不清晰的部分与用户交互确认，所有决策回写 spec.md Clarifications |
+| **Step 3** | UE/UI 设计 | 涉及界面时 MUST 设计 2-3 种方案供用户选择；子模块设计风格 MUST 与主模块一致 |
+| **Step 4** | `spec plan` | 制定实现计划 |
+| **Step 5** | `spec tasks` | 生成具体任务清单 |
+| **Step 6** | `spec analysis` | 需求/计划/任务一致性分析，FAIL 项 MUST 清零后方可进入实现 |
+| **Step 7** | `spec implement` | 执行实现 |
+| **Step 8** | `spec analysis` | 实现后一致性验证，FAIL 项 MUST 清零 |
 
-1. Agent 完成 `speckit.implement` 后 MUST 自动执行 `spec analysis`，确认实现与规范无遗漏
-2. 若 analysis 发现代码与规范不一致，MUST 通过 `spec fix`（即修订代码或文档）快速修复，然后再次执行 analysis 直到 FAIL 项清零
+**说明**：
+- Step 3 仅在涉及 GUI/界面的功能时必须执行；纯后端/CLI 功能可跳过
+- Step 2 的澄清结果 MUST 影响 Step 3-5 的设计和任务
+- 无界面的核心框架增强可简化为：Step 1 → Step 2 → Step 4 → Step 5 → Step 6 → Step 7 → Step 8
 
-#### 阶段二：用户验收 — 简单 Bug
+### Agent 验收工作流
+
+Agent（AI 或人类开发者借助 AI）在用户验收阶段 MUST 遵循以下规则：
+
+#### 简单 Bug 修复
 
 当用户验收反馈的 Bug 满足以下全部条件时：
 - 不涉及功能性变更
@@ -119,7 +134,7 @@ Agent MUST：
 2. 执行 `spec implement` → 修复代码
 3. 执行 `spec analysis` → 确认修复后一致性
 
-#### 阶段三：用户验收 — 需求变更或设计调整
+#### 需求变更或设计调整
 
 当用户验收反馈涉及以下任一场景时：
 - 需求补充（新功能、新约束）
@@ -128,11 +143,12 @@ Agent MUST：
 
 Agent MUST 按顺序执行：
 1. `spec clarify` → 需求澄清，记录用户决策
-2. `spec plan` → 制定修复/调整计划
-3. `spec task` → 根据计划生成具体任务列表
-4. `spec analysis` → 确认 clarify 内容与 task 的一致性
-5. `spec implement` → 执行修复
-6. `spec analysis`（最终） → 确保修复后的代码对齐 spec 和 constitution
+2. 涉及 UI 变更时 → 更新 UE/UI 设计文档，提供方案供用户确认
+3. `spec plan` → 制定修复/调整计划
+4. `spec task` → 根据计划生成具体任务列表
+5. `spec analysis` → 确认 clarify 内容与 task 的一致性
+6. `spec implement` → 执行修复
+7. `spec analysis`（最终） → 确保修复后的代码对齐 spec 和 constitution
 
 #### 通用约束
 
@@ -155,4 +171,4 @@ Agent MUST 按顺序执行：
 - 所有 PR 和代码审查 MUST 验证是否符合 Constitution 原则
 - 复杂度增加 MUST 有合理理由，优先选择简单方案
 
-**Version**: 1.1.0 | **Ratified**: 2026-03-20 | **Last Amended**: 2026-03-20
+**Version**: 1.2.0 | **Ratified**: 2026-03-20 | **Last Amended**: 2026-03-21
