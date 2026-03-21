@@ -1,0 +1,39 @@
+{
+  "name": "device_disguise",
+  "display_name": "设备伪装工具",
+  "version": "1.0.0",
+  "description": "修改 Android 设备的品牌、型号、厂商信息，支持配置文件管理",
+  "author": "",
+  "python_requires": ">=3.12",
+  "entry": "src.plugin",
+  "service_entry": "src.service",
+  "dependencies": {
+    "toolkit_modules": [],
+    "python_packages": []
+  },
+  "provides": {
+    "gui": true,
+    "cli": true,
+    "agent_tools": true,
+    "workflow_stages": []
+  },
+  "cli_namespace": "device",
+  "events": {
+    "emits": [
+      "device_disguise.disguised",
+      "device_disguise.restored"
+    ],
+    "listens": [
+      "device.connected",
+      "device.disconnected"
+    ]
+  },
+  "database": {
+    "migrations": "src/migrations/",
+    "tables": [
+      "device_profiles",
+      "disguise_history"
+    ]
+  },
+  "external_tools": []
+}

@@ -24,7 +24,15 @@ Thumbs.db
 desktop.ini
 .idea/
 .vscode/
-.cursor/
+
+# Cursor — 忽略个人配置但保留项目共享内容
+.cursor/*
+!.cursor/skills/
+!.cursor/rules/
+!.cursor/commands/
+
+# 运行时数据
+data/
 
 # 日志与临时文件
 *.log
@@ -51,3 +59,6 @@ UI示意图/
 /ui2.png
 /ui3.png
 /model名修改重置工具.md
+
+# 架构设计文档（项目约定不纳入 Git）
+项目架构设计/

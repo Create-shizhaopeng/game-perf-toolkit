@@ -1,0 +1,158 @@
+<!--
+Sync Impact Report
+- Version: N/A → 1.0.0
+- Added principles: Plugin-First, Three-Surface Unity, Agent-Driven,
+  Dependency Inversion, Presentation Separation, Open-Closed, Spec-Driven
+- Added sections: Technology Stack Constraints, Development Workflow
+- Templates:
+  - .specify/templates/plan-template.md ⚠ pending (customization deferred)
+  - .specify/templates/spec-template.md ⚠ pending (customization deferred)
+  - .specify/templates/tasks-template.md ⚠ pending (customization deferred)
+- Follow-up TODOs: Customize plan/spec/tasks templates to reflect
+  module-oriented project structure
+-->
+
+# LV Game Toolkit Constitution
+
+## Core Principles
+
+### I. Plugin-First（模块化优先）
+
+- 每个功能 MUST 作为独立插件模块开发，放置在 `modules/<module_name>/` 目录下
+- 模块 MUST 包含 `manifest.json` 声明元数据、依赖、CLI 命名空间和能力
+- 模块 MUST 自包含：源码 (`src/`)、测试 (`tests/`)、规格文档 (`specs/`)、测试数据 (`fixtures/`)
+- 模块之间 MUST NOT 直接导入对方 `src/` 下的实现代码，跨模块通信通过 EventBus 或 ServiceRegistry
+- 新增功能 MUST 优先考虑独立模块，而非扩展现有模块
+
+### II. Three-Surface Unity（三端统一）
+
+- GUI (PyQt6)、CLI (Typer)、Agent 三种交互方式 MUST 共享同一套 Service API 层
+- 业务逻辑 MUST 实现在模块的 `service.py` 中，GUI/CLI/Agent 仅作为调用入口
+- 所有 CLI 命令 SHOULD 支持 JSON 格式输出（`--json` 标记），以便 Agent 程序化调用（渐进落地：各模块实现 CLI 命令时逐步添加，框架层不强制首期全量覆盖）
+- 数据模型 MUST 使用 Pydantic 定义，确保 GUI/CLI/Agent 三端数据结构一致
+
+### III. Agent-Driven Design（Agent 驱动设计）
+
+- AI Agent 是系统的核心编排者，MUST 能以任意顺序调用任何模块服务
+- 模块 MUST 通过 `register_agent_tools` 钩子声明自身可被 Agent 调用的能力
+- 服务接口 MUST 通过 ServiceRegistry 注册，自动生成 JSON Schema 供 LLM Function Calling
+- Agent 不是固定流水线，而是基于用户意图动态编排模块能力
+
+### IV. Dependency Inversion（依赖反转）
+
+- 模块 MUST 依赖核心框架定义的接口（`toolkit.core.hookspecs`、`toolkit.sdk.*`）
+- 核心框架 MUST NOT 依赖任何具体模块的实现
+- 模块 MUST 通过 `toolkit.sdk.protocols` 中的 Protocol 定义跨模块接口契约
+- 允许导入：`toolkit.sdk.*`、`toolkit.core.hookspecs`
+- 禁止导入：`toolkit.core` 内部实现（plugin_manager, db_manager 等）
+
+### V. Presentation Separation（表现分离）
+
+- `service.py` MUST NOT 包含任何 GUI (PyQt6) 或 CLI (Typer) 相关代码
+- GUI 组件（`gui_tab.py`）MUST 仅负责展示和用户输入，调用 service 获取数据
+- CLI 命令（`cli_commands.py`）MUST 仅负责参数解析和输出格式化，调用 service 执行操作
+- 测试 MUST 优先针对 service 层编写，不依赖 GUI/CLI 层
+
+### VI. Open-Closed（开闭原则）
+
+- 新增模块 MUST NOT 修改核心框架代码（`toolkit/core/`、`toolkit/sdk/`）
+- 模块通过 pluggy 钩子机制自动发现和注册
+- CLI 命名空间 MUST 在 `manifest.json` 中显式声明，PluginManager 负责冲突检测
+- 预留的 CLI 命名空间（config, plugin, workflow, version, help, gui）MUST NOT 被模块占用
+
+### VII. Spec-Driven Development（规格驱动开发）
+
+- 新功能开发 MUST 遵循 speckit 工作流：Constitution → Specify → Plan → Tasks → Implement
+- 项目根目录使用主 speckit 管理全局规则和通用组件
+- 各模块 MUST 在模块目录下初始化独立 speckit（`--here --no-git`），继承全局规则
+- 模块开发者 MUST NOT 修改主 speckit 空间的内容
+- 模块的 `AGENTS.md` MUST 声明模块边界约束和允许/禁止的导入范围
+
+## Technology Stack Constraints
+
+- **Language**: Python 3.12+（MUST，利用性能提升和类型注解改进）
+- **GUI**: PyQt6（MUST，支持 QML 集成用于未来其他技术栈工具）
+- **CLI**: Typer + Rich（MUST，类型注解驱动 + Rich 美化输出）
+- **Plugin**: pluggy 1.3+（MUST，钩子机制统一模块注册）
+- **Data Model**: Pydantic 2.0+（MUST，结构化数据 + JSON Schema 生成）
+- **Database**: SQLite（结构化数据）+ JSON（简单配置）+ 文件系统（大型报告/文档）
+- **Build**: PyInstaller 6+（onedir 模式，解压即用，Windows + Linux 跨平台）
+- **Encoding**: 所有文件和输出 MUST 使用 UTF-8 编码，确保中文不出现乱码
+- **Code Quality**: Ruff（lint）+ .editorconfig（跨 IDE 格式统一）
+- **Package Manager**: uv（开发环境管理）+ pip（兼容）
+
+## Development Workflow
+
+### 团队协作模式
+
+- 2-5 人小团队，每人负责一个或多个独立模块
+- 每个开发者在自己的模块目录下使用独立 speckit 进行 spec-driven 开发
+- 通用框架（`toolkit/core/`、`toolkit/sdk/`）修改需主负责人审核
+- Git 分支策略：`main` + `feat/<module>-<feature>` 特性分支
+- 提交规范：`<type>(<scope>): <description>`，scope 为模块名或 core/sdk
+
+### 模块开发标准流程
+
+1. 使用脚手架 `python scripts/create_module.py <name>` 生成模块骨架
+2. 在模块目录执行 `uvx --from git+https://github.com/github/spec-kit.git specify init --here --no-git --ai cursor-agent --script ps`
+3. 按 speckit 工作流编写 spec → plan → tasks → implement
+4. 模块内测试 MUST 通过后才可提交 PR
+
+### Agent 实现与验收工作流
+
+Agent（AI 或人类开发者借助 AI）在执行 spec-driven 开发时 MUST 遵循以下闭环流程：
+
+#### 阶段一：实现后自检
+
+1. Agent 完成 `speckit.implement` 后 MUST 自动执行 `spec analysis`，确认实现与规范无遗漏
+2. 若 analysis 发现代码与规范不一致，MUST 通过 `spec fix`（即修订代码或文档）快速修复，然后再次执行 analysis 直到 FAIL 项清零
+
+#### 阶段二：用户验收 — 简单 Bug
+
+当用户验收反馈的 Bug 满足以下全部条件时：
+- 不涉及功能性变更
+- 不涉及需求补充或设计调整
+- 属于简单修复（样式、文案、逻辑小错误等）
+
+Agent MUST：
+1. 执行 `spec task` + Bug 描述 → 生成修复任务
+2. 执行 `spec implement` → 修复代码
+3. 执行 `spec analysis` → 确认修复后一致性
+
+#### 阶段三：用户验收 — 需求变更或设计调整
+
+当用户验收反馈涉及以下任一场景时：
+- 需求补充（新功能、新约束）
+- 功能变更（原有行为需要调整）
+- 设计不合理需要重构
+
+Agent MUST 按顺序执行：
+1. `spec clarify` → 需求澄清，记录用户决策
+2. `spec plan` → 制定修复/调整计划
+3. `spec task` → 根据计划生成具体任务列表
+4. `spec analysis` → 确认 clarify 内容与 task 的一致性
+5. `spec implement` → 执行修复
+6. `spec analysis`（最终） → 确保修复后的代码对齐 spec 和 constitution
+
+#### 通用约束
+
+- 每次 `spec analysis` 的结果 MUST 达到 **FAIL 项清零** 方可进入下一阶段
+- WARN 项 SHOULD 尽量修复，但允许记录为已知限制后跳过
+- 所有 clarify 决策 MUST 回写到 `spec.md` 的 Clarifications 章节
+
+### 质量门禁
+
+- 模块 `service.py` 中每个公共方法 MUST 至少有一个测试用例
+- CLI 输出 SHOULD 支持 JSON 格式（渐进落地，模块实现时逐步添加）
+- Pydantic 模型 MUST 用于所有公共 API 的入参和返回值
+- 中文文档和注释 MUST 使用 UTF-8 编码
+
+## Governance
+
+- 本 Constitution 是项目最高治理文档，所有开发活动 MUST 遵循
+- Constitution 修改需要文档化修改理由，更新版本号并记录修改日期
+- 版本号遵循语义化版本：MAJOR（原则变更）、MINOR（新增原则/章节）、PATCH（措辞修正）
+- 所有 PR 和代码审查 MUST 验证是否符合 Constitution 原则
+- 复杂度增加 MUST 有合理理由，优先选择简单方案
+
+**Version**: 1.1.0 | **Ratified**: 2026-03-20 | **Last Amended**: 2026-03-20

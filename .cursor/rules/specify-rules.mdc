@@ -1,0 +1,34 @@
+﻿---
+description: Project Development Guidelines
+globs: ["**/*"]
+alwaysApply: true
+---
+# lv-game-toolkit Development Guidelines
+
+Auto-generated from all feature plans. Last updated: 2026-03-20
+
+## Active Technologies
+
+- Python 3.12+ + PyQt6, Typer, Rich, Pydantic, pluggy (001-framework-completion)
+
+## Project Structure
+
+```text
+src/
+tests/
+```
+
+## Commands
+
+cd src; pytest; ruff check .
+
+## Code Style
+
+Python 3.12+: Follow standard conventions
+
+## Recent Changes
+
+- 001-framework-completion: Added Python 3.12+ + PyQt6, Typer, Rich, Pydantic, pluggy
+
+<!-- MANUAL ADDITIONS START -->
+<!-- MANUAL ADDITIONS END -->
