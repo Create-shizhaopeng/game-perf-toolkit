@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import faulthandler
 import logging
 import sys
 from pathlib import Path
+
+if sys.stderr is not None:
+    faulthandler.enable()
 
 from toolkit.core.config_manager import ConfigManager
 from toolkit.core.db_manager import DatabaseManager
@@ -15,9 +19,16 @@ from toolkit.core.service_registry import ServiceRegistry
 
 logger = logging.getLogger(__name__)
 
-ROOT_DIR = Path(__file__).parent.parent
+def _resolve_root() -> Path:
+    """解析项目根目录：PyInstaller frozen 模式下使用 _MEIPASS。"""
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS)
+    return Path(__file__).parent.parent
+
+
+ROOT_DIR = _resolve_root()
 MODULES_DIR = ROOT_DIR / "modules"
-DATA_DIR = ROOT_DIR / "data"
+DATA_DIR = Path(sys.executable).parent / "data" if getattr(sys, "frozen", False) else ROOT_DIR / "data"
 
 
 def _build_context() -> dict:
@@ -63,8 +74,14 @@ def run_gui() -> None:
 
     from toolkit.gui.main_window import MainWindow
 
+    from PyQt6.QtGui import QIcon
+
     app = QApplication(sys.argv)
     app.setApplicationName("LV Game Toolkit")
+
+    icon_path = ROOT_DIR / "assets" / "app.ico"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
     context = _build_context()
     pm = _load_plugins(context)

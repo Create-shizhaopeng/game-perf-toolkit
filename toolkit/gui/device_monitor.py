@@ -35,8 +35,11 @@ class DeviceMonitor(QThread):
                 self.devices_changed.emit(devices)
                 self._last_devices = devices
 
-            self.msleep(self._interval)
+            elapsed = 0
+            while self._running and elapsed < self._interval:
+                self.msleep(100)
+                elapsed += 100
 
     def stop(self) -> None:
         self._running = False
-        self.wait(5000)
+        self.wait(1000)

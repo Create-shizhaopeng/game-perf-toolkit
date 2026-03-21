@@ -9,15 +9,20 @@ from pathlib import Path
 
 
 def _ensure_utf8_stdout() -> None:
-    """确保 stdout/stderr 使用 UTF-8 编码，解决 Windows 控制台中文乱码。"""
-    if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
-        sys.stdout = io.TextIOWrapper(
-            sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True,
-        )
-    if sys.stderr.encoding and sys.stderr.encoding.lower() != "utf-8":
-        sys.stderr = io.TextIOWrapper(
-            sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True,
-        )
+    """确保 stdout/stderr 使用 UTF-8 编码，解决 Windows 控制台中文乱码。
+
+    PyInstaller --noconsole 模式下 sys.stdout/stderr 可能为 None。
+    """
+    if sys.stdout is not None and hasattr(sys.stdout, "encoding"):
+        if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+            sys.stdout = io.TextIOWrapper(
+                sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True,
+            )
+    if sys.stderr is not None and hasattr(sys.stderr, "encoding"):
+        if sys.stderr.encoding and sys.stderr.encoding.lower() != "utf-8":
+            sys.stderr = io.TextIOWrapper(
+                sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True,
+            )
 
 
 def resolve_log_level(level: int | str = logging.INFO) -> int:
@@ -41,8 +46,10 @@ def setup_logging(level: int | str = logging.INFO, log_file: Path | None = None)
     fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     datefmt = "%Y-%m-%d %H:%M:%S"
 
-    console_handler = logging.StreamHandler(sys.stdout)
-    handlers: list[logging.Handler] = [console_handler]
+    handlers: list[logging.Handler] = []
+    stream = sys.stdout or sys.stderr
+    if stream is not None:
+        handlers.append(logging.StreamHandler(stream))
 
     if log_file is not None:
         log_file.parent.mkdir(parents=True, exist_ok=True)
