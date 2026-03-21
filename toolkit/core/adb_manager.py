@@ -7,11 +7,23 @@ import os
 import shutil
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import NamedTuple
 
-from toolkit.sdk.exceptions import AdbError, DeviceNotFoundError, DeviceOfflineError
+from toolkit.sdk.exceptions import AdbError, DeviceNotFoundError
 
 logger = logging.getLogger(__name__)
+
+ProgressCallback = Callable[[str], None] | None
+
+
+class AdbCmdResult(NamedTuple):
+    """ADB 命令原始执行结果"""
+
+    stdout: str
+    stderr: str
+    returncode: int
 
 
 class AdbManager:
@@ -39,6 +51,44 @@ class AdbManager:
     @property
     def adb_path(self) -> str:
         return self._adb_path
+
+    # ------------------------------------------------------------------
+    # 基础命令执行
+    # ------------------------------------------------------------------
+
+    def _run_cmd_raw(self, args: list[str], timeout: int = 30) -> AdbCmdResult:
+        """执行 adb 命令并返回原始结果（不抛异常）。"""
+        cmd = [self._adb_path, *args]
+        logger.debug("执行: %s", " ".join(cmd))
+        try:
+            creation_flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                creationflags=creation_flags,
+            )
+            return AdbCmdResult(result.stdout, result.stderr, result.returncode)
+        except FileNotFoundError:
+            raise DeviceNotFoundError("未检测到 adb 环境，请配置 adb 环境变量") from None
+        except subprocess.TimeoutExpired:
+            raise AdbError(f"ADB 命令超时: {' '.join(args)}") from None
+
+    def run_cmd(self, args: list[str], timeout: int = 30) -> str:
+        """执行 adb 命令并返回 stdout（向后兼容）。"""
+        result = self._run_cmd_raw(args, timeout)
+        stdout = result.stdout or ""
+        stderr = (result.stderr or "").strip()
+        if result.returncode != 0:
+            if "adbd cannot run as root" in stderr or "not allowed" in stderr.lower():
+                raise AdbError("设备无 root 权限，请使用已 root 的设备")
+            raise AdbError(f"ADB 命令失败: {' '.join(args)}\n{stderr}")
+        return stdout
+
+    # ------------------------------------------------------------------
+    # 设备发现与属性
+    # ------------------------------------------------------------------
 
     def check_available(self) -> bool:
         """检查 adb 是否可用。"""
@@ -92,25 +142,127 @@ class AdbManager:
             "model": props.get("ro.product.odm.model", ""),
         }
 
+    # ------------------------------------------------------------------
+    # 设备操作
+    # ------------------------------------------------------------------
+
     def _serial_args(self, serial: str) -> list[str]:
         """构造 -s serial 前缀参数。"""
         return ["-s", serial]
 
     def root(self, serial: str) -> str:
-        """在设备上获取 root 权限。"""
-        return self.run_cmd([*self._serial_args(serial), "root"], timeout=15)
+        """获取 root 权限，自动等待 adbd 重启完成。
 
-    def remount(self, serial: str) -> str:
-        """重新挂载设备文件系统为可读写。"""
-        return self.run_cmd([*self._serial_args(serial), "remount"], timeout=15)
+        - "already running as root" → 跳过等待
+        - "restarting adbd as root" → 等待 adbd 重启 + wait_for_device
+        - "cannot run as root" → 抛出 AdbError
+        """
+        result = self._run_cmd_raw(
+            [*self._serial_args(serial), "root"], timeout=15
+        )
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        combined = (stdout + stderr).lower()
+
+        if "cannot run as root" in combined or "not allowed" in combined:
+            raise AdbError(
+                "设备无法获取 root 权限（adbd cannot run as root）。"
+                "请使用 userdebug 或 eng 版本的设备。"
+            )
+
+        if result.returncode != 0:
+            raise AdbError(f"adb root 失败: {stderr.strip()}")
+
+        if "already running as root" in combined:
+            logger.debug("设备已处于 root 状态")
+            return stdout
+
+        # adbd 重启，等待设备恢复
+        time.sleep(2)
+        self.wait_for_device(serial, timeout=30)
+        return stdout
+
+    def remount(
+        self,
+        serial: str,
+        on_progress: ProgressCallback = None,
+    ) -> str:
+        """智能 remount：自动检测是否需要重启并处理完整流程。
+
+        流程：
+        1. 执行 remount，检查 stdout + stderr
+        2. 如果输出包含重启提示 → reboot → wait → root → 再次 remount
+        3. 第二次仍需重启 → 抛出异常，提示 disable-verity
+        """
+        result = self._run_cmd_raw(
+            [*self._serial_args(serial), "remount"], timeout=30
+        )
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        combined = stdout + stderr
+
+        if result.returncode != 0 and not self._needs_reboot_for_remount(combined):
+            raise AdbError(f"adb remount 失败: {stderr.strip()}")
+
+        if self._needs_reboot_for_remount(combined):
+            self._notify(on_progress, "⚠ remount 提示需要重启后生效")
+            self._notify(on_progress, f"[remount] {combined.strip()[:200]}")
+
+            self._notify(on_progress, "正在重启设备...")
+            self.reboot(serial)
+            self.wait_for_device(serial, timeout=120)
+            self._wait_boot_completed(serial, timeout=120)
+            self._notify(on_progress, "✓ 设备重启完成")
+
+            self._notify(on_progress, "adb root (重启后)...")
+            self.root(serial)
+            self._notify(on_progress, "✓ adb root 成功")
+
+            self._notify(on_progress, "adb remount (第二次)...")
+            result2 = self._run_cmd_raw(
+                [*self._serial_args(serial), "remount"], timeout=30
+            )
+            stdout2 = result2.stdout or ""
+            stderr2 = result2.stderr or ""
+            combined2 = stdout2 + stderr2
+
+            if self._needs_reboot_for_remount(combined2):
+                raise AdbError(
+                    "remount 两次均提示需要重启，请手动执行:\n"
+                    "  adb disable-verity && adb reboot\n"
+                    "重启后再试。"
+                )
+            if result2.returncode != 0:
+                raise AdbError(
+                    f"重启后 remount 仍然失败: {stderr2.strip()}"
+                )
+            self._notify(on_progress, "✓ adb remount 成功")
+            return stdout2
+
+        self._notify(on_progress, "✓ adb remount 成功")
+        return stdout
 
     def push(self, serial: str, local_path: str, remote_path: str) -> str:
         """将本地文件推送到设备。推送前检查本地文件是否存在。"""
         if not Path(local_path).is_file():
             raise AdbError(f"本地文件不存在: {local_path}")
-        return self.run_cmd(
-            [*self._serial_args(serial), "push", local_path, remote_path], timeout=30
+        result = self._run_cmd_raw(
+            [*self._serial_args(serial), "push", local_path, remote_path],
+            timeout=30,
         )
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        combined = (stdout + stderr).lower()
+        if "read-only file system" in combined:
+            raise AdbError(
+                "文件系统仍为只读，remount 未生效。"
+                "请执行 `adb disable-verity && adb reboot` 后重试。"
+            )
+        if result.returncode != 0:
+            raise AdbError(
+                f"ADB push 失败: {stderr.strip()}"
+            )
+        return stdout
 
     def pull(self, serial: str, remote_path: str, local_path: str) -> str:
         """从设备拉取文件到本地。"""
@@ -137,32 +289,45 @@ class AdbManager:
             time.sleep(2)
         raise AdbError(f"等待设备 {serial} 恢复超时（{timeout}s）")
 
+    def wait_boot_completed(self, serial: str, timeout: int = 120) -> None:
+        """轮询等待 sys.boot_completed == 1，超时抛出异常。"""
+        start = time.monotonic()
+        while time.monotonic() - start < timeout:
+            try:
+                val = self.get_prop("sys.boot_completed", serial)
+                if val == "1":
+                    return
+            except AdbError:
+                pass
+            time.sleep(2)
+        raise AdbError(f"等待设备 {serial} 启动超时（{timeout}s）")
+
     def shell(self, serial: str, command: str) -> str:
         """在设备上执行 shell 命令。"""
         return self.run_cmd(
             [*self._serial_args(serial), "shell", command], timeout=30
         )
 
-    def run_cmd(self, args: list[str], timeout: int = 30) -> str:
-        """执行 adb 命令并返回 stdout。"""
-        cmd = [self._adb_path, *args]
-        logger.debug("执行: %s", " ".join(cmd))
-        try:
-            creation_flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                creationflags=creation_flags,
-            )
-            if result.returncode != 0:
-                stderr = result.stderr.strip()
-                if "adbd cannot run as root" in stderr or "not allowed" in stderr.lower():
-                    raise AdbError("设备无 root 权限，请使用已 root 的设备")
-                raise AdbError(f"ADB 命令失败: {' '.join(args)}\n{stderr}")
-            return result.stdout
-        except FileNotFoundError:
-            raise DeviceNotFoundError("未检测到 adb 环境，请配置 adb 环境变量") from None
-        except subprocess.TimeoutExpired:
-            raise AdbError(f"ADB 命令超时: {' '.join(args)}") from None
+    # ------------------------------------------------------------------
+    # 内部辅助
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _needs_reboot_for_remount(output: str) -> bool:
+        """检测 remount 输出（stdout+stderr）是否提示需要重启"""
+        lower = output.lower()
+        if "reboot" not in lower:
+            return False
+        return any(
+            kw in lower
+            for kw in ("remount", "take effect", "overlayfs", "settings")
+        )
+
+    def _wait_boot_completed(self, serial: str, timeout: int = 120) -> None:
+        """内部使用的 boot completed 等待（兼容旧代码）"""
+        self.wait_boot_completed(serial, timeout)
+
+    @staticmethod
+    def _notify(callback: ProgressCallback, message: str) -> None:
+        if callback:
+            callback(message)

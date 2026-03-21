@@ -16,9 +16,10 @@
 
 > 本模块遵循项目全局编码规范（详见项目根 `.cursor/rules/`）
 > - Python 3.12+，类型注解覆盖所有公共方法
-> - 数据模型使用 Pydantic，输入输出结构化
+> - 数据模型使用 dataclass（模块内部数据传递），公共 API 数据结构使用 Pydantic
 > - 中文注释和文档字符串
-> - 所有 CLI 输出支持 JSON 格式
+> - CLI 输出 SHOULD 支持 JSON 格式（渐进落地）
+> - 插件 context 键名使用 `gp_` 前缀（如 `gp_service`、`gp_adb`）
 
 ## 模块边界约束
 

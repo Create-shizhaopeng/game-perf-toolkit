@@ -1,8 +1,341 @@
-"""游戏性能配置 — 服务层"""
+"""游戏性能配置模块 — 服务层（纯同步，不依赖 GUI 框架）"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import re
+import shutil
+import tempfile
+import xml.etree.ElementTree as ET
+from collections.abc import Callable
+from datetime import datetime
+
+from toolkit.core.adb_manager import AdbManager
+from toolkit.sdk.exceptions import AdbError
+
+from .models import PushRecord, XmlErrorContext
+
+logger = logging.getLogger(__name__)
+
+REMOTE_CONFIG_PATH = "/system/etc/gameperfconfig.xml"
+
+ProgressCallback = Callable[[str], None] | None
+
+
+def is_valid_config_filename(filepath: str) -> bool:
+    """文件名须包含完整子串 gameperfconfig 且扩展名为 .xml"""
+    name = os.path.basename(filepath)
+    return "gameperfconfig" in name and name.lower().endswith(".xml")
 
 
 class GamePerfService:
-    """游戏性能配置核心业务逻辑。"""
+    """推送/还原/版本管理的纯同步业务逻辑。
+
+    GUI 层应在 QThread 中调用，CLI/Agent 可直接调用。
+    """
+
+    def __init__(self, adb: AdbManager, data_dir: str) -> None:
+        self._adb = adb
+        self._data_dir = data_dir
 
     def get_service_info(self) -> dict:
         return {"name": "game_perf", "display_name": "游戏性能配置"}
+
+    # ------------------------------------------------------------------
+    # 推送
+    # ------------------------------------------------------------------
+
+    def push(
+        self,
+        serial: str,
+        config_file: str,
+        on_progress: ProgressCallback = None,
+        notes: str = "",
+    ) -> int:
+        """完整推送流程，返回最终 version"""
+        if not is_valid_config_filename(config_file):
+            raise AdbError("无效的配置文件：文件名须包含 gameperfconfig 且扩展名为 .xml")
+        if not os.path.isfile(config_file):
+            raise AdbError(f"配置文件不存在: {config_file}")
+
+        self._notify(on_progress, "[1/10] XML 格式检查...")
+        xml_err = self.validate_xml(config_file)
+        if xml_err is not None:
+            raise XmlValidationError(xml_err)
+        self._notify(on_progress, "✓ XML 格式检查通过")
+
+        self._notify(on_progress, "[2/10] 读取设备配置文件 version...")
+        device_ver = self.get_device_version(serial)
+        target_ver = device_ver + 1
+        self._notify(on_progress, f"  设备当前 version = {device_ver}，目标 version = {target_ver}")
+
+        self._notify(on_progress, "[3/10] 修改本地文件 version...")
+        work_file = self._prepare_work_copy(config_file, target_ver)
+        self._notify(on_progress, f"✓ 本地 version 已更新为 {target_ver}")
+
+        self._notify(on_progress, "[4/10] adb root...")
+        self._adb.root(serial)
+        self._notify(on_progress, "✓ adb root 成功")
+
+        self._notify(on_progress, "[5/10] adb remount...")
+        self._adb.remount(serial, on_progress=on_progress)
+
+        self._notify(on_progress, "[6/10] setenforce 0...")
+        self._adb.shell(serial, "setenforce 0")
+        self._notify(on_progress, "✓ setenforce 0 成功")
+
+        self._notify(on_progress, "[7/10] 备份设备当前配置...")
+        backup_file = self._backup_device_config(serial)
+        self._notify(on_progress, f"✓ 已备份到 {backup_file}")
+
+        self._notify(on_progress, f"[8/10] push → {REMOTE_CONFIG_PATH}...")
+        self._adb.push(serial, work_file, REMOTE_CONFIG_PATH)
+        self._notify(on_progress, "✓ push 成功")
+
+        self._notify(on_progress, "[9/10] 重启设备...")
+        self._adb.reboot(serial)
+        self._notify(on_progress, "  等待设备重启完成...")
+        self._adb.wait_for_device(serial, timeout=120)
+        self._adb.wait_boot_completed(serial, timeout=120)
+        self._notify(on_progress, "✓ 设备重启完成")
+
+        self._notify(on_progress, "[10/10] 校验 version...")
+        actual_ver = self.get_device_version(serial)
+        if actual_ver == target_ver:
+            self._notify(on_progress, f"✓ 校验通过！设备 version = {actual_ver}")
+        else:
+            raise AdbError(
+                f"校验失败：期望 version={target_ver}，实际 version={actual_ver}"
+            )
+
+        try:
+            os.unlink(work_file)
+        except OSError:
+            pass
+
+        return actual_ver
+
+    # ------------------------------------------------------------------
+    # 还原
+    # ------------------------------------------------------------------
+
+    def reset(
+        self,
+        serial: str,
+        on_progress: ProgressCallback = None,
+    ) -> int:
+        """从备份恢复配置，返回最终 version"""
+        backup_file = self._get_backup_path(serial)
+        if not os.path.isfile(backup_file):
+            raise AdbError("无可用备份，无法重置。请先执行一次 push 操作。")
+
+        self._notify(on_progress, "[1/8] 读取设备当前 version...")
+        device_ver = self.get_device_version(serial)
+        target_ver = device_ver + 1
+        self._notify(on_progress, f"  设备当前 version = {device_ver}，重置后 version = {target_ver}")
+
+        self._notify(on_progress, "[2/8] 将备份 version 修改为 设备 version + 1...")
+        work_file = self._prepare_work_copy(backup_file, target_ver)
+        self._notify(on_progress, "✓ 备份 version 已更新")
+
+        self._notify(on_progress, "[3/8] adb root...")
+        self._adb.root(serial)
+        self._notify(on_progress, "✓ adb root 成功")
+
+        self._notify(on_progress, "[4/8] adb remount...")
+        self._adb.remount(serial, on_progress=on_progress)
+
+        self._notify(on_progress, "[5/8] setenforce 0...")
+        self._adb.shell(serial, "setenforce 0")
+        self._notify(on_progress, "✓ setenforce 0 成功")
+
+        self._notify(on_progress, f"[6/8] push 备份文件 → {REMOTE_CONFIG_PATH}...")
+        try:
+            self._adb.push(serial, work_file, REMOTE_CONFIG_PATH)
+        finally:
+            try:
+                os.unlink(work_file)
+                os.rmdir(os.path.dirname(work_file))
+            except OSError:
+                pass
+        self._notify(on_progress, "✓ push 备份成功")
+
+        self._notify(on_progress, "[7/8] 重启设备...")
+        self._adb.reboot(serial)
+        self._notify(on_progress, "  等待设备重启完成...")
+        self._adb.wait_for_device(serial, timeout=120)
+        self._adb.wait_boot_completed(serial, timeout=120)
+        self._notify(on_progress, "✓ 设备重启完成")
+
+        self._notify(on_progress, "[8/8] 校验 version...")
+        actual_ver = self.get_device_version(serial)
+        if actual_ver == target_ver:
+            self._notify(on_progress, f"✓ 设备已重置，当前 version = {actual_ver}")
+        else:
+            raise AdbError(f"重置后 version 校验异常：期望 {target_ver}，实际 {actual_ver}")
+
+        return actual_ver
+
+    # ------------------------------------------------------------------
+    # 查询
+    # ------------------------------------------------------------------
+
+    def get_device_version(self, serial: str) -> int:
+        try:
+            output = self._adb.shell(serial, f"head -5 {REMOTE_CONFIG_PATH}")
+        except AdbError:
+            return 0
+        match = re.search(r'<GameOptPolicy\s+version\s*=\s*"(\d+)"', output)
+        return int(match.group(1)) if match else 0
+
+    def get_info(self, serial: str) -> dict:
+        version = self.get_device_version(serial)
+        has_backup = self.has_backup(serial)
+        return {
+            "serial": serial,
+            "remote_path": REMOTE_CONFIG_PATH,
+            "version": version,
+            "has_backup": has_backup,
+        }
+
+    def has_backup(self, serial: str) -> bool:
+        return os.path.isfile(self._get_backup_path(serial))
+
+    # ------------------------------------------------------------------
+    # XML 校验
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def validate_xml(filepath: str) -> XmlErrorContext | None:
+        try:
+            ET.parse(filepath)
+            return None
+        except ET.ParseError as e:
+            line_no, col = e.position
+            try:
+                with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                    all_lines = f.readlines()
+            except Exception:
+                all_lines = []
+
+            ctx = XmlErrorContext(
+                error_msg=str(getattr(e, "msg", str(e))),
+                error_line=line_no,
+                error_col=col,
+            )
+            start = max(0, line_no - 4)
+            end = min(len(all_lines), line_no + 3)
+            for i in range(start, end):
+                is_err = i + 1 == line_no
+                ctx.context_lines.append((i + 1, all_lines[i].rstrip("\n\r"), is_err))
+            return ctx
+        except Exception as e:
+            return XmlErrorContext(error_msg=str(e), error_line=0, error_col=0)
+
+    # ------------------------------------------------------------------
+    # 推送记录
+    # ------------------------------------------------------------------
+
+    def save_push_record(
+        self,
+        record: PushRecord,
+        db_manager=None,
+    ) -> str:
+        """JSON + DB 双写，返回 JSON 文件路径"""
+        safe_pkg = re.sub(r'[\\/:*?"<>|]', "_", record.package)
+        record_dir = os.path.join(self._data_dir, "push_records", safe_pkg)
+        os.makedirs(record_dir, exist_ok=True)
+
+        filename = datetime.now().strftime("%Y%m%d_%H%M%S") + ".json"
+        json_path = os.path.join(record_dir, filename)
+        record.json_path = json_path
+
+        payload = record.to_dict()
+        try:
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error("保存推送记录 JSON 失败: %s", e)
+
+        if db_manager is not None:
+            try:
+                db_manager.execute(
+                    """INSERT INTO perf_push_history
+                       (game, package, mode, notes, version, json_path, saved_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        record.game, record.package, record.mode,
+                        record.notes, record.version, json_path,
+                        record.saved_at or datetime.now().isoformat(),
+                    ),
+                )
+            except Exception as e:
+                logger.error("保存推送记录 DB 失败: %s", e)
+
+        return json_path
+
+    # ------------------------------------------------------------------
+    # 内部辅助
+    # ------------------------------------------------------------------
+
+    def _backup_device_config(self, serial: str) -> str:
+        backup_dir = self._get_backup_dir(serial)
+        backup_file = os.path.join(backup_dir, "gameperfconfig.xml")
+        tmp_dir = tempfile.mkdtemp()
+        tmp_file = os.path.join(tmp_dir, "gameperfconfig.xml")
+        try:
+            self._adb.pull(serial, REMOTE_CONFIG_PATH, tmp_file)
+            shutil.move(tmp_file, backup_file)
+        except AdbError:
+            if os.path.isfile(backup_file):
+                return backup_file
+            raise
+        finally:
+            try:
+                os.rmdir(tmp_dir)
+            except OSError:
+                pass
+        return backup_file
+
+    def _get_backup_dir(self, serial: str) -> str:
+        safe_serial = re.sub(r'[\\/:*?"<>|]', "_", serial)
+        path = os.path.join(self._data_dir, "backups", safe_serial)
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    def _get_backup_path(self, serial: str) -> str:
+        return os.path.join(self._get_backup_dir(serial), "gameperfconfig.xml")
+
+    @staticmethod
+    def _prepare_work_copy(src: str, target_version: int) -> str:
+        tmp_dir = tempfile.mkdtemp()
+        work_file = os.path.join(tmp_dir, os.path.basename(src))
+        shutil.copy2(src, work_file)
+
+        with open(work_file, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        match = re.search(r'<GameOptPolicy\s+version\s*=\s*"(\d+)"', content)
+        if match:
+            new_content = content.replace(
+                match.group(0), f'<GameOptPolicy version = "{target_version}"'
+            )
+            with open(work_file, "w", encoding="utf-8") as f:
+                f.write(new_content)
+
+        return work_file
+
+    @staticmethod
+    def _notify(callback: ProgressCallback, message: str) -> None:
+        if callback:
+            callback(message)
+
+
+class XmlValidationError(Exception):
+    """XML 格式校验失败"""
+
+    def __init__(self, context: XmlErrorContext) -> None:
+        self.context = context
+        super().__init__(f"XML 格式错误（第 {context.error_line} 行）: {context.error_msg}")

@@ -16,9 +16,11 @@
 
 > 本模块遵循项目全局编码规范（详见项目根 `.cursor/rules/`）
 > - Python 3.12+，类型注解覆盖所有公共方法
-> - 数据模型使用 Pydantic，输入输出结构化
+> - 数据模型：公共 API 用 Pydantic，模块内部用 dataclass
 > - 中文注释和文档字符串
-> - 所有 CLI 输出支持 JSON 格式
+> - CLI 输出 SHOULD 支持 JSON 格式（渐进落地）
+> - 插件 context 键名使用 `dd_` 前缀（如 `dd_service`、`dd_adb`）
+> - 开发前 MUST 阅读 `scripts/doc/development-pitfalls.md`
 
 ## 模块边界约束
 
@@ -29,9 +31,10 @@
 
 ## 模块特有规则
 
-- 所有 ADB 操作通过 `context["adb_manager"]` 调用
+- ADB 操作通过 `context["dd_adb"]` 调用（使用框架级 AdbManager）
 - 设备属性修改前必须先记录原始值
-- 配置文件操作通过 `context["db_manager"]` 持久化到数据库
+- 档案管理通过 `context["dd_profile_mgr"]`（JSON 持久化）
+- 设备状态变更通过 EventBus 发布 `device_disguise.state_changed` 事件
 
 ## 测试要求
 

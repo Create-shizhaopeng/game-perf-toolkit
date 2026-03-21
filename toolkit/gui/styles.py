@@ -117,25 +117,65 @@ QSplitter#bodySplitter::handle:hover {
     background-color: #cba6f7;
 }
 
-/* 滚动条 */
+/* 滚动条 — VS Code 风格 */
 QScrollBar:vertical {
-    background-color: #1e1e2e;
-    width: 8px;
+    background: transparent;
+    width: 10px;
+    margin: 0;
     border: none;
 }
 
 QScrollBar::handle:vertical {
-    background-color: #45475a;
-    border-radius: 4px;
-    min-height: 30px;
+    background-color: rgba(121, 121, 121, 80);
+    border-radius: 5px;
+    min-height: 20px;
+    margin: 2px;
 }
 
 QScrollBar::handle:vertical:hover {
-    background-color: #585b70;
+    background-color: rgba(121, 121, 121, 160);
+}
+
+QScrollBar::handle:vertical:pressed {
+    background-color: rgba(121, 121, 121, 200);
 }
 
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+
+QScrollBar:horizontal {
+    background: transparent;
+    height: 10px;
+    margin: 0;
+    border: none;
+}
+
+QScrollBar::handle:horizontal {
+    background-color: rgba(121, 121, 121, 80);
+    border-radius: 5px;
+    min-width: 20px;
+    margin: 2px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background-color: rgba(121, 121, 121, 160);
+}
+
+QScrollBar::handle:horizontal:pressed {
+    background-color: rgba(121, 121, 121, 200);
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0;
+}
+
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: transparent;
 }
 
 /* 通用按钮 */
@@ -323,25 +363,65 @@ QSplitter#bodySplitter::handle:hover {
     background-color: #8839ef;
 }
 
-/* 滚动条 */
+/* 滚动条 — VS Code 风格 */
 QScrollBar:vertical {
-    background-color: #eff1f5;
-    width: 8px;
+    background: transparent;
+    width: 10px;
+    margin: 0;
     border: none;
 }
 
 QScrollBar::handle:vertical {
-    background-color: #bcc0cc;
-    border-radius: 4px;
-    min-height: 30px;
+    background-color: rgba(100, 100, 100, 60);
+    border-radius: 5px;
+    min-height: 20px;
+    margin: 2px;
 }
 
 QScrollBar::handle:vertical:hover {
-    background-color: #acb0be;
+    background-color: rgba(100, 100, 100, 130);
+}
+
+QScrollBar::handle:vertical:pressed {
+    background-color: rgba(100, 100, 100, 180);
 }
 
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+
+QScrollBar:horizontal {
+    background: transparent;
+    height: 10px;
+    margin: 0;
+    border: none;
+}
+
+QScrollBar::handle:horizontal {
+    background-color: rgba(100, 100, 100, 60);
+    border-radius: 5px;
+    min-width: 20px;
+    margin: 2px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background-color: rgba(100, 100, 100, 130);
+}
+
+QScrollBar::handle:horizontal:pressed {
+    background-color: rgba(100, 100, 100, 180);
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0;
+}
+
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: transparent;
 }
 
 /* 通用按钮 */

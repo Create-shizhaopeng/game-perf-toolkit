@@ -116,6 +116,10 @@ class MainWindow(QWidget):
         self._home_tab = HomeTab(context, self)
         self.add_tab(self._home_tab)
 
+        event_bus = context.get("event_bus")
+        if event_bus:
+            event_bus.on("device_disguise.state_changed", self._on_disguise_state_changed)
+
         self._apply_theme()
 
     def add_tab(self, tab: BaseTab) -> None:
@@ -161,6 +165,14 @@ class MainWindow(QWidget):
             f"{len(devices)} 台设备已连接" if devices else "未连接设备"
         )
         self._status_text.setText(status)
+
+    def _on_disguise_state_changed(self, **kwargs) -> None:
+        """设备伪装状态变化时更新状态栏显示"""
+        serial = kwargs.get("serial", "")
+        is_disguised = kwargs.get("is_disguised", False)
+        if serial:
+            disguise_info = "已伪装" if is_disguised else "未伪装"
+            self._status_text.setText(f"已连接: {serial} ({disguise_info})")
 
     def _toggle_maximize(self, center_on_cursor: bool = False) -> None:
         if self._is_maximized:

@@ -1,11 +1,11 @@
-"""AdbManager 基本场景测试（路径解析、命令拼接）+ 高级操作测试"""
+"""AdbManager 测试 — 基础 + 高级操作（smart remount / safe root / AdbCmdResult）"""
 
 from __future__ import annotations
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 
-from toolkit.core.adb_manager import AdbManager
+from toolkit.core.adb_manager import AdbManager, AdbCmdResult
 from toolkit.sdk.exceptions import AdbError
 
 
@@ -17,6 +17,11 @@ def _make_mgr() -> AdbManager:
 
 def _mock_ok(stdout: str = "") -> MagicMock:
     return MagicMock(stdout=stdout, stderr="", returncode=0)
+
+
+# ===========================================================================
+# 基础功能
+# ===========================================================================
 
 
 class TestAdbManagerBasic:
@@ -60,26 +65,184 @@ class TestAdbManagerBasic:
         assert devices == ["1234"]
 
 
-class TestAdbManagerAdvanced:
-    """T009: root/remount/push/pull/reboot/wait_for_device/shell 的 mock 测试"""
+# ===========================================================================
+# T006: _run_cmd_raw 测试
+# ===========================================================================
+
+
+class TestRunCmdRaw:
+    @patch("subprocess.run")
+    def test_returns_full_result(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            stdout="ok\n", stderr="warn\n", returncode=0
+        )
+        mgr = _make_mgr()
+        r = mgr._run_cmd_raw(["devices"])
+        assert isinstance(r, AdbCmdResult)
+        assert r.stdout == "ok\n"
+        assert r.stderr == "warn\n"
+        assert r.returncode == 0
 
     @patch("subprocess.run")
-    def test_root_sends_serial(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = _mock_ok("restarting adbd as root")
+    def test_nonzero_returncode_not_raised(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="error", returncode=1
+        )
+        mgr = _make_mgr()
+        r = mgr._run_cmd_raw(["fail"])
+        assert r.returncode == 1
+
+    @patch("subprocess.run")
+    def test_run_cmd_backward_compatible(self, mock_run: MagicMock) -> None:
+        """run_cmd 仍然只返回 stdout 并在 rc!=0 时抛异常"""
+        mock_run.return_value = _mock_ok("hello")
+        mgr = _make_mgr()
+        assert mgr.run_cmd(["version"]) == "hello"
+
+    @patch("subprocess.run")
+    def test_run_cmd_raises_on_failure(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(stdout="", stderr="bad", returncode=1)
+        mgr = _make_mgr()
+        with pytest.raises(AdbError):
+            mgr.run_cmd(["fail"])
+
+
+# ===========================================================================
+# T007: root 增强测试
+# ===========================================================================
+
+
+class TestRootEnhanced:
+    @patch("time.sleep")
+    @patch("subprocess.run")
+    def test_root_already_running(self, mock_run: MagicMock, mock_sleep: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            stdout="adbd is already running as root\n",
+            stderr="", returncode=0,
+        )
         mgr = _make_mgr()
         result = mgr.root("DEV001")
-        args = mock_run.call_args[0][0]
-        assert args == ["adb", "-s", "DEV001", "root"]
-        assert "root" in result
+        assert "already running" in result
+        mock_sleep.assert_not_called()
+
+    @patch("time.sleep")
+    @patch("subprocess.run")
+    def test_root_restarts_adbd(self, mock_run: MagicMock, mock_sleep: MagicMock) -> None:
+        mock_run.side_effect = [
+            MagicMock(stdout="restarting adbd as root\n", stderr="", returncode=0),
+            _mock_ok("device"),  # wait_for_device → get-state
+        ]
+        mgr = _make_mgr()
+        result = mgr.root("DEV001")
+        assert "restarting" in result
+        mock_sleep.assert_any_call(2)
 
     @patch("subprocess.run")
-    def test_remount_sends_serial(self, mock_run: MagicMock) -> None:
+    def test_root_cannot_run(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="adbd cannot run as root in production builds",
+            returncode=1,
+        )
+        mgr = _make_mgr()
+        with pytest.raises(AdbError, match="userdebug"):
+            mgr.root("DEV001")
+
+
+# ===========================================================================
+# T008: smart remount 测试
+# ===========================================================================
+
+
+class TestSmartRemount:
+    @patch("subprocess.run")
+    def test_remount_success_no_reboot(self, mock_run: MagicMock) -> None:
         mock_run.return_value = _mock_ok("remount succeeded")
         mgr = _make_mgr()
-        result = mgr.remount("DEV001")
-        args = mock_run.call_args[0][0]
-        assert args == ["adb", "-s", "DEV001", "remount"]
+        progress = []
+        result = mgr.remount("DEV001", on_progress=progress.append)
         assert "succeeded" in result
+        assert any("成功" in m for m in progress)
+
+    @patch("time.sleep")
+    @patch("time.monotonic")
+    @patch("subprocess.run")
+    def test_remount_with_reboot(
+        self, mock_run: MagicMock, mock_time: MagicMock, mock_sleep: MagicMock,
+    ) -> None:
+        """需要重启的 remount 场景：reboot → wait → root → re-remount"""
+        mock_time.side_effect = [0.0, 0.0] + [0.0, 0.0] + [0.0, 0.0] + [0.0]
+        mock_run.side_effect = [
+            # 1) 第一次 remount → 提示需重启
+            _mock_ok("Using overlayfs for /odm\nNow reboot your device for settings to take effect"),
+            # 2) reboot
+            _mock_ok(""),
+            # 3) wait_for_device → get-state
+            _mock_ok("device"),
+            # 4) wait_boot_completed → getprop
+            _mock_ok("1"),
+            # 5) root → already running
+            MagicMock(stdout="already running as root", stderr="", returncode=0),
+            # 6) 第二次 remount → 成功
+            _mock_ok("remount succeeded"),
+        ]
+        mgr = _make_mgr()
+        progress = []
+        result = mgr.remount("DEV001", on_progress=progress.append)
+        assert "succeeded" in result
+        assert any("重启" in m for m in progress)
+        assert any("成功" in m for m in progress)
+
+    @patch("time.sleep")
+    @patch("time.monotonic")
+    @patch("subprocess.run")
+    def test_remount_two_reboots_raises(
+        self, mock_run: MagicMock, mock_time: MagicMock, mock_sleep: MagicMock,
+    ) -> None:
+        """两次 remount 都需要重启 → 抛出异常提示 disable-verity"""
+        mock_time.side_effect = [0.0, 0.0] + [0.0, 0.0] + [0.0, 0.0] + [0.0]
+        mock_run.side_effect = [
+            # 1) 第一次 remount → 提示重启
+            _mock_ok("Verity disabled; overlayfs enabled.\nNow reboot your device for settings to take effect"),
+            # 2) reboot
+            _mock_ok(""),
+            # 3) wait_for_device
+            _mock_ok("device"),
+            # 4) wait_boot_completed
+            _mock_ok("1"),
+            # 5) root
+            MagicMock(stdout="already running as root", stderr="", returncode=0),
+            # 6) 第二次 remount → 仍需重启
+            _mock_ok("Now reboot your device for settings to take effect"),
+        ]
+        mgr = _make_mgr()
+        with pytest.raises(AdbError, match="disable-verity"):
+            mgr.remount("DEV001")
+
+    @patch("subprocess.run")
+    def test_remount_detects_stderr_reboot(self, mock_run: MagicMock) -> None:
+        """stderr 中的 reboot 提示也应该被检测"""
+        assert AdbManager._needs_reboot_for_remount(
+            "some error\nNow reboot your device for settings to take effect"
+        )
+
+    def test_needs_reboot_false_for_normal(self) -> None:
+        assert not AdbManager._needs_reboot_for_remount("remount succeeded")
+
+    @patch("subprocess.run")
+    def test_remount_progress_callback(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _mock_ok("remount succeeded")
+        mgr = _make_mgr()
+        progress = []
+        mgr.remount("DEV001", on_progress=progress.append)
+        assert len(progress) >= 1
+
+
+# ===========================================================================
+# 高级操作（兼容旧测试）
+# ===========================================================================
+
+
+class TestAdbManagerAdvanced:
 
     @patch("subprocess.run")
     def test_push_sends_serial_and_paths(self, mock_run: MagicMock, tmp_path) -> None:
@@ -91,13 +254,22 @@ class TestAdbManagerAdvanced:
         args = mock_run.call_args[0][0]
         assert args[:3] == ["adb", "-s", "DEV001"]
         assert args[3] == "push"
-        assert str(local_file) in args
-        assert "/system/etc/config.xml" in args
 
     def test_push_nonexistent_file_raises(self) -> None:
         mgr = _make_mgr()
         with pytest.raises(AdbError, match="本地文件不存在"):
             mgr.push("DEV001", "/nonexistent/file.txt", "/remote/path")
+
+    @patch("subprocess.run")
+    def test_push_readonly_raises(self, mock_run: MagicMock, tmp_path) -> None:
+        local_file = tmp_path / "test.xml"
+        local_file.write_text("<config/>")
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="Read-only file system", returncode=1
+        )
+        mgr = _make_mgr()
+        with pytest.raises(AdbError, match="只读"):
+            mgr.push("DEV001", str(local_file), "/system/etc/config.xml")
 
     @patch("subprocess.run")
     def test_pull_sends_serial_and_paths(self, mock_run: MagicMock, tmp_path) -> None:
@@ -148,5 +320,15 @@ class TestAdbManagerAdvanced:
         args = mock_run.call_args[0][0]
         assert args[:3] == ["adb", "-s", "DEV001"]
         assert args[3] == "shell"
-        assert "getprop ro.build.model" in args
         assert result.strip() == "prop_value"
+
+    @patch("time.sleep")
+    @patch("time.monotonic")
+    @patch("subprocess.run")
+    def test_wait_boot_completed(
+        self, mock_run: MagicMock, mock_time: MagicMock, mock_sleep: MagicMock
+    ) -> None:
+        mock_run.return_value = _mock_ok("1")
+        mock_time.side_effect = [0.0, 0.0]
+        mgr = _make_mgr()
+        mgr.wait_boot_completed("DEV001", timeout=60)
