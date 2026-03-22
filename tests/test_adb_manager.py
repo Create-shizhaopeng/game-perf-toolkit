@@ -332,3 +332,81 @@ class TestAdbManagerAdvanced:
         mock_time.side_effect = [0.0, 0.0]
         mgr = _make_mgr()
         mgr.wait_boot_completed("DEV001", timeout=60)
+
+
+# ===========================================================================
+# T001-T003: ADB Perfetto 支持扩展
+# ===========================================================================
+
+
+class TestAdbPerfettoSupport:
+    """验证 input_text + shell_raw + pull_raw 扩展。"""
+
+    @patch("subprocess.run")
+    def test_run_cmd_raw_with_input_text(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            stdout=b"12345\n", stderr=b"", returncode=0
+        )
+        mgr = _make_mgr()
+        r = mgr._run_cmd_raw(
+            ["-s", "DEV001", "shell", "perfetto --background --txt -c -"],
+            input_text="buffers { size_kb: 1024 }",
+        )
+        assert r.returncode == 0
+        assert "12345" in r.stdout
+        call_kwargs = mock_run.call_args
+        assert call_kwargs.kwargs.get("input") == b"buffers { size_kb: 1024 }"
+
+    @patch("subprocess.run")
+    def test_run_cmd_raw_without_input_text_unchanged(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _mock_ok("ok")
+        mgr = _make_mgr()
+        r = mgr._run_cmd_raw(["devices"])
+        assert r.stdout == "ok"
+        call_kwargs = mock_run.call_args
+        assert call_kwargs.kwargs.get("text") is True
+        assert call_kwargs.kwargs.get("capture_output") is True
+
+    @patch("subprocess.run")
+    def test_shell_raw_returns_adb_cmd_result(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _mock_ok("prop_val")
+        mgr = _make_mgr()
+        r = mgr.shell_raw("DEV001", "getprop ro.build.model")
+        assert isinstance(r, AdbCmdResult)
+        assert r.returncode == 0
+
+    @patch("subprocess.run")
+    def test_shell_raw_no_exception_on_failure(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(stdout="", stderr="error msg", returncode=1)
+        mgr = _make_mgr()
+        r = mgr.shell_raw("DEV001", "bad-command")
+        assert r.returncode == 1
+        assert "error" in r.stderr
+
+    @patch("subprocess.run")
+    def test_shell_raw_with_input_text(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            stdout=b"99999\n", stderr=b"", returncode=0
+        )
+        mgr = _make_mgr()
+        pbtxt = "buffers { size_kb: 2048\n  fill_policy: RING_BUFFER\n}"
+        r = mgr.shell_raw("DEV001", "perfetto --background --txt -c -", input_text=pbtxt)
+        assert r.returncode == 0
+        assert "99999" in r.stdout
+
+    @patch("subprocess.run")
+    def test_pull_raw_returns_result(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _mock_ok("1 file pulled")
+        mgr = _make_mgr()
+        r = mgr.pull_raw("DEV001", "/data/trace.pb", "/tmp/trace.pb")
+        assert isinstance(r, AdbCmdResult)
+        assert r.returncode == 0
+
+    @patch("subprocess.run")
+    def test_pull_raw_no_exception_on_failure(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            stdout="", stderr="remote object does not exist", returncode=1
+        )
+        mgr = _make_mgr()
+        r = mgr.pull_raw("DEV001", "/nonexistent", "/tmp/out")
+        assert r.returncode == 1

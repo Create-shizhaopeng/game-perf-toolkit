@@ -56,28 +56,52 @@ class AdbManager:
     # 基础命令执行
     # ------------------------------------------------------------------
 
-    def _run_cmd_raw(self, args: list[str], timeout: int = 30) -> AdbCmdResult:
-        """执行 adb 命令并返回原始结果（不抛异常）。"""
+    def _run_cmd_raw(
+        self,
+        args: list[str],
+        timeout: int = 30,
+        input_text: str | None = None,
+    ) -> AdbCmdResult:
+        """执行 adb 命令并返回原始结果（不抛异常）。
+
+        Args:
+            input_text: 通过 stdin 传入子进程的文本（UTF-8 编码），
+                        用于如 ``perfetto --txt -c -`` 等需要 stdin 输入的场景。
+        """
         cmd = [self._adb_path, *args]
         logger.debug("执行: %s", " ".join(cmd))
         try:
             creation_flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                creationflags=creation_flags,
-            )
-            return AdbCmdResult(result.stdout, result.stderr, result.returncode)
+            if input_text is not None:
+                result = subprocess.run(
+                    cmd,
+                    input=input_text.encode("utf-8"),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=timeout,
+                    creationflags=creation_flags,
+                )
+                stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
+                stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+            else:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    creationflags=creation_flags,
+                )
+                stdout = result.stdout or ""
+                stderr = result.stderr or ""
+            return AdbCmdResult(stdout, stderr, result.returncode)
         except FileNotFoundError:
             raise DeviceNotFoundError("未检测到 adb 环境，请配置 adb 环境变量") from None
         except subprocess.TimeoutExpired:
             raise AdbError(f"ADB 命令超时: {' '.join(args)}") from None
 
-    def run_cmd(self, args: list[str], timeout: int = 30) -> str:
+    def run_cmd(self, args: list[str], timeout: int = 30, input_text: str | None = None) -> str:
         """执行 adb 命令并返回 stdout（向后兼容）。"""
-        result = self._run_cmd_raw(args, timeout)
+        result = self._run_cmd_raw(args, timeout, input_text=input_text)
         stdout = result.stdout or ""
         stderr = (result.stderr or "").strip()
         if result.returncode != 0:
@@ -270,6 +294,12 @@ class AdbManager:
             [*self._serial_args(serial), "pull", remote_path, local_path], timeout=30
         )
 
+    def pull_raw(self, serial: str, remote_path: str, local_path: str, timeout: int = 60) -> AdbCmdResult:
+        """从设备拉取文件到本地，返回完整结果（不自动抛异常）。"""
+        return self._run_cmd_raw(
+            [*self._serial_args(serial), "pull", remote_path, local_path], timeout=timeout
+        )
+
     def reboot(self, serial: str) -> str:
         """重启设备。"""
         return self.run_cmd([*self._serial_args(serial), "reboot"], timeout=15)
@@ -306,6 +336,25 @@ class AdbManager:
         """在设备上执行 shell 命令。"""
         return self.run_cmd(
             [*self._serial_args(serial), "shell", command], timeout=30
+        )
+
+    def shell_raw(
+        self,
+        serial: str,
+        command: str,
+        *,
+        input_text: str | None = None,
+        timeout: int = 30,
+    ) -> AdbCmdResult:
+        """在设备上执行 shell 命令，返回完整结果（不自动抛异常）。
+
+        适用于需要检查 returncode/stderr 或传递 stdin 的场景，
+        如 ``perfetto --background --txt -c -``。
+        """
+        return self._run_cmd_raw(
+            [*self._serial_args(serial), "shell", command],
+            timeout=timeout,
+            input_text=input_text,
         )
 
     # ------------------------------------------------------------------
