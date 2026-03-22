@@ -1,9 +1,9 @@
 {
   "name": "perfetto_capture",
-  "display_name": "Perfetto卡顿抓取",
-  "version": "0.1.0",
-  "description": "",
-  "author": "",
+  "display_name": "Perfetto 抓取",
+  "version": "1.0.0",
+  "description": "自动化 Perfetto trace 的抓取、管理与导出",
+  "author": "LV Game Toolkit Team",
   "python_requires": ">=3.12",
   "entry": "src.plugin",
   "service_entry": "src.service",
@@ -19,12 +19,12 @@
   },
   "cli_namespace": "perfetto",
   "events": {
-    "emits": [],
+    "emits": ["perfetto_capture.trace_ready"],
     "listens": []
   },
   "database": {
-    "migrations": "src/migrations/",
+    "migrations": "",
     "tables": []
   },
-  "external_tools": []
+  "external_tools": ["adb", "perfetto"]
 }

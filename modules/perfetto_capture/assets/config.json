@@ -1,0 +1,27 @@
+{
+  "atrace_categories": [
+    "sched", "gfx", "view", "input", "am", "wm", "freq"
+  ],
+  "duration_sec": 15,
+  "buffer_size_kb": null,
+  "buffer_manual_override": false,
+  "buffer_safety_factor": 1.05,
+  "device_trace_dir": "/data/misc/perfetto-traces",
+  "output_dir": "output",
+  "target": {
+    "mode": "global",
+    "packages": []
+  },
+  "advanced": {
+    "ftrace_events": [],
+    "sampling": {},
+    "enable_raw_perfetto_config": false,
+    "raw_perfetto_config_text": ""
+  },
+  "export": {
+    "cleanup_device_files": false
+  },
+  "logging": {
+    "debug": false
+  }
+}

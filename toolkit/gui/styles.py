@@ -245,6 +245,114 @@ QGroupBox::title {
     subcontrol-origin: margin;
     padding: 0 8px;
 }
+
+/* 停止按钮 */
+QPushButton#stopBtn {
+    background-color: #f38ba8;
+    color: #1e1e2e;
+    font-weight: bold;
+}
+
+QPushButton#stopBtn:hover {
+    background-color: #eba0b3;
+}
+
+QPushButton#stopBtn:pressed {
+    background-color: #d6738d;
+}
+
+QPushButton#stopBtn:disabled {
+    background-color: #45475a;
+    color: #6c7086;
+}
+
+/* 复选框 */
+QCheckBox {
+    spacing: 4px;
+    color: #cdd6f4;
+    background: transparent;
+}
+
+QCheckBox::indicator {
+    width: 12px;
+    height: 12px;
+    border: 1px solid #585b70;
+    border-radius: 2px;
+    background-color: #313244;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #cba6f7;
+    border-color: #cba6f7;
+}
+
+QCheckBox::indicator:hover {
+    border-color: #cba6f7;
+}
+
+/* 数值输入框 */
+QSpinBox {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    padding: 3px 24px 3px 6px;
+    color: #cdd6f4;
+    min-height: 22px;
+}
+
+QSpinBox:focus {
+    border-color: #cba6f7;
+}
+
+QSpinBox:disabled {
+    color: #6c7086;
+    background-color: #1e1e2e;
+}
+
+QSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 20px;
+    background-color: #45475a;
+    border: none;
+    border-left: 1px solid #313244;
+    border-top-right-radius: 3px;
+}
+
+QSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 20px;
+    background-color: #45475a;
+    border: none;
+    border-left: 1px solid #313244;
+    border-bottom-right-radius: 3px;
+}
+
+QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+    background-color: #585b70;
+}
+
+QSpinBox::up-arrow {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 5px solid #cdd6f4;
+}
+
+QSpinBox::down-arrow {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid #cdd6f4;
+}
+
+QSpinBox::up-arrow:disabled, QSpinBox::down-arrow:disabled {
+    border-bottom-color: #6c7086;
+    border-top-color: #6c7086;
+}
 """
 
 LIGHT_THEME = """
@@ -490,6 +598,114 @@ QGroupBox {
 QGroupBox::title {
     subcontrol-origin: margin;
     padding: 0 8px;
+}
+
+/* 停止按钮 */
+QPushButton#stopBtn {
+    background-color: #d20f39;
+    color: #ffffff;
+    font-weight: bold;
+}
+
+QPushButton#stopBtn:hover {
+    background-color: #e34063;
+}
+
+QPushButton#stopBtn:pressed {
+    background-color: #b30d30;
+}
+
+QPushButton#stopBtn:disabled {
+    background-color: #ccd0da;
+    color: #9ca0b0;
+}
+
+/* 复选框 */
+QCheckBox {
+    spacing: 4px;
+    color: #333333;
+    background: transparent;
+}
+
+QCheckBox::indicator {
+    width: 12px;
+    height: 12px;
+    border: 1px solid #acb0be;
+    border-radius: 2px;
+    background-color: #dce0e8;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #8839ef;
+    border-color: #8839ef;
+}
+
+QCheckBox::indicator:hover {
+    border-color: #8839ef;
+}
+
+/* 数值输入框 */
+QSpinBox {
+    background-color: #dce0e8;
+    border: 1px solid #bcc0cc;
+    border-radius: 4px;
+    padding: 3px 24px 3px 6px;
+    color: #333333;
+    min-height: 22px;
+}
+
+QSpinBox:focus {
+    border-color: #8839ef;
+}
+
+QSpinBox:disabled {
+    color: #9ca0b0;
+    background-color: #e6e9ef;
+}
+
+QSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 20px;
+    background-color: #ccd0da;
+    border: none;
+    border-left: 1px solid #bcc0cc;
+    border-top-right-radius: 3px;
+}
+
+QSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 20px;
+    background-color: #ccd0da;
+    border: none;
+    border-left: 1px solid #bcc0cc;
+    border-bottom-right-radius: 3px;
+}
+
+QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+    background-color: #bcc0cc;
+}
+
+QSpinBox::up-arrow {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 5px solid #333333;
+}
+
+QSpinBox::down-arrow {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid #333333;
+}
+
+QSpinBox::up-arrow:disabled, QSpinBox::down-arrow:disabled {
+    border-bottom-color: #9ca0b0;
+    border-top-color: #9ca0b0;
 }
 """
 

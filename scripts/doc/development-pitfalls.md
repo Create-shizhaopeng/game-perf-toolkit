@@ -21,6 +21,10 @@
 - [P12 — Pydantic vs dataclass 选型](#p12--pydantic-vs-dataclass-选型)
 - [P13 — PyInstaller noconsole 模式 sys.stdout/stderr 为 None](#p13--pyinstaller-noconsole-模式-sysstdoutstderr-为-none)
 - [P14 — PyInstaller 资源文件路径解析](#p14--pyinstaller-资源文件路径解析)
+- [P15 — Perfetto detach 须配合 write_into_file](#p15--perfetto-detach-须配合-write_into_file)
+- [P16 — Perfetto 同 UID 并发会话上限与残留进程](#p16--perfetto-同-uid-并发会话上限与残留进程)
+- [P17 — Ring buffer clone 覆盖的时间范围](#p17--ring-buffer-clone-覆盖的时间范围)
+- [P18 — PyQt6 设备监控与间歇性 COM 错误 (0x8001010d)](#p18--pyqt6-设备监控与间歇性-com-错误-0x8001010d)
 
 ---
 
@@ -469,3 +473,104 @@ DATA_DIR = (
 - 静态资源（图标、模板等）通过 `--add-data` 打入，使用 `sys._MEIPASS` 路径访问
 - 运行时数据（数据库、用户配置等）使用 `sys.executable` 同级目录
 - 构建脚本中新增资源目录时，需同步在 `_collect_*()` 函数中注册
+
+---
+
+## P15 — Perfetto detach 须配合 write_into_file
+
+### 现象
+
+使用 `perfetto --detach=<key>` 启动后台抓取后，`--attach` / `--clone` 行为异常，或会话无法按预期落盘、克隆失败。
+
+### 根因
+
+分离（detach）模式依赖将 trace **持续写入文件**（或等价持久化路径）。若 TraceConfig 中未设置 `write_into_file: true`（以及按需的 `file_write_period_ms` 等），与 detach/clone 相关的流程可能不符合 Perfetto 对后台会话的假设。
+
+### 修复方案
+
+在用于 `--detach` 的 TraceConfig（pbtxt / 二进制）中 **显式** 加入：
+
+```text
+write_into_file: true
+# 按需：file_write_period_ms: 5000
+```
+
+并与 `unique_session_name`（若使用 `--clone-by-name`）等字段一并校验。
+
+### 预防措施
+
+- 模块内生成 TraceConfig 时，将「detach 模式」作为单独分支，强制校验 `write_into_file`
+- 参考设备端验证脚本：`scripts/test_clone.py` 与 `scripts/doc/test_clone.md`
+
+---
+
+## P16 — Perfetto 同 UID 并发会话上限与残留进程
+
+### 现象
+
+多次启动抓取后，新的 `perfetto` 会话失败，或提示资源/会话数限制；设备上看似已无前台 trace，仍无法新建会话。
+
+### 根因
+
+Android 上 Perfetto 对 **同一 UID 的并发 tracing 会话数** 存在限制（常见为 **每个 UID 最多 5 个**）。异常退出、detach 未 attach stop、脚本重复运行等会留下残留 `perfetto` 进程，占满配额。
+
+### 修复方案
+
+在设备上清理残留进程后再试（需 root 或相应权限时视环境而定），例如：
+
+```bash
+adb shell pkill -f perfetto
+# 或针对性 kill 已知 PID / 使用 perfetto --attach=<key> --stop
+```
+
+GUI/自动化流程在启动新会话前，可增加「检测并提示清理」或「先停止同模块已有会话」的逻辑（在业务允许范围内）。
+
+### 预防措施
+
+- 会话结束路径必须成对：`detach` → 最终 `attach --stop` 或明确 kill
+- 开发调试频繁时，养成会话结束后检查 `ps | grep perfetto` 的习惯
+
+---
+
+## P17 — Ring buffer clone 覆盖的时间范围
+
+### 现象
+
+期望「clone 只拿到最近 N 秒（例如预热后的窗口）」的 ring buffer 快照，但实际文件很大或时间轴从会话开始就有数据。
+
+### 根因
+
+**Ring buffer** 在容量未绕回前，保留的是从 **会话开始** 写入的数据；clone 取出的是当前 buffer 中的内容，**不是**「仅最后 N 秒」。只有 buffer 写满并按 ring 策略覆盖后，行为才表现为保留最近一段窗口。预热阶段若 buffer 未满，clone 会包含从启动到当时的**全部**已采集数据。
+
+### 修复方案
+
+- 若业务需要「仅关心最近一段」，需结合 **buffer 大小、数据速率、写满时间** 设计，或缩短会话/分段重启，而不是假设 clone 自动截断为「最后 N 秒」
+- 产品文案与 spec 中避免将 ring clone 描述为「仅快照最近 N 秒」除非已证明 buffer 已处于稳定 ring 覆盖状态
+
+### 预防措施
+
+- 在规格与测试中明确：clone 快照的时间跨度与 **buffer 填充阶段** 的关系
+
+---
+
+## P18 — PyQt6 设备监控与间歇性 COM 错误 (0x8001010d)
+
+### 现象
+
+在 Windows 上，设备连接状态轮询、`adb` 相关信号与 UI 更新并存时，**间歇性**出现 `0x8001010d`（`RPC_E_WRONG_THREAD`，部分日志显示为 COM 跨线程错误），崩溃或警告并非必现。
+
+### 根因与区分
+
+- **P01** 中同名错误可能由 **错误的 `context` 键** 导致调错 service（跨模块接口混用）。
+- 本条目强调：在 **已正确使用模块前缀键、且遵循 QThread + `pyqtSignal`（见 P05）** 的前提下，仍可能因 **设备监控定时器 / 后台回调与 UI 线程交互边界**、或系统 COM 与 Qt 事件循环的竞态，出现**偶发**跨线程访问。
+
+### 修复方案
+
+- 严格保持 **P05**：任何 UI 控件更新仅在主线程；后台仅通过 `pyqtSignal` 投递结果。
+- 设备列表/状态更新：在槽函数内避免长时间阻塞；对 `adb` 回调做串行化或防抖，减少重入。
+- 若仍偶发，结合崩溃栈确认是否在非主线程触碰了 Qt/COM 对象；必要时将监控逻辑收口到单一 `QObject` 线程或 `moveToThread` 的 worker，信号统一回主线程。
+
+### 预防措施
+
+- 不将 **P01** 与 **P18** 混为一谈：先排除 context 错键，再查监控路径上的线程边界
+- 与 **P05** 联动审查：所有从非 GUI 线程到界面的路径必须只有 signal/slot
