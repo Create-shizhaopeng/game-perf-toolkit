@@ -7,8 +7,16 @@ from pathlib import Path
 import pytest
 from openpyxl import Workbook
 
-from toolkit.core.perfdog import load_and_analyze
+from toolkit.core.perfdog import compare_reports, load_and_analyze
 from toolkit.core.perfdog.errors import PerfDogParseError
+from toolkit.core.perfdog.report_types import (
+    AnalysisReport,
+    Finding,
+    FindingCategory,
+    FindingSeverity,
+    Recommendation,
+    SessionSummary,
+)
 
 
 def _write_minimal_perfdog_xlsx(path: Path) -> None:
@@ -64,6 +72,55 @@ def test_data_v4_space_and_sheet_all_case_insensitive(tmp_path: Path) -> None:
     _write_variants_xlsx(p, sheet_title="All", label="Data v4", gap_rows=2)
     report = load_and_analyze(str(p))
     assert report.summary_metrics.get("采样点数") == 5
+
+
+def _write_with_frameinfo_sheet(path: Path) -> None:
+    wb = Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "all"
+    ws.append(["Data_v4"])
+    ws.append(["Time(ms)", "FPS"])
+    for i in range(20):
+        ws.append([float(i * 1000), 59.0])
+    wf = wb.create_sheet("@FrameInfo")
+    wf.append(["Time(ms)", "FrameTime(ms)"])
+    for i in range(40):
+        ms = 12.0 if i != 10 else 45.0
+        wf.append([float(i * 16), ms])
+    wb.save(path)
+
+
+def test_frameinfo_merged_into_report(tmp_path: Path) -> None:
+    p = tmp_path / "fi.xlsx"
+    _write_with_frameinfo_sheet(p)
+    report = load_and_analyze(str(p))
+    assert report.frame_stats is not None
+    assert report.frame_stats.count == 40
+    assert report.frame_stats.max_ms >= 45.0
+    assert any("FrameInfo" in f.title for f in report.findings)
+
+
+def test_compare_reports_package_mismatch_warning(tmp_path: Path) -> None:
+    def one(pkg: str) -> AnalysisReport:
+        return AnalysisReport(
+            session=SessionSummary(package_name=pkg, device_name="d"),
+            summary_metrics={"采样点数": 10, "x": 1},
+            findings=[
+                Finding(
+                    id="f1",
+                    category=FindingCategory.drop,
+                    severity=FindingSeverity.info,
+                    title="t",
+                    detail="d",
+                ),
+            ],
+            recommendations=[Recommendation(id="r1", finding_ids=[], text="t", category="通用")],
+        )
+
+    pair = compare_reports(one("com.a.game"), one("com.b.game"))
+    assert pair.warnings
+    assert any("包名不一致" in w for w in pair.warnings)
 
 
 def test_fallback_without_marker_smalljank_headers(tmp_path: Path) -> None:

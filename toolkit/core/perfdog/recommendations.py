@@ -127,6 +127,19 @@ def build_recommendations(findings: list[Finding]) -> list[Recommendation]:
                     category="环境",
                 ),
             )
+        elif f.category == FindingCategory.stability and "FrameInfo" in f.title:
+            out.append(
+                Recommendation(
+                    id=_rid(),
+                    finding_ids=[f.id],
+                    text=(
+                        "【帧级复测】用 Perfetto / 引擎工具对 p99、最大帧耗时点做抽样核对；"
+                        "关注渲染、GPU 队列与合成；可对比降低画质或锁帧后是否改善。"
+                        "（以上为启发式建议，需结合项目验证。）"
+                    ),
+                    category="采集建议",
+                ),
+            )
         elif f.category == FindingCategory.thermal and "未包含" in f.title:
             out.append(
                 Recommendation(

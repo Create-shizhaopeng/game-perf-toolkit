@@ -25,7 +25,13 @@ from PyQt6.QtWidgets import (
 )
 
 from toolkit.core.joint_assessment import build_joint_markdown
-from toolkit.core.perfdog import AnalysisReport, build_markdown
+from toolkit.core.perfdog import (
+    AnalysisReport,
+    SessionComparePair,
+    build_compare_markdown,
+    build_markdown,
+    compare_reports,
+)
 from toolkit.gui.base_tab import BaseTab
 from toolkit.sdk.joint_models import JointAssessmentReport
 
@@ -49,6 +55,9 @@ class PerfdogInsightsTab(BaseTab):
         self._joint_worker: JointAssessmentWorker | None = None
         self._last_good_report: AnalysisReport | None = None
         self._joint_report: dict | None = None
+        self._cmp_worker: PerfDogAnalysisWorker | None = None
+        self._compare_report: AnalysisReport | None = None
+        self._compare_pair: SessionComparePair | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -93,6 +102,11 @@ class PerfdogInsightsTab(BaseTab):
         self._clear_btn = QPushButton("清除当前分析")
         self._clear_btn.setFixedHeight(28)
         path_row.addWidget(self._clear_btn)
+        self._compare_btn = QPushButton("添加对比文件…")
+        self._compare_btn.setFixedHeight(28)
+        self._compare_btn.setToolTip("加载第二份 PerfDog 导出，与当前主会话并列对比（FR-011/012）。")
+        self._compare_btn.setEnabled(False)
+        path_row.addWidget(self._compare_btn)
         dc_layout.addLayout(path_row)
 
         self._progress = QProgressBar()
@@ -177,6 +191,7 @@ class PerfdogInsightsTab(BaseTab):
         self._export_btn.clicked.connect(self._on_export)
         self._copy_btn.clicked.connect(self._on_copy)
         self._joint_btn.clicked.connect(self._on_joint_analyze)
+        self._compare_btn.clicked.connect(self._on_add_compare)
 
     @staticmethod
     def _norm_pkg(s: str | None) -> str:
@@ -215,7 +230,7 @@ class PerfdogInsightsTab(BaseTab):
         self._path_edit.setText(path)
         busy = (self._worker and self._worker.isRunning()) or (
             self._joint_worker and self._joint_worker.isRunning()
-        )
+        ) or (self._cmp_worker and self._cmp_worker.isRunning())
         self._import_btn.setEnabled(bool(path) and not busy)
 
     def _on_browse(self) -> None:
@@ -241,9 +256,12 @@ class PerfdogInsightsTab(BaseTab):
     def _start_worker(self, path: str) -> None:
         if self._worker and self._worker.isRunning():
             return
+        if self._cmp_worker and self._cmp_worker.isRunning():
+            return
         self._browse_btn.setEnabled(False)
         self._import_btn.setEnabled(False)
         self._joint_btn.setEnabled(False)
+        self._compare_btn.setEnabled(False)
         self._progress.setVisible(True)
         self._status_lbl.setText("解析中…")
         self._worker = PerfDogAnalysisWorker(path, self)
@@ -262,6 +280,7 @@ class PerfdogInsightsTab(BaseTab):
         self._export_btn.setEnabled(True)
         self._copy_btn.setEnabled(True)
         self._joint_btn.setEnabled(True)
+        self._compare_btn.setEnabled(True)
         self._status_lbl.setText("解析完成")
 
     def _on_worker_err(self, message: str) -> None:
@@ -272,15 +291,19 @@ class PerfdogInsightsTab(BaseTab):
             self._report = self._last_good_report
             self._render_report(self._last_good_report)
             self._joint_btn.setEnabled(True)
+            self._compare_btn.setEnabled(True)
 
     def _on_worker_finished(self) -> None:
         self._progress.setVisible(False)
         self._browse_btn.setEnabled(True)
         p = self._path_edit.text().strip()
-        busy = self._joint_worker and self._joint_worker.isRunning()
+        busy = (self._joint_worker and self._joint_worker.isRunning()) or (
+            self._cmp_worker and self._cmp_worker.isRunning()
+        )
         self._import_btn.setEnabled(bool(p) and p != "未选择文件" and not busy)
         if self._report is not None and not busy:
             self._joint_btn.setEnabled(True)
+            self._compare_btn.setEnabled(True)
 
     def _render_report(self, report: AnalysisReport) -> None:
         html_parts: list[str] = []
@@ -332,6 +355,85 @@ class PerfdogInsightsTab(BaseTab):
             html_parts.append(
                 f"<p><b>{f.severity.value}</b> · {f.category.value}<br/>{detail_html}</p>",
             )
+            ev = f.evidence or {}
+            comp = ev.get("freq_gpu_window_vs_global")
+            if isinstance(comp, dict) and comp:
+                html_parts.append("<p><b>频点/GPU（异常窗 vs 全段均值）</b><ul>")
+                for col, pair in comp.items():
+                    g, w = pair
+                    html_parts.append(
+                        f"<li>{self._esc(str(col))}: 全段≈{g}，窗内≈{w}</li>",
+                    )
+                html_parts.append("</ul></p>")
+            tt = ev.get("thread_top_in_window")
+            if isinstance(tt, list) and tt:
+                html_parts.append("<p><b>该窗线程 Top</b><ul>")
+                for row in tt[:8]:
+                    if not isinstance(row, dict):
+                        continue
+                    html_parts.append(
+                        "<li>"
+                        f"{self._esc(str(row.get('thread', '')))}: "
+                        f"均值 {row.get('mean_pct', '')}% "
+                        f"峰值 {row.get('peak_pct', '')}%"
+                        "</li>",
+                    )
+                html_parts.append("</ul></p>")
+
+        if report.frame_stats and report.frame_stats.count:
+            fs = report.frame_stats
+            html_parts.append("<h3>帧级（@FrameInfo）</h3><ul>")
+            html_parts.append(
+                f"<li>帧数 {fs.count}；均值 {fs.mean_ms:.2f} ms；"
+                f"p99 {fs.p99_ms:.2f} ms；最大 {fs.max_ms:.2f} ms</li>",
+            )
+            html_parts.append(f"<li>超 2×预算帧数: {fs.over_budget_count}</li>")
+            if fs.max_frame_at_ms is not None:
+                html_parts.append(
+                    f"<li>最大帧时刻（相对）: {fs.max_frame_at_ms/1000:.2f} s</li>",
+                )
+            html_parts.append("</ul>")
+
+        html_parts.append("<h3>关联分析（线程 / 频点）</h3>")
+        if not report.has_thread_cpu_sheet:
+            html_parts.append(
+                "<p><i>本导出未包含 <code>@ThreadCpuUsageData</code> 工作表，"
+                "线程级关联分析<b>不可用</b>；仍可根据 Data_v4 在洞察中附频点/GPU 窗内对比（若列存在）。</i></p>",
+            )
+        elif not report.thread_top and not any(
+            (x.evidence or {}).get("thread_top_in_window") for x in report.findings
+        ):
+            html_parts.append(
+                "<p><i>已检测到线程 CPU 表，但当前无可对齐的异常时间窗或有效采样，"
+                "未生成线程 Top 列表。</i></p>",
+            )
+        else:
+            if report.thread_top:
+                html_parts.append("<p><b>异常窗内线程 Top（汇总）</b></p><ul>")
+                for e in report.thread_top:
+                    html_parts.append(
+                        f"<li>{self._esc(e.thread_label)}: "
+                        f"窗内均值 {e.mean_pct_in_window:.2f}%，"
+                        f"峰值 {e.peak_pct_in_window:.2f}%</li>",
+                    )
+                html_parts.append("</ul>")
+
+        if self._compare_pair is not None:
+            cp = self._compare_pair
+            html_parts.append("<h3>双会话对比（B 相对当前主会话 A）</h3>")
+            if cp.warnings:
+                html_parts.append("<p><b>警告</b><ul>")
+                for w in cp.warnings:
+                    html_parts.append(f"<li>{self._esc(w)}</li>")
+                html_parts.append("</ul></p>")
+            html_parts.append("<p><b>指标对照</b></p><ul>")
+            for k in cp.aligned_columns[:80]:
+                va, vb = cp.delta_metrics[k]
+                html_parts.append(
+                    f"<li><b>{self._esc(str(k))}</b>: A={self._esc(str(va))} | "
+                    f"B={self._esc(str(vb))}</li>",
+                )
+            html_parts.append("</ul>")
 
         html_parts.append("<h3>建议</h3><ul>")
         for r in report.recommendations:
@@ -403,14 +505,16 @@ class PerfdogInsightsTab(BaseTab):
         )
 
     def _compose_export_markdown(self) -> str:
-        """JA-FR-007 / T051：PerfDog 全文 + 空行 + 联合章节（base_report=None 避免重复会话摘要）。"""
+        """PerfDog 全文 + 可选联合章节（JA-FR-007）+ 可选 A/B 对比节。"""
         if self._report is None:
             return ""
         body = build_markdown(self._report)
-        if self._joint_report is None:
-            return body
-        joint = JointAssessmentReport.model_validate(self._joint_report)
-        return body + "\n\n" + build_joint_markdown(joint, base_report=None)
+        if self._joint_report is not None:
+            joint = JointAssessmentReport.model_validate(self._joint_report)
+            body += "\n\n" + build_joint_markdown(joint, base_report=None)
+        if self._compare_pair is not None:
+            body += "\n\n" + build_compare_markdown(self._compare_pair)
+        return body
 
     def _on_joint_analyze(self) -> None:
         policy = self._context.get(_GP_JOINT_KEY)
@@ -448,6 +552,7 @@ class PerfdogInsightsTab(BaseTab):
         if self._joint_worker and self._joint_worker.isRunning():
             return
         self._joint_btn.setEnabled(False)
+        self._compare_btn.setEnabled(False)
         self._import_btn.setEnabled(False)
         self._progress.setVisible(True)
         self._status_lbl.setText("联合分析中…")
@@ -480,6 +585,75 @@ class PerfdogInsightsTab(BaseTab):
         self._import_btn.setEnabled(bool(p) and p != "未选择文件")
         if self._report is not None:
             self._joint_btn.setEnabled(True)
+            self._compare_btn.setEnabled(True)
+
+    def _on_add_compare(self) -> None:
+        if self._report is None:
+            QMessageBox.information(self, "对比", "请先完成主会话分析，再添加对比文件。")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择对比用 PerfDog 导出",
+            "",
+            "Excel (*.xlsx *.xlsm)",
+        )
+        if not path:
+            return
+        self._start_compare_worker(path)
+
+    def _start_compare_worker(self, path: str) -> None:
+        if self._cmp_worker and self._cmp_worker.isRunning():
+            return
+        if self._worker and self._worker.isRunning():
+            return
+        if self._joint_worker and self._joint_worker.isRunning():
+            return
+        self._browse_btn.setEnabled(False)
+        self._import_btn.setEnabled(False)
+        self._joint_btn.setEnabled(False)
+        self._compare_btn.setEnabled(False)
+        self._progress.setVisible(True)
+        self._status_lbl.setText("加载对比文件…")
+        self._cmp_worker = PerfDogAnalysisWorker(path, self)
+        self._cmp_worker.progress.connect(self._status_lbl.setText)
+        self._cmp_worker.finished_ok.connect(self._on_cmp_ok)
+        self._cmp_worker.finished_err.connect(self._on_cmp_err)
+        self._cmp_worker.finished.connect(self._on_cmp_finished)
+        self._cmp_worker.start()
+
+    def _on_cmp_ok(self, report: object) -> None:
+        if not isinstance(report, AnalysisReport) or self._report is None:
+            return
+        pair = compare_reports(self._report, report)
+        mismatch = any("包名不一致" in w for w in pair.warnings)
+        if mismatch:
+            r = QMessageBox.question(
+                self,
+                "包名不一致",
+                "两份会话的应用/包名不一致，仍要加载并列对比吗？（FR-012）",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if r != QMessageBox.StandardButton.Yes:
+                return
+        self._compare_report = report
+        self._compare_pair = pair
+        self._render_report(self._report)
+        self._status_lbl.setText("对比文件已加载")
+
+    def _on_cmp_err(self, message: str) -> None:
+        self._status_lbl.setText("对比文件加载失败")
+        QMessageBox.warning(self, "对比", message)
+
+    def _on_cmp_finished(self) -> None:
+        self._progress.setVisible(False)
+        self._browse_btn.setEnabled(True)
+        p = self._path_edit.text().strip()
+        busy = self._joint_worker and self._joint_worker.isRunning()
+        self._import_btn.setEnabled(bool(p) and p != "未选择文件" and not busy)
+        if self._report is not None and not busy:
+            self._joint_btn.setEnabled(True)
+            self._compare_btn.setEnabled(True)
 
     def _on_clear(self) -> None:
         if self._worker and self._worker.isRunning():
@@ -488,9 +662,14 @@ class PerfdogInsightsTab(BaseTab):
         if self._joint_worker and self._joint_worker.isRunning():
             self._joint_worker.requestInterruption()
             self._joint_worker.wait(3000)
+        if self._cmp_worker and self._cmp_worker.isRunning():
+            self._cmp_worker.requestInterruption()
+            self._cmp_worker.wait(3000)
         self._report = None
         self._last_good_report = None
         self._joint_report = None
+        self._compare_report = None
+        self._compare_pair = None
         self._browser.clear()
         self._joint_browser.clear()
         self._bind_suggest_list.clear()
@@ -499,6 +678,7 @@ class PerfdogInsightsTab(BaseTab):
         self._export_btn.setEnabled(False)
         self._copy_btn.setEnabled(False)
         self._joint_btn.setEnabled(False)
+        self._compare_btn.setEnabled(False)
         self._status_lbl.setText("")
         self._import_btn.setEnabled(False)
 

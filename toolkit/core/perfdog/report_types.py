@@ -84,6 +84,18 @@ class AnalysisReport:
     stat_row_disclaimer: str | None = None
     source_path: str | None = None
     unrecognized_columns: list[str] = field(default_factory=list)
+    has_thread_cpu_sheet: bool = False
+
+
+@dataclass
+class SessionComparePair:
+    """双会话对比（data-model.md / FR-011）。"""
+
+    session_a: SessionSummary
+    session_b: SessionSummary
+    delta_metrics: dict[str, tuple[Any, Any]]
+    aligned_columns: list[str]
+    warnings: list[str]
 
 
 @dataclass

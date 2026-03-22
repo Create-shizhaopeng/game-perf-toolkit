@@ -56,6 +56,42 @@ def build_markdown(report: AnalysisReport) -> str:
         lines.append(f"- **{r.category}** [{ids}]: {r.text}")
     lines.append("")
 
+    fs = report.frame_stats
+    if fs is not None and fs.count:
+        lines.append("## 帧级（@FrameInfo）")
+        lines.append("")
+        lines.append(
+            f"- 帧数: {fs.count}；均值 {fs.mean_ms:.2f} ms；p99 {fs.p99_ms:.2f} ms；"
+            f"最大 {fs.max_ms:.2f} ms；超 2×预算帧数 {fs.over_budget_count}"
+        )
+        if fs.max_frame_at_ms is not None:
+            lines.append(f"- 最大帧相对时间约: {fs.max_frame_at_ms/1000:.2f} s")
+        lines.append("")
+
+    if any((f.evidence or {}).get("freq_gpu_window_vs_global") for f in report.findings):
+        lines.append("## 频点与 GPU（异常窗 vs 全段）")
+        lines.append("")
+        for f in report.findings:
+            comp = (f.evidence or {}).get("freq_gpu_window_vs_global")
+            if not comp:
+                continue
+            tr = f"`{f.id}`"
+            lines.append(f"### {f.title} {tr}")
+            for col, gw in comp.items():
+                g, wv = gw
+                lines.append(f"- {col}: 全段均值≈{g}，异常窗均值≈{wv}")
+            lines.append("")
+
+    if report.thread_top:
+        lines.append("## 异常窗内线程 Top（@ThreadCpuUsageData）")
+        lines.append("")
+        for e in report.thread_top:
+            lines.append(
+                f"- {e.thread_label}: 窗内均值 {e.mean_pct_in_window:.2f}%，"
+                f"峰值 {e.peak_pct_in_window:.2f}%",
+            )
+        lines.append("")
+
     lines.append("## 导出列说明")
     lines.append("")
     lines.append(

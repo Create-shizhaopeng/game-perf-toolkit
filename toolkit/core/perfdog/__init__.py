@@ -2,19 +2,31 @@
 
 from __future__ import annotations
 
+from toolkit.core.perfdog.compare import build_compare_markdown, compare_reports
+from toolkit.core.perfdog.correlate import correlate_findings_with_freq
+from toolkit.core.perfdog.detect import detect_findings, finding_from_frame_stats
 from toolkit.core.perfdog.errors import PerfDogParseError, PerfDogUnsupportedError
 from toolkit.core.perfdog.export_md import build_markdown
 from toolkit.core.perfdog.parse_all import compute_stat_disclaimer, parse_all
-from toolkit.core.perfdog.report_types import AnalysisReport, AnalyzeOptions
-from toolkit.core.perfdog.session import build_session
-from toolkit.core.perfdog.detect import detect_findings
+from toolkit.core.perfdog.parse_frameinfo import parse_frameinfo
+from toolkit.core.perfdog.parse_threads import parse_thread_cpu
+from toolkit.core.perfdog.report_types import AnalysisReport, AnalyzeOptions, SessionComparePair
 from toolkit.core.perfdog.recommendations import build_recommendations
+from toolkit.core.perfdog.session import build_session
+from toolkit.core.perfdog.threads_top import (
+    attach_thread_top_to_findings,
+    pick_anomaly_window_ms,
+    top_threads_in_window,
+)
 
 __all__ = [
     "load_and_analyze",
     "build_markdown",
+    "build_compare_markdown",
+    "compare_reports",
     "AnalysisReport",
     "AnalyzeOptions",
+    "SessionComparePair",
     "PerfDogParseError",
     "PerfDogUnsupportedError",
 ]
@@ -28,6 +40,29 @@ def load_and_analyze(path: str, *, options: AnalyzeOptions | None = None) -> Ana
     disclaimer = compute_stat_disclaimer(df, parsed.stat_fps)
     target = session.target_fps_hint or 60
     findings = detect_findings(df, target)
+
+    frame_stats, frame_warn = parse_frameinfo(path, opts, target)
+    if frame_warn:
+        summary_metrics = {**summary_metrics, "FrameInfo 扫描": frame_warn}
+    if frame_stats and frame_stats.count:
+        ff = finding_from_frame_stats(frame_stats, target)
+        if ff:
+            findings.append(ff)
+
+    thread_df = parse_thread_cpu(path, opts)
+    has_thread_sheet = thread_df is not None
+    correlate_findings_with_freq(findings, df, opts.anomaly_window_ms)
+
+    thread_top = None
+    if has_thread_sheet and thread_df is not None and not thread_df.empty:
+        attach_thread_top_to_findings(findings, thread_df, opts.anomaly_window_ms)
+        win = pick_anomaly_window_ms(findings)
+        if win is not None:
+            ts, te = win
+            t0 = ts - opts.anomaly_window_ms
+            t1 = te + opts.anomaly_window_ms
+            thread_top = top_threads_in_window(thread_df, t0, t1)
+
     recommendations = build_recommendations(findings)
 
     warn_crit = sum(
@@ -43,9 +78,10 @@ def load_and_analyze(path: str, *, options: AnalyzeOptions | None = None) -> Ana
         summary_metrics=summary_metrics,
         findings=findings,
         recommendations=recommendations,
-        frame_stats=None,
-        thread_top=None,
+        frame_stats=frame_stats if frame_stats and frame_stats.count else None,
+        thread_top=thread_top,
         stat_row_disclaimer=disclaimer,
         source_path=path,
         unrecognized_columns=parsed.unrecognized_columns,
+        has_thread_cpu_sheet=has_thread_sheet,
     )

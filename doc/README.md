@@ -39,6 +39,10 @@ doc/
 | [technical-decisions.md](architecture/technical-decisions.md) | 12 项架构决策记录（ADR），包括技术栈、插件系统、仓库管理、数据存储等 |
 | [learning-roadmap.md](architecture/learning-roadmap.md) | 项目涉及的核心概念解析、分阶段学习路线、技术栈学习材料、推荐书籍和参考项目 |
 
+## PerfDog 分析（用户入口）
+
+在 **Toolkit GUI** 侧栏打开 **「PerfDog分析」** 选项卡：拖入或选择 PerfDog 导出的 **`.xlsx` / `.xlsm`**，即可离线生成会话摘要、问题洞察、建议与可选 **@FrameInfo / @ThreadCpuUsageData** 关联结论；支持 **导出 / 复制 Markdown**、**双会话对比**（第二份文件）及（在「游戏性能配置」已加载 XML 时）**联合分析**。详细步骤与规格见 **[specs/004-perfdog-import-insights/quickstart.md](../specs/004-perfdog-import-insights/quickstart.md)**；模块说明见 **[modules/perfdog_insights/README.md](../modules/perfdog_insights/README.md)**。
+
 ## Speckit 特性规格（`specs/`）
 
 仓库根目录 `specs/` 下的主特性文档与 **实现记录** 对照：

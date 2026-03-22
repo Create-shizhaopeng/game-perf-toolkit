@@ -123,8 +123,8 @@
 
 **Goal**: **SC-009** — 帧时长量化结论并入报告。
 
-- [ ] T027 [US3] 实现 `toolkit/core/perfdog/parse_frameinfo.py`：`read_only` 扫描 `@FrameInfo`，聚合 `FrameStats`（p99、max、超阈帧数），超大行数提前截断并警告
-- [ ] T028 [US3] 在 `toolkit/core/perfdog/__init__.py` 的 `load_and_analyze` 中合并 `FrameStats`；更新 `detect.py`/`export_md.py`/`gui_tab.py` 展示帧级结论；时间对齐规则见 `research.md`
+- [X] T027 [US3] 实现 `toolkit/core/perfdog/parse_frameinfo.py`：`read_only` 扫描 `@FrameInfo`，聚合 `FrameStats`（p99、max、超阈帧数），超大行数提前截断并警告
+- [X] T028 [US3] 在 `toolkit/core/perfdog/__init__.py` 的 `load_and_analyze` 中合并 `FrameStats`；更新 `detect.py`/`export_md.py`/`gui_tab.py` 展示帧级结论；时间对齐规则见 `research.md`
 
 ---
 
@@ -132,10 +132,10 @@
 
 **Goal**: 异常窗口前后 CPU/GPU 摘要 + 线程 Top-N。
 
-- [ ] T029 [P] [US3] 实现 `toolkit/core/perfdog/parse_threads.py` 解析 `@ThreadCpuUsageData`
-- [ ] T030 [US3] 实现 `toolkit/core/perfdog/correlate.py`：对每个 `Finding` 时间窗提取频点/GPU 均值对比
-- [ ] T031 [US3] 实现 `toolkit/core/perfdog/threads_top.py`：异常窗内线程 Top-N
-- [ ] T032 [US3] 扩展 `gui_tab.py`「关联分析」区；无表时展示 spec 要求提示（**不可用**）
+- [X] T029 [P] [US3] 实现 `toolkit/core/perfdog/parse_threads.py` 解析 `@ThreadCpuUsageData`
+- [X] T030 [US3] 实现 `toolkit/core/perfdog/correlate.py`：对每个 `Finding` 时间窗提取频点/GPU 均值对比
+- [X] T031 [US3] 实现 `toolkit/core/perfdog/threads_top.py`：异常窗内线程 Top-N
+- [X] T032 [US3] 扩展 `gui_tab.py`「关联分析」区；无表时展示 spec 要求提示（**不可用**）
 
 ---
 
@@ -143,8 +143,8 @@
 
 **Goal**: **FR-011/012**、**SC-007**。
 
-- [ ] T033 [US5] 实现 `toolkit/core/perfdog/compare.py`：`compare_reports(a,b) -> SessionComparePair`（或等价结构），包名不一致时生成警告标志
-- [ ] T034 [US5] 扩展 `modules/perfdog_insights/src/gui_tab.py`：「添加对比文件」、应用不一致时 `QMessageBox` 确认（**FR-012**）；并列展示差异表
+- [X] T033 [US5] 实现 `toolkit/core/perfdog/compare.py`：`compare_reports(a,b) -> SessionComparePair`（或等价结构），包名不一致时生成警告标志
+- [X] T034 [US5] 扩展 `modules/perfdog_insights/src/gui_tab.py`：「添加对比文件」、应用不一致时 `QMessageBox` 确认（**FR-012**）；并列展示差异表
 
 ---
 
@@ -152,10 +152,10 @@
 
 - [X] T035 [P] 新增 `tests/test_perfdog_workbook.py` 或 `modules/perfdog_insights/tests/test_parse_smoke.py`：使用 `modules/perfdog_insights/fixtures/` 下**脱敏**最小 xlsx（或生成临时 xlsx）验证 `load_and_analyze` 不崩溃
 - [X] T036 [P] 更新 `specs/004-perfdog-import-insights/quickstart.md` 中模块路径为 `modules/perfdog_insights` + `toolkit/core/perfdog`（若与初稿不一致）
-- [ ] T037 [P] 在 `doc/` 或模块 `README` 增加用户可见的一节「PerfDog 分析」入口说明（可选，产品文档）
+- [X] T037 [P] 在 `doc/` 或模块 `README` 增加用户可见的一节「PerfDog 分析」入口说明（可选，产品文档）
 
 ---
-
+![1774174928213](image/tasks/1774174928213.png)![1774175009134](image/tasks/1774175009134.png)![1774175011436](image/tasks/1774175011436.png)
 ## Phase 12: 联合分析 — 基础（阻塞 US9～US11）
 
 **Purpose**: Pydantic 模型 + `toolkit/core/joint_assessment` 纯函数管线；**不**依赖 PyQt、**不** `import modules.*`（对齐 [plan.md](./plan.md) **子特性：游戏性能策略 × PerfDog 联合分析**）。

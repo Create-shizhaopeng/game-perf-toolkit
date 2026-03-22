@@ -23,11 +23,49 @@ from toolkit.core.perfdog.config_defaults import (
     SPIKE_FPS_RATIO,
     THERMAL_DELTA_WARN_C,
 )
-from toolkit.core.perfdog.report_types import Finding, FindingCategory, FindingSeverity
+from toolkit.core.perfdog.report_types import (
+    Finding,
+    FindingCategory,
+    FindingSeverity,
+    FrameStats,
+)
 
 
 def _new_id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+def finding_from_frame_stats(fs: FrameStats, target_fps: int) -> Finding | None:
+    """@FrameInfo 聚合 → 一条可验收的帧时长结论（SC-009）。"""
+    if not fs.count:
+        return None
+    budget = (1000.0 / max(target_fps, 1)) * 2.0
+    ratio = fs.over_budget_count / fs.count if fs.count else 0.0
+    at_txt = ""
+    if fs.max_frame_at_ms is not None:
+        at_txt = f"最大帧耗时出现在相对时间约 {fs.max_frame_at_ms/1000:.2f}s。"
+    detail = (
+        f"基于 @FrameInfo 共 {fs.count} 帧：均值 {fs.mean_ms:.2f} ms，"
+        f"p99 {fs.p99_ms:.2f} ms，最大 {fs.max_ms:.2f} ms；"
+        f"超过 2×目标帧时长（>{budget:.2f} ms）的帧共 {fs.over_budget_count} 帧"
+        f"（约 {ratio*100:.1f}%）。{at_txt}"
+        "秒级 Data_v4 与帧级表分列展示，交叉引用可按 1s bucket 对齐（见 research.md）。"
+    )
+    sev = FindingSeverity.warn if ratio > 0.05 or fs.max_ms > budget * 1.5 else FindingSeverity.info
+    return Finding(
+        id=_new_id("frameinfo"),
+        category=FindingCategory.stability,
+        severity=sev,
+        title="帧时长统计（@FrameInfo）",
+        detail=detail,
+        evidence={
+            "frame_stats": True,
+            "target_fps": target_fps,
+            "p99_ms": fs.p99_ms,
+            "max_ms": fs.max_ms,
+            "over_budget_count": fs.over_budget_count,
+        },
+    )
 
 
 def _minimum_fps_root_cause_findings(dfv: pd.DataFrame, target_fps: int) -> list[Finding]:

@@ -61,6 +61,13 @@ _ALIASES: dict[str, str] = {
     "label": "scene_label",
     "notes": "notes",
     "interframe": "inter_frame",
+    # @FrameInfo 帧耗时（与 InterFrame 区分时优先显式 FrameTime）
+    "frametime": "frame_time_ms",
+    "frametime(ms)": "frame_time_ms",
+    "frame time": "frame_time_ms",
+    "frame time(ms)": "frame_time_ms",
+    "frameduration": "frame_time_ms",
+    "frameduration(ms)": "frame_time_ms",
     # CPU / GPU（汇总列）
     "appcpu": "app_cpu_pct",
     "app cpu(%)": "app_cpu_pct",

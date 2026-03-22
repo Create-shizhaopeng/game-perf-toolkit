@@ -140,6 +140,7 @@ plan 初稿中的 `lv-game-toolkit/source/core`、`source/ui` 在仓库中 **未
 | 2026-03-22 | **路径**：全量规格由 `specs/001-perfdog-import-insights/` **迁回** `specs/004-perfdog-import-insights/`；`001-perfdog-import-insights` 目录已删除；**SPECIFY_FEATURE** 使用 **`004-perfdog-import-insights`**。 |
 | 2026-03-19 | **联合分析 T038**：新增 `toolkit/sdk/joint_models.py`（`PolicySnapshot`、`FreqPolicyRow`、`ObservationsSnapshot`、`FindingRef`/`RecRef`、`JointAssessmentReport`、`JointSuggestion`、`JointAssessOptions`），并由 `toolkit.sdk` 导出；对齐 [data-model.md](./data-model.md) 联合分析实体。 |
 | 2026-03-22 | **联合分析 T039～T056 落地**：`toolkit/core/joint_assessment/{observations,engine,export_md}.py`；`modules/game_perf/src/joint_adapter.py` + `gui_tab._publish_joint_policy_snapshot`；`modules/perfdog_insights/src/joint_worker.py` + `gui_tab` 联合分析 UI/导出拼接（JA-FR-007）；契约见 [contracts/joint_assessment_api.md](./contracts/joint_assessment_api.md) §5。 |
+| 2026-03-22 | **T027～T037**：`parse_frameinfo.py` / `parse_threads.py` / `correlate.py` / `threads_top.py` / `compare.py`；`load_and_analyze` 合并帧统计与线程/频点关联；`gui_tab` 关联分析区 +「添加对比文件」与 FR-012 确认；导出含对比节；`doc/README.md` 增加 PerfDog 入口说明。 |
 
 ---
 
@@ -147,4 +148,3 @@ plan 初稿中的 `lv-game-toolkit/source/core`、`source/ui` 在仓库中 **未
 
 - 维护 **脱敏多版本 xlsx 夹具**（`research.md` Open Items）。  
 - PyInstaller **hiddenimports** 确认 `openpyxl`（若打包缺失再补）。  
-- 完成 **T027～T034** 后在本文件 §3/§9 追加模块清单与修订记录。  
