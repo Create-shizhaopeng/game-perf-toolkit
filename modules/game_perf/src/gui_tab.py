@@ -342,6 +342,7 @@ class GamePerfTab(BaseTab):
 
         if not self.parser.freq_rows:
             QMessageBox.warning(self.window(), "解析失败", "未解析到有效配置数据！")
+            self._context.pop("gp_joint_policy_snapshot", None)
             return
 
         self._game_cbx.blockSignals(True)
@@ -392,6 +393,27 @@ class GamePerfTab(BaseTab):
     def _refresh(self):
         self._refresh_table()
         self._refresh_strategy()
+        self._publish_joint_policy_snapshot()
+
+    def _publish_joint_policy_snapshot(self) -> None:
+        """将当前选中游戏/模式的策略快照写入共享 context，供 PerfDog「联合分析」使用（T045）。"""
+        key = "gp_joint_policy_snapshot"
+        if not self.parser:
+            self._context.pop(key, None)
+            return
+        game = self._game_cbx.currentText()
+        mode = self._mode_cbx.currentText()
+        pkg = self.parser.get_package_for_alias(game) if game else ""
+        if not pkg or not mode:
+            self._context.pop(key, None)
+            return
+        try:
+            from .joint_adapter import policy_snapshot_from_parser
+
+            snap = policy_snapshot_from_parser(self.parser, pkg, mode)
+            self._context[key] = snap.model_dump(mode="json")
+        except Exception:
+            self._context.pop(key, None)
 
     def _refresh_table(self):
         if not self.parser:
@@ -693,6 +715,7 @@ class GamePerfTab(BaseTab):
             self._config_table.setRowCount(0)
             self._notes_input.clear()
             self.parser = None
+            self._context.pop("gp_joint_policy_snapshot", None)
 
     def _on_reset(self):
         if not self.require_device():

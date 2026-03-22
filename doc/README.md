@@ -39,6 +39,14 @@ doc/
 | [technical-decisions.md](architecture/technical-decisions.md) | 12 项架构决策记录（ADR），包括技术栈、插件系统、仓库管理、数据存储等 |
 | [learning-roadmap.md](architecture/learning-roadmap.md) | 项目涉及的核心概念解析、分阶段学习路线、技术栈学习材料、推荐书籍和参考项目 |
 
+## Speckit 特性规格（`specs/`）
+
+仓库根目录 `specs/` 下的主特性文档与 **实现记录** 对照：
+
+| 特性目录 | 实现记录（变更总账） |
+|----------|----------------------|
+| [004-perfdog-import-insights](../specs/004-perfdog-import-insights/) | [implementation.md](../specs/004-perfdog-import-insights/implementation.md) |
+
 ## 开发文档
 
 开发相关文档位于 `scripts/doc/` 目录：

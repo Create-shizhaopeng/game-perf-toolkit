@@ -124,8 +124,9 @@
                 ┌──────────────────────────────┐
                 │       模块层 (Plugins)        │
                 │                              │
-                │  device_disguise │ game_perf  │
-                │  log_analysis    │ trace      │
+                │  device_disguise │ game_perf      │
+                │  perfetto_capture│ perfdog_insights│
+                │  log_analysis    │ trace          │
                 │  policy_report   │ predict    │
                 │  agent_chat      │ ...        │
                 └──────────────────────────────┘
@@ -271,7 +272,8 @@ lv-game-toolkit/                              # 项目根目录
 │   │   ├── adb_manager.py                    #     ADB 设备管理
 │   │   ├── db_manager.py                     #     SQLite 数据库管理
 │   │   ├── process_bridge.py                 #     外部进程桥接
-│   │   └── logger.py                         #     日志服务
+│   │   ├── logger.py                         #     日志服务
+│   │   └── perfdog/                          #     PerfDog 导出解析与洞察（规格 specs/004，实现记录 implementation.md）
 │   │
 │   ├── sdk/                                  #   公共 SDK
 │   │   ├── __init__.py
@@ -339,6 +341,8 @@ lv-game-toolkit/                              # 项目根目录
 │   │
 │   ├── game_perf/                            #   模块：游戏性能配置
 │   │   └── （同上标准结构）
+│   ├── perfetto_capture/                     #   模块：Perfetto 卡顿抓取
+│   ├── perfdog_insights/                     #   模块：PerfDog 分析（实现记录见 specs/004-perfdog-import-insights/implementation.md）
 │   ├── log_analysis/                         #   模块：日志分析（规划中）
 │   ├── trace_analysis/                       #   模块：Trace 分析（规划中）
 │   ├── policy_report/                        #   模块：策略报告对比（规划中）

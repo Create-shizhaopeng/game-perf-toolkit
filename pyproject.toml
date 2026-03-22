@@ -11,6 +11,7 @@ dependencies = [
   "pluggy>=1.3.0",
   "lxml>=4.9.0",
   "pandas>=2.0.0",
+  "openpyxl>=3.1.0",
 ]
 
 [project.optional-dependencies]
@@ -23,7 +24,7 @@ dev = [
 toolkit = "toolkit.app:main"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "toolkit/core/joint_assessment/tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
