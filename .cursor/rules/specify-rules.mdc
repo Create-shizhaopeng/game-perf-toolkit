@@ -1,11 +1,11 @@
----
+﻿---
 description: Project Development Guidelines
 globs: ["**/*"]
 alwaysApply: true
 ---
 # lv-game-toolkit Development Guidelines
 
-Last updated: 2026-03-21
+Last updated: 2026-03-22
 
 ## Active Technologies
 

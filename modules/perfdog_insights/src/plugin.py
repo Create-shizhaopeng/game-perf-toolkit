@@ -8,6 +8,10 @@ from toolkit.sdk.base_plugin import BasePlugin
 
 class PerfdogInsightsPlugin(BasePlugin):
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._service: object | None = None
+
     @hookimpl
     def get_plugin_info(self) -> dict:
         return {
@@ -37,7 +41,9 @@ class PerfdogInsightsPlugin(BasePlugin):
         self.context = context
         from .service import PerfdogInsightsService
 
-        self.context["pdi_service"] = PerfdogInsightsService()
+        # 与 game_perf 一致：单例 Service 挂插件实例并写入 context（pdi_ 前缀）
+        self._service = PerfdogInsightsService()
+        self.context["pdi_service"] = self._service
 
     @hookimpl
     def on_shutdown(self) -> None:

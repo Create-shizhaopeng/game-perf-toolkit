@@ -3,6 +3,7 @@
 ## 目录
 
 - [功能概述](#功能概述)
+- [代码规则](#代码规则)
 - [参数说明](#参数说明)
 - [使用示例](#使用示例)
 - [返回值与错误](#返回值与错误)
@@ -21,6 +22,12 @@
 - `specs/`、`fixtures/`、`assets/` — 辅助目录
 - `.specify/` — speckit 管理目录（自动初始化，含模块级 constitution）
 - `.cursor/commands/` — speckit slash 命令
+
+## 代码规则
+
+- 模块名 **必须** 为 `snake_case`（与 Python 包名一致），见下表参数说明。
+- 生成骨架后，实现业务时遵守 **[架构文档 §5.0 代码规则（总纲）](../../doc/architecture/architecture-overview.md#50-代码规则总纲)**：Service 与 GUI/CLI 分离、context 键带模块前缀、Ruff + `.editorconfig`、合并前 pytest 等。
+- 模块级 **`AGENTS.md` / `.specify/`** 是对 Constitution 的继承与补充，**不得**与总纲冲突。
 
 ## 参数说明
 

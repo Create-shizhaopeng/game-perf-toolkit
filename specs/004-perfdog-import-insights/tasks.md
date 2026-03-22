@@ -1,11 +1,11 @@
 # Tasks: PerfDog 导入与性能洞察（004-perfdog-import-insights）
 
-**Input**: [spec.md](./spec.md) · [plan.md](./plan.md) · [data-model.md](./data-model.md) · [contracts/analysis_api.md](./contracts/analysis_api.md)  
-**子特性（联合分析迭代）**: 需求与模型已并入 **本目录**：[spec.md](./spec.md)（**US9～US11**、**JA-FR/JA-SC**）、[plan.md](./plan.md) 联合分析小节、[data-model.md](./data-model.md) 联合实体、[research.md](./research.md) JA-R*、[contracts/joint_assessment_api.md](./contracts/joint_assessment_api.md)。实现任务见 **Phase 12～16**（**US9～US11** = 子特性 P1～P3）。
+**Input**: [spec.md](./spec.md) · [plan.md](./plan.md)（内含 [数据模型](./plan.md#数据模型)、[技术调研](./plan.md#技术调研)、[API 契约](./plan.md#api-契约coreperfdog-分析-api)、[实现记录](./plan.md#实现记录)）  
+**子特性（联合分析迭代）**: 需求与模型见 [spec.md](./spec.md)（**US9～US11**、**JA-FR/JA-SC**）、[plan.md](./plan.md) 联合分析小节与 [数据模型](./plan.md#数据模型) 联合实体、[技术调研](./plan.md#技术调研) JA-R*、[联合分析契约](./plan.md#api-契约联合分析)。实现任务见 **Phase 12～16**（**US9～US11** = 子特性 P1～P3）。
 
 **仅做联合分析时**：主链 Phase 1～7 已勾选完成则 **从 Phase 12 / T038 开始**；顺序 **T039→T040→T041→T042→T043**，再 **T044～T048**（MVP），随后 **T049～T056**。  
 **Speckit**：`$env:SPECIFY_FEATURE = '004-perfdog-import-insights'`  
-**实现记录（已做修改汇总）**: [implementation.md](./implementation.md) — 新增/变更代码时请同步更新该文档 **§8 修订记录** 与相关小节。  
+**实现记录**: [plan.md#实现记录](./plan.md#实现记录) — 新增/变更代码时请同步更新 **§9 修订记录** 与相关小节。  
 **Prerequisites**: plan.md ✅ spec.md ✅  
 
 **框架约定**：与 `modules/game_perf`、`toolkit/gui/main_window.py` 插件钩子一致 —— 新能力放在 **`modules/perfdog_insights/`**（GUI + worker），可复用逻辑放在 **`toolkit/core/perfdog/`**（与 plan 中 `source/core/perfdog` 对应，实际仓库根为 `toolkit/`）。
@@ -44,7 +44,7 @@
 
 - [X] T001 在 `pyproject.toml` 的 `[project] dependencies` 中增加 `openpyxl>=3.1.0`（与 plan / 解析栈一致）
 - [X] T002 [P] 新建 `toolkit/core/perfdog/__init__.py` 并导出公开 API 占位（`load_and_analyze` 可延后 Phase 2 末再 re-export）
-- [X] T003 [P] 新建 `toolkit/core/perfdog/errors.py`，定义 `PerfDogParseError`、`PerfDogUnsupportedError`（契约见 `contracts/analysis_api.md`）
+- [X] T003 [P] 新建 `toolkit/core/perfdog/errors.py`，定义 `PerfDogParseError`、`PerfDogUnsupportedError`（契约见 [plan.md「API 契约：core.perfdog」](./plan.md#api-契约coreperfdog-分析-api)）
 
 ---
 
@@ -59,7 +59,7 @@
 - [X] T006 实现 `toolkit/core/perfdog/workbook.py`：安全打开 `.xlsx/.xlsm`（只读数据、不执行宏）、枚举 sheet、探测 `all` 表中 `Data_v4` 表头行索引
 - [X] T007 实现 `toolkit/core/perfdog/parse_all.py`：解析 DeviceInfo 区块、Stat 行、`Data_v4` → `pandas.DataFrame`；落实 plan **Stat vs Data_v4** 脚注逻辑（与 Stat 差异 >1% 时写入 `AnalysisReport.stat_row_disclaimer`）
 - [X] T008 实现 `toolkit/core/perfdog/session.py`：从解析结果构建 `SessionSummary` 与摘要区 `summary_metrics`（包名、机型、时长、目标帧率 hint）
-- [X] T009 [P] 新建 `toolkit/core/perfdog/report_types.py`（或 `models.py`）：`dataclass` — `Finding`、`Recommendation`、`AnalysisReport`（字段对齐 `data-model.md`）
+- [X] T009 [P] 新建 `toolkit/core/perfdog/report_types.py`（或 `models.py`）：`dataclass` — `Finding`、`Recommendation`、`AnalysisReport`（字段对齐 [plan.md#数据模型](./plan.md#数据模型)）
 - [X] T010 实现 `toolkit/core/perfdog/detect.py`：从 DataFrame 生成 `Finding`（低帧段、尖刺、方差/稳定性、温度/功耗列若存在）；缺失列时生成「本文件未包含该项」类 finding
 - [X] T011 实现 `toolkit/core/perfdog/recommendations.py`：由 `Finding` 生成 `Recommendation`，`finding_ids` 可追溯，文案符合 **FR-008**
 - [X] T012 实现 `toolkit/core/perfdog/export_md.py`：`build_markdown(report: AnalysisReport) -> str`，UTF-8 文本，章节结构对齐 spec **附录 B**
@@ -124,7 +124,7 @@
 **Goal**: **SC-009** — 帧时长量化结论并入报告。
 
 - [X] T027 [US3] 实现 `toolkit/core/perfdog/parse_frameinfo.py`：`read_only` 扫描 `@FrameInfo`，聚合 `FrameStats`（p99、max、超阈帧数），超大行数提前截断并警告
-- [X] T028 [US3] 在 `toolkit/core/perfdog/__init__.py` 的 `load_and_analyze` 中合并 `FrameStats`；更新 `detect.py`/`export_md.py`/`gui_tab.py` 展示帧级结论；时间对齐规则见 `research.md`
+- [X] T028 [US3] 在 `toolkit/core/perfdog/__init__.py` 的 `load_and_analyze` 中合并 `FrameStats`；更新 `detect.py`/`export_md.py`/`gui_tab.py` 展示帧级结论；时间对齐规则见 [plan.md#技术调研](./plan.md#技术调研)
 
 ---
 
@@ -151,11 +151,11 @@
 ## Phase 11: Polish
 
 - [X] T035 [P] 新增 `tests/test_perfdog_workbook.py` 或 `modules/perfdog_insights/tests/test_parse_smoke.py`：使用 `modules/perfdog_insights/fixtures/` 下**脱敏**最小 xlsx（或生成临时 xlsx）验证 `load_and_analyze` 不崩溃
-- [X] T036 [P] 更新 `specs/004-perfdog-import-insights/quickstart.md` 中模块路径为 `modules/perfdog_insights` + `toolkit/core/perfdog`（若与初稿不一致）
+- [X] T036 [P] 更新 [plan.md#快速开始](./plan.md#快速开始) 中模块路径为 `modules/perfdog_insights` + `toolkit/core/perfdog`（若与初稿不一致）
 - [X] T037 [P] 在 `doc/` 或模块 `README` 增加用户可见的一节「PerfDog 分析」入口说明（可选，产品文档）
 
 ---
-![1774174928213](image/tasks/1774174928213.png)![1774175009134](image/tasks/1774175009134.png)![1774175011436](image/tasks/1774175011436.png)
+
 ## Phase 12: 联合分析 — 基础（阻塞 US9～US11）
 
 **Purpose**: Pydantic 模型 + `toolkit/core/joint_assessment` 纯函数管线；**不**依赖 PyQt、**不** `import modules.*`（对齐 [plan.md](./plan.md) **子特性：游戏性能策略 × PerfDog 联合分析**）。
@@ -169,7 +169,7 @@
 - **T040 首期规则**：`assess_joint` 至少生成 3 段列表（策略摘要 bullet、观测摘要 bullet、一致性/矛盾 bullet）；可基于 **频点上下限 vs 观测均值/峰值**、**bindcore_summary 非空时的占位互证** 等简单启发式；**T049** 再充实绑核/频点 **JointSuggestion**。
 - **包**：若根 `pyproject.toml` 未显式列出 **pydantic**，则 T038 同时补上依赖（与 Constitution **Pydantic 2** 一致）。
 
-- [X] T038 [P] 新建 `toolkit/sdk/joint_models.py`：`PolicySnapshot`、`FreqPolicyRow`、`ObservationsSnapshot`、`JointAssessmentReport`、`JointSuggestion`、`JointAssessOptions`（字段语义对齐 [data-model.md](./data-model.md) **子特性：联合分析实体**；`JointAssessOptions` 含 `skip_package_warning: bool = False` 等与 [contracts/joint_assessment_api.md](./contracts/joint_assessment_api.md) 一致）
+- [X] T038 [P] 新建 `toolkit/sdk/joint_models.py`：`PolicySnapshot`、`FreqPolicyRow`、`ObservationsSnapshot`、`JointAssessmentReport`、`JointSuggestion`、`JointAssessOptions`（字段语义对齐 [plan.md#数据模型](./plan.md#数据模型) **子特性：联合分析实体**；`JointAssessOptions` 含 `skip_package_warning: bool = False` 等与 [plan.md#api-契约联合分析](./plan.md#api-契约联合分析) 一致）
 - [X] T039 实现 `toolkit/core/joint_assessment/observations.py`：`build_observations_snapshot(report: AnalysisReport) -> ObservationsSnapshot`，填充 `metric_lines`（从 `report.summary_metrics` 筛选展示用字符串）、`finding_summaries` / `recommendation_summaries`（截断过长文本）、`data_gaps`（缺包名、缺频点类列等）；缺频点列时 **不得** 在下游推断伪造频点数值（**JA-SC-004**）
 - [X] T040 实现 `toolkit/core/joint_assessment/engine.py`：`assess_joint(policy, observations, *, options=None) -> JointAssessmentReport`；填充 **policy_section** / **observation_section** / **consistency_section**；**disclaimer** 固定模板句（启发式、需复测）；若 `options.skip_package_warning` 为 False 且两侧包名可比对且不等，可将说明写入 **warnings**（最终弹窗在 T047）；**T040 可先返回空的** `bindcore_suggestions` / `freq_suggestions`，由 **T049** 填满
 - [X] T041 实现 `toolkit/core/joint_assessment/export_md.py`：`build_joint_markdown(joint, *, base_report=None) -> str`（UTF-8；二级标题建议 `## 游戏性能策略联合分析`，子节与 `toolkit/core/perfdog/export_md.py` 列表风格一致）
@@ -225,17 +225,17 @@
 **执行细则（Phase 15）**：联合分析按钮 **不得** `if not serial: disable`；仅依赖 context 快照 + 内存中 `AnalysisReport`。
 
 - [X] T052 [US11] 复核并修正 `modules/perfdog_insights/src/gui_tab.py` 与 `modules/game_perf/src/gui_tab.py`：「联合分析」与 `gp_joint_policy_snapshot` 更新路径 **不** 依赖设备连接；`game_perf` 在仅本地打开 XML 时亦须写入快照；空态提示「请先在 **游戏性能配置** 加载 XML 并选择游戏/模式」
-- [X] T053 [P] [US11] 复核 `specs/004-perfdog-import-insights/quickstart.md` 中「联合分析烟测」小节与最终实现一致（步骤、按钮文案、无需设备）
+- [X] T053 [P] [US11] 复核 [plan.md#快速开始](./plan.md#快速开始) 中「联合分析烟测」小节与最终实现一致（步骤、按钮文案、无需设备）
 
 ---
 
 ## Phase 16: 联合分析 — Polish
 
-**执行细则（Phase 16）**：契约与实现签名不一致时 **以代码为准回写 contract** 或 **改代码** 二选一，须在 **implementation.md** 记一笔。
+**执行细则（Phase 16）**：契约与实现签名不一致时 **以代码为准回写 plan 内契约章节** 或 **改代码** 二选一，须在 **[plan.md#实现记录](./plan.md#实现记录)** 记一笔。
 
-- [X] T054 [P] 核对 `specs/004-perfdog-import-insights/contracts/joint_assessment_api.md` 与 [spec.md](./spec.md) **JA-FR** 及仓库内实际 `joint_assessment` / `joint_models` 签名一致；差异更新契约 **§1** 代码块或补 **§5 修订**
-- [X] T055 [P] 更新 `specs/004-perfdog-import-insights/implementation.md`：**§8 修订记录** 列出新增路径：`toolkit/sdk/joint_models.py`、`toolkit/core/joint_assessment/*`、`modules/game_perf/src/joint_adapter.py`、`modules/perfdog_insights/src/joint_worker.py` 及 GUI 改动摘要
-- [X] T056 [P] 更新 `modules/perfdog_insights/README.md`：一句话说明「联合游戏性能策略分析」入口、依赖 **游戏性能配置** 已加载 XML、以及 **SPECIFY_FEATURE=004-perfdog-import-insights** 文档位置（链到 `specs/004-perfdog-import-insights/quickstart.md`）
+- [X] T054 [P] 核对 [plan.md#api-契约联合分析](./plan.md#api-契约联合分析) 与 [spec.md](./spec.md) **JA-FR** 及仓库内实际 `joint_assessment` / `joint_models` 签名一致；差异更新契约 **§1** 代码块或补 **§5 修订**
+- [X] T055 [P] 更新 [plan.md#实现记录](./plan.md#实现记录)：**§9 修订记录** 列出新增路径：`toolkit/sdk/joint_models.py`、`toolkit/core/joint_assessment/*`、`modules/game_perf/src/joint_adapter.py`、`modules/perfdog_insights/src/joint_worker.py` 及 GUI 改动摘要
+- [X] T056 [P] 更新 `modules/perfdog_insights/README.md`：一句话说明「联合游戏性能策略分析」入口、依赖 **游戏性能配置** 已加载 XML、以及 **SPECIFY_FEATURE=004-perfdog-import-insights** 文档位置（链到 [plan.md#快速开始](./plan.md#快速开始)）
 
 ---
 
@@ -288,7 +288,7 @@ Phase 16 依赖 Phase 14（文档与 README 对齐最终导出行为）；**T043
 | US8 | T016, T018 |
 | US9 | T044–T048（子特性 P1：结论 + 包名警告） |
 | US10 | T049–T051（子特性 P2：绑核/频点建议 + 合并导出） |
-| US11 | T052–T053（子特性 P3：离线衔接 + quickstart） |
+| US11 | T052–T053（子特性 P3：离线衔接 + plan 快速开始） |
 
 ---
 

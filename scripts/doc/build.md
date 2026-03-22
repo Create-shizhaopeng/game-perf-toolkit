@@ -87,3 +87,8 @@ dist/
 - **文件过大**: 构建脚本已排除 PIL、numpy、pandas、matplotlib 等不必要包
 - **GUI 启动崩溃**: 检查 `sys.stdout/stderr` 为 None 的情况（参见踩坑指南 P13）
 - **资源文件找不到**: 确认 `_collect_assets()` 已包含新增资源（参见踩坑指南 P14）
+
+## 代码规则（构建侧）
+
+- 发布构建不改变 Python 代码风格约定；开发与合并仍须遵守 **[架构文档 §5.0 代码规则（总纲）](../../doc/architecture/architecture-overview.md#50-代码规则总纲)**（Ruff、分层、UTF-8 等）。
+- 修改 `build.py` 或收集逻辑后：确认 **相关模块可被 PyInstaller 收集**（`_hidden_imports()` 等），并尽量在 **无控制台 GUI 模式** 下烟测（[development-pitfalls.md P13](development-pitfalls.md#p13--pyinstaller-noconsole-模式-sysstdoutstderr-为-none)、P14）。

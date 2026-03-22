@@ -21,6 +21,7 @@ TEST_GROUPS: list[tuple[str, str]] = [
     ("主项目", "tests/"),
     ("device_disguise 模块", "modules/device_disguise/tests/"),
     ("game_perf 模块", "modules/game_perf/tests/"),
+    ("perfdog_insights 模块", "modules/perfdog_insights/tests/"),
     ("perfetto_capture 模块", "modules/perfetto_capture/tests/"),
 ]
 

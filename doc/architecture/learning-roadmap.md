@@ -9,6 +9,7 @@
   - [1.4 CLI 设计](#14-cli-设计)
   - [1.5 Agent / Tool Use 模式](#15-agent--tool-use-模式)
 - [2. 推荐学习路线](#2-推荐学习路线)
+  - [2.0 开始编码前（项目代码规则）](#20-开始编码前项目代码规则)
   - [2.1 入门阶段](#21-入门阶段)
   - [2.2 进阶阶段](#22-进阶阶段)
   - [2.3 深入阶段](#23-深入阶段)
@@ -82,6 +83,10 @@
 ---
 
 ## 2. 推荐学习路线
+
+### 2.0 开始编码前（项目代码规则）
+
+动手改 `modules/` 或 `toolkit/` 前，请先阅读 **[architecture-overview.md §5.0 代码规则（总纲）](./architecture-overview.md#50-代码规则总纲)** 与 **`.specify/memory/constitution.md`**。其中约定：分层（Service / GUI / CLI）、Ruff + `.editorconfig`、context 键模块前缀、框架边界与合并前测试等。再按需查阅 [module-development-guide.md](../../scripts/doc/module-development-guide.md)、[development-pitfalls.md](../../scripts/doc/development-pitfalls.md)。
 
 ### 2.1 入门阶段
 

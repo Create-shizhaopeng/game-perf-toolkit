@@ -7,6 +7,20 @@
 **Status**: Draft  
 **Input**: User description: 通过拖拽 PerfDog 导出的数据文件，结合 CPU/GPU 频点、线程运行情况等，识别掉帧、温度过高、帧率不稳等问题，并输出可执行的建议方案。
 
+## 目录
+
+- [User Scenarios & Testing](#user-scenarios--testing-mandatory)
+- [Requirements](#requirements-mandatory)
+- [非功能与体验要求](#非功能与体验要求-mandatory)
+- [Success Criteria](#success-criteria-mandatory)
+- [Assumptions](#assumptions)
+- [Scope Boundaries](#scope-boundaries)
+- [Dependencies](#dependencies)
+- [子特性：游戏性能策略与 PerfDog 联合分析](#子特性游戏性能策略与-perfdog-联合分析)
+- [附录 A（参考）：常见 Excel 工作表与用途](#附录-a参考常见-excel-工作表与用途)
+- [附录 B（参考）：报告建议章节结构](#附录-b参考报告建议章节结构导出与界面一致)
+- [修订记录](#修订记录)
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - 拖拽导入并生成摘要报告 (Priority: P1)
@@ -233,13 +247,13 @@
 - **lv-game-toolkit** 提供可挂载的 UI 入口与拖拽/文件对话框能力；实现计划需约定与现有 Tab 的导航与资源占用策略。
 - 本规范不绑定具体编程语言与第三方库名称；技术选型在 `/speckit.plan` 中落地。
 - **PerfDog 版本**：实现阶段须维护**已验证导出格式列表**（至少覆盖当前团队常用 1～2 个 PerfDog 版本）；版本升级导致列缺失时，降级策略见 Edge Cases。
-- **游戏性能配置**：联合分析依赖 **`modules/game_perf`** 对 `gameperfconfig.xml` 的解析与 UI 选中游戏/模式；实现细节见 [plan.md](./plan.md) 联合分析小节、[data-model.md](./data-model.md) 联合实体。
+- **游戏性能配置**：联合分析依赖 **`modules/game_perf`** 对 `gameperfconfig.xml` 的解析与 UI 选中游戏/模式；实现细节见 [plan.md](./plan.md) 联合分析小节与 [plan.md#数据模型](./plan.md#数据模型) 联合实体。
 
 ---
 
 ## 子特性：游戏性能策略与 PerfDog 联合分析
 
-> **追溯**：原 `specs/005-gameperf-perfdog-analysis/` 已合并至本 spec。**权威文档目录**：**`specs/004-perfdog-import-insights/`**（曾短暂使用 `001-perfdog-import-insights` 目录名，已迁回 **004**）。迭代请以 **本文件 + 同目录 plan/data-model/research/contracts** 为准；任务见 [tasks.md](./tasks.md) **Phase 12～16**（**US9～US11**）。
+> **追溯**：原 `specs/005-gameperf-perfdog-analysis/` 已合并至本 spec。**权威文档目录**：**`specs/004-perfdog-import-insights/`**（与 [003-adb-enhancement](../003-adb-enhancement/) 同型：**仅** `spec.md`、`plan.md`、`tasks.md`；数据模型/调研/契约/实现记录均在 [plan.md](./plan.md)）。任务见 [tasks.md](./tasks.md) **Phase 12～16**（**US9～US11**）。
 
 ### User Story 9 - 联合视图与一致性结论 (Priority: P1)
 
@@ -306,7 +320,7 @@
 
 ### 联合分析 — Key Entities
 
-- **PolicySnapshot**：当前 `gameperfconfig` 与联合分析相关的子集（频点档位、绑核语义化摘要等）。详见 [data-model.md](./data-model.md)。
+- **PolicySnapshot**：当前 `gameperfconfig` 与联合分析相关的子集（频点档位、绑核语义化摘要等）。详见 [plan.md#数据模型](./plan.md#数据模型)。
 - **ObservationsSnapshot**：由 `AnalysisReport` 派生的观测视图。
 - **JointAssessmentReport**：结论 + 分类建议 + 数据不足说明 + 警告。
 
@@ -360,6 +374,6 @@
 | 2026-03-21 | 初版 + 对比/导出/Toolkit |
 | 2026-03-21 | 补充 US8、FR015-019、非功能、帧表/功耗、安全与编码、附录 A/B、SC008-009 |
 | 2026-03-21 | 文档迁入本仓库 `specs/004-perfdog-import-insights/`（与框架其它规格并列）。 |
-| 2026-03-22 | 实现落地：工程路径以 [implementation.md](./implementation.md) 与 [plan.md](./plan.md) 为准；需求正文不变，实现细节见实现记录。 |
+| 2026-03-22 | 实现落地：工程路径以 [plan.md#实现记录](./plan.md#实现记录) 为准；需求正文不变，实现细节见 plan 内实现记录章节。 |
 | 2026-03-22 | **合并**原 `specs/005-gameperf-perfdog-analysis/spec.md`：新增 **US9～US11**、**JA-FR / JA-SC**、联合分析 Edge/Assumptions/Out of Scope；005 目录改为重定向说明。 |
 | 2026-03-22 | 规格目录曾迁至 `specs/001-perfdog-import-insights/`；现 **迁回** `specs/004-perfdog-import-insights/` 并删除 `001-perfdog-import-insights`。**`SPECIFY_FEATURE`** / 分支建议 **`004-perfdog-import-insights`**。 |

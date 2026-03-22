@@ -24,19 +24,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from toolkit.core.joint_assessment import build_joint_markdown
-from toolkit.core.perfdog import (
-    AnalysisReport,
-    SessionComparePair,
-    build_compare_markdown,
-    build_markdown,
-    compare_reports,
-)
 from toolkit.gui.base_tab import BaseTab
-from toolkit.sdk.joint_models import JointAssessmentReport
 
 from .analysis_worker import PerfDogAnalysisWorker
 from .joint_worker import JointAssessmentWorker
+from .models import AnalysisReport, SessionComparePair
+from .service import PerfdogInsightsService
 
 _GP_JOINT_KEY = "gp_joint_policy_snapshot"
 
@@ -50,6 +43,10 @@ class PerfdogInsightsTab(BaseTab):
     def __init__(self, context: dict | None = None, parent: QWidget | None = None) -> None:
         super().__init__(context, parent)
         self._context = context or {}
+        raw_svc = self._context.get("pdi_service")
+        self._service: PerfdogInsightsService = (
+            raw_svc if isinstance(raw_svc, PerfdogInsightsService) else PerfdogInsightsService()
+        )
         self._report: AnalysisReport | None = None
         self._worker: PerfDogAnalysisWorker | None = None
         self._joint_worker: JointAssessmentWorker | None = None
@@ -264,7 +261,7 @@ class PerfdogInsightsTab(BaseTab):
         self._compare_btn.setEnabled(False)
         self._progress.setVisible(True)
         self._status_lbl.setText("解析中…")
-        self._worker = PerfDogAnalysisWorker(path, self)
+        self._worker = PerfDogAnalysisWorker(path, self._service, self)
         self._worker.progress.connect(self._status_lbl.setText)
         self._worker.finished_ok.connect(self._on_worker_ok)
         self._worker.finished_err.connect(self._on_worker_err)
@@ -508,13 +505,11 @@ class PerfdogInsightsTab(BaseTab):
         """PerfDog 全文 + 可选联合章节（JA-FR-007）+ 可选 A/B 对比节。"""
         if self._report is None:
             return ""
-        body = build_markdown(self._report)
-        if self._joint_report is not None:
-            joint = JointAssessmentReport.model_validate(self._joint_report)
-            body += "\n\n" + build_joint_markdown(joint, base_report=None)
-        if self._compare_pair is not None:
-            body += "\n\n" + build_compare_markdown(self._compare_pair)
-        return body
+        return self._service.compose_export_markdown(
+            self._report,
+            self._joint_report,
+            self._compare_pair,
+        )
 
     def _on_joint_analyze(self) -> None:
         policy = self._context.get(_GP_JOINT_KEY)
@@ -559,6 +554,7 @@ class PerfdogInsightsTab(BaseTab):
         self._joint_worker = JointAssessmentWorker(
             path,
             policy,
+            self._service,
             skip_package_warning=skip_warn,
             parent=self,
         )
@@ -614,7 +610,7 @@ class PerfdogInsightsTab(BaseTab):
         self._compare_btn.setEnabled(False)
         self._progress.setVisible(True)
         self._status_lbl.setText("加载对比文件…")
-        self._cmp_worker = PerfDogAnalysisWorker(path, self)
+        self._cmp_worker = PerfDogAnalysisWorker(path, self._service, self)
         self._cmp_worker.progress.connect(self._status_lbl.setText)
         self._cmp_worker.finished_ok.connect(self._on_cmp_ok)
         self._cmp_worker.finished_err.connect(self._on_cmp_err)
@@ -624,7 +620,7 @@ class PerfdogInsightsTab(BaseTab):
     def _on_cmp_ok(self, report: object) -> None:
         if not isinstance(report, AnalysisReport) or self._report is None:
             return
-        pair = compare_reports(self._report, report)
+        pair = self._service.compare_reports_pair(self._report, report)
         mismatch = any("包名不一致" in w for w in pair.warnings)
         if mismatch:
             r = QMessageBox.question(

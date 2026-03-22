@@ -17,7 +17,8 @@
   - [2.6 analysis — 预实现一致性检查](#26-analysis--预实现一致性检查)
   - [2.7 implement — 代码实现](#27-implement--代码实现)
   - [2.8 analysis — 实现后验证](#28-analysis--实现后验证)
-- [Step 3 — 代码实现规范](#step-3--代码实现规范)
+  - [Step 3 — 代码实现规范](#step-3--代码实现规范)
+  - [3.0 代码规则总纲（与架构文档对齐）](#30-代码规则总纲与架构文档对齐)
   - [模块文件结构](#模块文件结构)
   - [Service 层](#service-层)
   - [GUI 层](#gui-层)
@@ -198,6 +199,10 @@ spec.md 必须包含：
 ---
 
 ## Step 3 — 代码实现规范
+
+### 3.0 代码规则总纲（与架构文档对齐）
+
+实现代码前请先通读 **架构文档 [§5.0 代码规则（总纲）](../../doc/architecture/architecture-overview.md#50-代码规则总纲)** 与 **Constitution**（`.specify/memory/constitution.md`）。本节及以下小节是对 §5.0 在「模块文件 / Service / GUI / CLI / 测试」上的展开；**若有冲突以 Constitution + §5.0 为准**。
 
 ### 模块文件结构
 

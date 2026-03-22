@@ -27,6 +27,7 @@
   - [4.6 外部进程桥接](#46-外部进程桥接)
   - [4.7 核心服务总览](#47-核心服务总览)
 - [5. 模块开发规范](#5-模块开发规范)
+  - [5.0 代码规则（总纲）](#50-代码规则总纲)
   - [5.1 标准目录结构](#51-标准目录结构)
   - [5.2 manifest.json 规范](#52-manifestjson-规范)
   - [5.3 开发标准流程](#53-开发标准流程)
@@ -273,7 +274,7 @@ lv-game-toolkit/                              # 项目根目录
 │   │   ├── db_manager.py                     #     SQLite 数据库管理
 │   │   ├── process_bridge.py                 #     外部进程桥接
 │   │   ├── logger.py                         #     日志服务
-│   │   └── perfdog/                          #     PerfDog 导出解析与洞察（规格 specs/004，实现记录 implementation.md）
+│   │   └── perfdog/                          #     PerfDog 导出解析与洞察（规格 specs/004，实现记录见 plan.md#实现记录）
 │   │
 │   ├── sdk/                                  #   公共 SDK
 │   │   ├── __init__.py
@@ -342,7 +343,7 @@ lv-game-toolkit/                              # 项目根目录
 │   ├── game_perf/                            #   模块：游戏性能配置
 │   │   └── （同上标准结构）
 │   ├── perfetto_capture/                     #   模块：Perfetto 卡顿抓取
-│   ├── perfdog_insights/                     #   模块：PerfDog 分析（实现记录见 specs/004-perfdog-import-insights/implementation.md）
+│   ├── perfdog_insights/                     #   模块：PerfDog 分析（实现记录见 specs/004-perfdog-import-insights/plan.md#实现记录）
 │   ├── log_analysis/                         #   模块：日志分析（规划中）
 │   ├── trace_analysis/                       #   模块：Trace 分析（规划中）
 │   ├── policy_report/                        #   模块：策略报告对比（规划中）
@@ -753,6 +754,25 @@ class DatabaseManager:
 ---
 
 ## 5. 模块开发规范
+
+### 5.0 代码规则（总纲）
+
+以下为仓库内 **代码与协作的硬性约定**，与 [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md) 一致；细节实现另见 [module-development-guide.md](../../scripts/doc/module-development-guide.md)、[development-pitfalls.md](../../scripts/doc/development-pitfalls.md)。
+
+| 类别 | 规则 |
+|------|------|
+| **最高准则** | 以 **Constitution** 为治理源；新功能优先 **Spec-Driven**（spec → plan → tasks → implement → analysis）。 |
+| **语言与编码** | **Python 3.12+**；所有源码与文本输出 **UTF-8**。 |
+| **格式与静态检查** | 遵守仓库根 [**`.editorconfig`**](../../.editorconfig)；使用 **Ruff** 做 lint（配置见根 `pyproject.toml`）。合并前对改动路径执行 `ruff check`，必要时 `ruff format`。 |
+| **分层** | 业务逻辑在 **`service.py`**（纯同步、无 GUI/CLI 依赖）；**`gui_tab.py` / `cli_commands.py`** 只做展示与参数/输出；测试优先覆盖 **Service**。 |
+| **依赖方向** | 模块 **禁止** 直接 `import` 其他模块的 `src/` 实现；跨模块通过约定接口、EventBus 等；允许依赖 **`toolkit.sdk.*`**、**`toolkit.core.hookspecs`**，**禁止**依赖 **`toolkit.core`** 内部实现模块（Constitution IV）。 |
+| **框架修改** | 普通需求 **不得** 修改 **`toolkit/core/`、`toolkit/sdk/`**；确需改动须单独评审（Constitution VI）。 |
+| **共享 context** | `plugin` 写入 `context` 的键 **必须** 带 **模块前缀**（如 `gp_service`），禁止占用通用键名（与 [P01](../../scripts/doc/development-pitfalls.md#p01--插件-context-键名冲突严重) 一致）。 |
+| **数据模型** | 跨 GUI/CLI/Agent 的结构化载荷 **Pydantic v2**；纯内部算法可用标准库/dataclass，边界选型见 [P12](../../scripts/doc/development-pitfalls.md#p12--pydantic-vs-dataclass-选型)。 |
+| **GUI 线程** | 耗时操作在 **`QThread`**（或等价）中执行，通过 **signal/slot** 回传结果；**禁止**在工作线程直接操作控件（[P05](../../scripts/doc/development-pitfalls.md#p05--qthread-信号安全gui-线程通信)）。 |
+| **子进程输出** | 读取 `AdbCmdResult` / `subprocess` 结果时 **`stdout`/`stderr` 使用 `or ""`**（[P02](../../scripts/doc/development-pitfalls.md#p02--adb-命令输出可能为-none)）。 |
+| **合并前** | 相关 **`pytest`** 通过；可运行 [`scripts/run_all_tests.py`](../../scripts/doc/run_all_tests.md) 做全量回归。 |
+| **打包注意** | 发布构建见 [build.md](../../scripts/doc/build.md)；frozen 模式与资源路径遵守 [P13/P14](../../scripts/doc/development-pitfalls.md)。 |
 
 ### 5.1 标准目录结构
 

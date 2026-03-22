@@ -1,23 +1,50 @@
 # PerfDog 分析（`perfdog_insights`）
 
-Toolkit 插件：离线导入 PerfDog **`.xlsx/.xlsm`**，生成摘要、洞察与建议；侧栏 **「PerfDog分析」**。
+Toolkit 插件：离线导入 PerfDog **`.xlsx/.xlsm`**，生成摘要、洞察与建议；侧栏 **「PerfDog分析」**。结构与 **`game_perf`** 对齐（`specs/`、`tests/`、`fixtures/`、`assets/`、`.specify/`、`.cursor/`）。
 
-**联合游戏性能策略分析**：在 **「游戏性能配置」** 中已加载 `gameperfconfig*.xml` 并选择游戏/性能模式后，本 Tab 在完成 PerfDog 分析后可点击 **「联合分析」**，对照 XML 策略与当前报告（**无需连接设备**）。需求与烟测步骤见 **`SPECIFY_FEATURE=004-perfdog-import-insights`** 对应规格：[specs/004-perfdog-import-insights/quickstart.md](../../specs/004-perfdog-import-insights/quickstart.md)。
+## 目录布局（与 `modules/game_perf` 同型）
 
-## 文档（实现与需求）
+```text
+modules/perfdog_insights/
+├── AGENTS.md                 # AI / Agent 规则（目录与 game_perf 一致）
+├── README.md                 # 本文件
+├── manifest.json
+├── assets/                   # 模块静态资源（占位 .gitkeep）
+├── fixtures/                 # 模块测试数据（占位；大夹具可与根 tests 共用）
+├── specs/
+│   └── 004-perfdog-import-insights/   # 入口索引 → 根目录 specs/004-... 正文
+├── tests/                    # 模块 pytest（Service 等）
+├── .cursor/commands/         # 模块级 speckit slash 命令
+├── .specify/                 # 模块级 speckit（constitution、脚本、模板）
+└── src/
+    ├── __init__.py
+    ├── plugin.py
+    ├── service.py            # PerfdogInsightsService
+    ├── models.py             # 跨端类型再导出
+    ├── cli_commands.py
+    ├── gui_tab.py
+    ├── analysis_worker.py
+    ├── joint_worker.py
+    └── migrations/           # manifest 占位（当前无 DB 表）
+```
 
-| 文档 | 说明 |
+## 规格与实现记录（权威源）
+
+| 说明 | 路径 |
 |------|------|
-| [specs/004-perfdog-import-insights/implementation.md](../../specs/004-perfdog-import-insights/implementation.md) | **实现记录**：本模块与 `toolkit/core/perfdog` 的变更总账 |
-| [specs/004-perfdog-import-insights/quickstart.md](../../specs/004-perfdog-import-insights/quickstart.md) | 开发与运行入口（含联合分析烟测） |
-| [specs/004-perfdog-import-insights/tasks.md](../../specs/004-perfdog-import-insights/tasks.md) | 任务清单 |
+| **正文**（spec / plan / tasks；数据模型与实现记录在 **plan** 内） | 仓库根 [`specs/004-perfdog-import-insights/`](../../specs/004-perfdog-import-insights/) |
+| **模块内索引** | [`specs/004-perfdog-import-insights/spec.md`](specs/004-perfdog-import-insights/spec.md)（链接到根目录，避免双份维护） |
 
-## 源码结构
+联合分析依赖 **游戏性能** Tab 写入的 **`gp_joint_policy_snapshot`**。环境变量 **`SPECIFY_FEATURE=004-perfdog-import-insights`** 用于根目录 Speckit。
 
-- `manifest.json` — 插件清单（依赖 `device_disguise`、`game_perf`、`perfetto_capture` 以固定侧栏顺序）
-- `src/plugin.py` — 钩子注册
-- `src/gui_tab.py` — UI（含联合分析区与导出/复制拼接）
-- `src/analysis_worker.py` — 后台解析线程
-- `src/joint_worker.py` — 联合分析后台线程
+## 测试
 
-核心解析逻辑位于 **`toolkit/core/perfdog/`**；联合分析纯函数位于 **`toolkit/core/joint_assessment/`**（非本目录）。
+```powershell
+# 仅本模块
+python -m pytest modules/perfdog_insights/tests/ -q
+
+# 全量分组（已登记于 scripts/run_all_tests.py）
+.venv\Scripts\python.exe scripts\run_all_tests.py
+```
+
+核心解析烟测另见根目录 **`tests/test_perfdog_workbook.py`**。

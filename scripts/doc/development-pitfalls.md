@@ -1,7 +1,12 @@
 # 模块开发常见踩坑指南
 
+## 代码规则（与本文档的关系）
+
+本文件描述 **具体反例与修法**；**总纲级约定**（分层、Ruff、context 前缀、框架边界、合并前测试等）以架构文档 **[§5.0 代码规则（总纲）](../../doc/architecture/architecture-overview.md#50-代码规则总纲)** 与 **`.specify/memory/constitution.md`** 为准。踩坑条目中的 **MUST** 与总纲一并遵守。
+
 ## 目录
 
+- [代码规则（与本文档的关系）](#代码规则与本文档的关系)
 - [P01 — 插件 context 键名冲突（严重）](#p01--插件-context-键名冲突严重)
 - [P02 — ADB 命令输出可能为 None](#p02--adb-命令输出可能为-none)
 - [P03 — 插件类必须继承 BasePlugin](#p03--插件类必须继承-baseplugin)

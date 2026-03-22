@@ -1,4 +1,4 @@
-"""游戏性能策略 × PerfDog 联合分析 — Pydantic 模型（spec US9～11 / data-model.md）"""
+"""游戏性能策略 × PerfDog 联合分析 — Pydantic 模型（spec US9～11；数据模型见 specs/004 plan.md#数据模型）"""
 
 from __future__ import annotations
 

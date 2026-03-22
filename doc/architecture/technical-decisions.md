@@ -1,5 +1,9 @@
 # LV Game Toolkit — 技术决策记录 (ADR)
 
+## 代码规则（索引）
+
+日常编码约定（分层、Ruff、Pydantic、context 前缀、QThread 等）已收敛为 **[architecture-overview.md §5.0 代码规则（总纲）](./architecture-overview.md#50-代码规则总纲)**，并与 **Constitution**（`.specify/memory/constitution.md`）对齐。本文 **ADR** 记录「为何选用某技术」；**如何做** 以 §5.0 + 模块开发手册为准。
+
 ## 目录
 
 - [ADR-001 技术栈选择](#adr-001-技术栈选择)
