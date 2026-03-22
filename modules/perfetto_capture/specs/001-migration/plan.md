@@ -98,6 +98,26 @@
 3. 新增配置模型测试
 4. spec analysis 一致性检查
 
+### Phase 7: 配置导入与 Ftrace 配置化（003-ui-enhancement C-001/C-002）
+
+**范围**: `models.py`、`config_manager.py`、`assets/config.json`、`data/config.json`、`gui_tab.py`、`service.py`
+
+**背景**: 需求变更 — 导入配置从打开目录改为文件选择对话框；Ftrace 可选事件从硬编码改为配置驱动。
+
+1. `models.py` — `AdvancedConfig` 新增 `available_ftrace_events: list[str]` 字段，默认 16 个常见事件
+2. `assets/config.json` + `data/config.json` — 新增 `available_ftrace_events` 默认列表
+3. `gui_tab.py`:
+   - `_on_import_config` → 使用 `QFileDialog.getOpenFileName` 替代 `QDesktopServices.openUrl`
+   - `_load_config_from_file` → 通用配置加载方法，支持指定路径
+   - `_rebuild_ftrace_panel` → 根据配置动态重建 Ftrace 面板（清除旧 widget、从 `available_ftrace_events` 创建新 widget、调用 `show()` 确保可见）
+   - Ftrace 初始化从硬编码列表改为读取 `self._cfg.advanced.available_ftrace_events`
+4. `service.py` — `reload_config` 支持 `config_path` 可选参数
+5. 清理顶部 `Path` import，移除局部 import
+
+**Constitution 对齐**:
+- GUI 不直接调用配置读取，通过 service 层中转 ✓
+- `QFileDialog` 在主线程中调用（模态对话框，不涉及线程安全问题） ✓
+
 ## 风险与缓解
 
 | 风险 | 缓解措施 |

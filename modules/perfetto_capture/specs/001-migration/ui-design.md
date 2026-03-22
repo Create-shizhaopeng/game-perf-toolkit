@@ -85,10 +85,11 @@ Perfetto 抓取 Tab 嵌入主窗口 `QStackedWidget`，通过左侧导航面板�
 
 - Duration: QSpinBox（1~3600 秒）
 - Buffer: QSpinBox（1~1000000 KB），可与自动计算联动
+- 导入配置: QPushButton，点击弹出 `QFileDialog` 文件选择对话框（默认目录 `data/`，筛选 `*.json`），选择后自动加载配置刷新全部 GUI 控件
 - Target Mode: QComboBox（全局/按包名）
 - Packages: QLineEdit（仅 mode=packages 时可见）
 - Categories: FlowWidget + QCheckBox（常用预设 + 自定义）
-- Ftrace Events: FlowWidget + QCheckBox，默认隐藏
+- Ftrace Events: FlowWidget + QCheckBox，默认隐藏，**可选事件从配置文件 `advanced.available_ftrace_events` 读取**（非硬编码），导入配置后动态重建
 
 ### 操作日志
 

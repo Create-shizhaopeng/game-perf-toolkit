@@ -5,12 +5,14 @@ from __future__ import annotations
 import datetime
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import QSize, QThread, QTimer, QUrl, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QDesktopServices, QTextCharFormat
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -202,6 +204,8 @@ class PerfettoCaptureTab(BaseTab):
         self._capture_start_time: datetime.datetime | None = None
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._update_timer)
+        from .config_manager import load_config
+        self._cfg = load_config()
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -246,7 +250,7 @@ class PerfettoCaptureTab(BaseTab):
         config_row.addSpacing(12)
         self._btn_import_config = QPushButton("📂 导入配置")
         self._btn_import_config.setFixedSize(btn_width, ctrl_height)
-        self._btn_import_config.setToolTip("打开配置文件目录，编辑后重新加载")
+        self._btn_import_config.setToolTip("选择 JSON 配置文件导入")
         self._btn_import_config.clicked.connect(self._on_import_config)
         config_row.addWidget(self._btn_import_config)
         config_row.addStretch()
@@ -291,26 +295,15 @@ class PerfettoCaptureTab(BaseTab):
         self._ftrace_group = QGroupBox("🔧 Ftrace Events")
         ftrace_group_layout = QVBoxLayout(self._ftrace_group)
         ftrace_group_layout.setContentsMargins(8, 4, 8, 4)
-        ftrace_inner = _FlowWidget(h_spacing=8, v_spacing=4)
+        self._ftrace_inner = _FlowWidget(h_spacing=8, v_spacing=4)
         self._ftrace_checks: dict[str, QCheckBox] = {}
-        ftrace_events = [
-            "sched/sched_switch", "sched/sched_wakeup",
-            "power/cpu_frequency", "power/cpu_idle",
-            "power/suspend_resume", "irq/irq_handler_entry",
-            "irq/irq_handler_exit", "irq/softirq_entry",
-            "irq/softirq_exit", "block/block_rq_issue",
-            "block/block_rq_complete", "filemap/mm_filemap_add_to_page_cache",
-            "vmscan/mm_vmscan_direct_reclaim_begin", "gpu_mem/gpu_mem_total",
-            "mali/mali_PM_MCU_HCTL_CORES_NOTIFY_PEND",
-            "thermal/thermal_temperature",
-        ]
-        for evt in ftrace_events:
+        for evt in self._cfg.advanced.available_ftrace_events:
             short = evt.split("/")[-1] if "/" in evt else evt
             cb = QCheckBox(short)
             cb.setToolTip(evt)
             self._ftrace_checks[evt] = cb
-            ftrace_inner.add_widget(cb)
-        ftrace_group_layout.addWidget(ftrace_inner)
+            self._ftrace_inner.add_widget(cb)
+        ftrace_group_layout.addWidget(self._ftrace_inner)
         self._ftrace_group.setVisible(False)
         self._chk_ftrace.toggled.connect(self._ftrace_group.setVisible)
         scroll_layout.addWidget(self._ftrace_group)
@@ -458,25 +451,27 @@ class PerfettoCaptureTab(BaseTab):
         self._lbl_device.setText(f"设备: {self._serial}")
 
     def _on_import_config(self) -> None:
-        """打开配置文件所在目录，用户编辑后重新加载。"""
+        """弹出文件选择对话框，默认指向当前模块配置目录，导入用户选择的 JSON 配置。"""
         if not self._service:
             self._log("✗ 服务未初始化", "error")
             return
-        config_dir = self._service._data_dir
-        if not config_dir.exists():
-            config_dir.mkdir(parents=True, exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(config_dir)))
-        self._log(f"已打开配置目录: {config_dir}")
-        self._log("编辑 config.json 后点击「导入配置」将自动重新加载", "warning")
+        default_dir = str(self._service._data_dir)
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择配置文件",
+            default_dir,
+            "JSON 配置 (*.json);;所有文件 (*)",
+        )
+        if not file_path:
+            return
+        self._load_config_from_file(Path(file_path))
 
-        QTimer.singleShot(500, self._reload_config_from_disk)
-
-    def _reload_config_from_disk(self) -> None:
-        """从磁盘重新加载配置并刷新 GUI。"""
+    def _load_config_from_file(self, file_path: Path | None = None) -> None:
+        """从指定文件（或默认路径）加载配置并刷新 GUI。"""
         if not self._service:
             return
         try:
-            cfg = self._service.reload_config()
+            cfg = self._service.reload_config(file_path)
             self._spin_duration.setValue(cfg.duration_sec)
             for cat, cb in self._cat_checks.items():
                 cb.setChecked(cat in cfg.atrace_categories)
@@ -486,13 +481,32 @@ class PerfettoCaptureTab(BaseTab):
             else:
                 self._update_auto_buffer()
 
+            self._rebuild_ftrace_panel(cfg)
             if cfg.advanced.ftrace_events:
                 self._chk_ftrace.setChecked(True)
                 for evt, cb in self._ftrace_checks.items():
                     cb.setChecked(evt in cfg.advanced.ftrace_events)
-            self._log("✓ 配置已重新加载", "success")
+            src = file_path.name if file_path else "默认配置"
+            self._log(f"✓ 已导入配置: {src}", "success")
         except Exception as e:
             self._log(f"✗ 加载配置失败: {e}", "error")
+
+    def _rebuild_ftrace_panel(self, cfg: Any) -> None:
+        """根据配置重建 Ftrace Events 选项列表。"""
+        for cb in list(self._ftrace_checks.values()):
+            cb.setParent(None)
+            cb.deleteLater()
+        self._ftrace_checks.clear()
+        self._ftrace_inner._children.clear()
+
+        for evt in cfg.advanced.available_ftrace_events:
+            short = evt.split("/")[-1] if "/" in evt else evt
+            cb = QCheckBox(short)
+            cb.setToolTip(evt)
+            self._ftrace_checks[evt] = cb
+            self._ftrace_inner.add_widget(cb)
+            cb.show()
+        self._ftrace_inner._relayout()
 
     def _on_manual_buffer_toggled(self, checked: bool) -> None:
         self._spin_buffer.setEnabled(checked)
@@ -636,7 +650,6 @@ class PerfettoCaptureTab(BaseTab):
             self._log(f"✓ 已导出 {len(paths)} 个文件:", "success")
             for p in paths:
                 self._log(f"  {p}")
-            from pathlib import Path
             export_dir = Path(paths[0]).parent
             if export_dir.exists():
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(export_dir)))

@@ -71,8 +71,8 @@ class PerfettoCaptureService:
     def output_dir(self) -> Path:
         return self._data_dir / self.config.output_dir / "trace"
 
-    def reload_config(self) -> CaptureConfig:
-        self._cfg = load_config()
+    def reload_config(self, config_path: Path | None = None) -> CaptureConfig:
+        self._cfg = load_config(config_path)
         return self._cfg
 
     def save_current_config(self) -> Path:

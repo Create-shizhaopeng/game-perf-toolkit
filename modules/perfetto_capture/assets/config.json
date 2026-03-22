@@ -13,6 +13,17 @@
     "packages": []
   },
   "advanced": {
+    "available_ftrace_events": [
+      "sched/sched_switch", "sched/sched_wakeup",
+      "power/cpu_frequency", "power/cpu_idle",
+      "power/suspend_resume", "irq/irq_handler_entry",
+      "irq/irq_handler_exit", "irq/softirq_entry",
+      "irq/softirq_exit", "block/block_rq_issue",
+      "block/block_rq_complete", "filemap/mm_filemap_add_to_page_cache",
+      "vmscan/mm_vmscan_direct_reclaim_begin", "gpu_mem/gpu_mem_total",
+      "mali/mali_PM_MCU_HCTL_CORES_NOTIFY_PEND",
+      "thermal/thermal_temperature"
+    ],
     "ftrace_events": [],
     "sampling": {},
     "enable_raw_perfetto_config": false,

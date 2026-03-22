@@ -16,6 +16,20 @@
 - [影响范围](#影响范围)
 - [验收标准](#验收标准)
 
+## Clarifications
+
+### C-001: 配置导入交互方式 (2026-03-22)
+
+**问题**：FR-004 原定义为"打开 data/ 目录让用户手动编辑"，用户实际需要的是"弹出文件选择对话框选择配置文件导入"。
+
+**决策**：改用 `QFileDialog.getOpenFileName`，默认目录指向模块 `data/` 路径，筛选 `*.json`。选择后自动加载配置到 GUI，取消则不操作。
+
+### C-002: Ftrace 可选事件来源 (2026-03-22)
+
+**问题**：FR-005 原为 GUI 硬编码常见 ftrace 事件列表，用户要求从配置文件读取。
+
+**决策**：在 `AdvancedConfig` 模型中新增 `available_ftrace_events: list[str]` 字段，默认值包含 16 个常见事件。GUI 从此字段渲染可选列表。用户可通过编辑配置文件增删可选事件。导入配置时动态重建 Ftrace 面板。
+
 ## 背景与动机
 
 用户在验证 perfetto_capture 模块时反馈了多项 UI/UX 改进需求，
@@ -42,15 +56,18 @@
 ### FR-004: 配置导入按钮
 
 - 配置行内提供「📂 导入配置」按钮（与 Duration/Buffer 同行）
-- 点击后打开当前模块 **`data/`** 目录（用户可编辑其中的 trace 配置 JSON）
-- 导入后自动重新加载配置并刷新 GUI 显示
+- 点击后弹出 **`QFileDialog` 文件选择对话框**，默认目录指向模块 `data/` 配置路径，筛选 `*.json`
+- 用户选择 JSON 文件后自动加载到 GUI（Duration、Buffer、Atrace、Ftrace 等全部刷新）
+- 取消选择不执行任何操作
 
 ### FR-005: Ftrace Events 面板
 
 - 在 Atrace Categories 区域**下方**提供 Ftrace Events 面板
 - 默认**隐藏**
 - 「启用 Ftrace 自定义」勾选时面板**可见**；未勾选时面板隐藏
-- 面板内提供常见 ftrace event 的勾选列表
+- 面板内的可选 ftrace 事件列表从配置文件 **`advanced.available_ftrace_events`** 读取（而非 GUI 硬编码）
+- 配置文件默认包含 16 个常见事件（sched/sched_switch、power/cpu_frequency 等）
+- 用户可通过编辑配置文件增删可选事件，导入配置后 Ftrace 面板动态重建
 - 勾选结果写入 `advanced.ftrace_events` 配置
 
 ### FR-006: 底部固定栏
@@ -97,8 +114,11 @@
 | AC-03 | 调整箭头可见 | 上下箭头颜色与背景有明显对比 |
 | AC-04 | 手动与 Ftrace 开关同行 | 两个复选框同一行 |
 | AC-05 | FlowWidget 自适应 | 窗口变窄时标签自动换行 |
-| AC-06 | 导入打开 data 目录 | 点击后文件管理器打开模块 `data/` |
+| AC-06 | 导入弹出文件对话框 | 点击后弹出 QFileDialog，默认指向 data/ 目录，筛选 *.json |
+| AC-06a | 导入后刷新全部配置 | 选择 JSON 后 Duration/Buffer/Atrace/Ftrace 全部刷新 |
 | AC-07 | Ftrace 默认隐藏 | 初始不可见；勾选「启用 Ftrace 自定义」后显示 |
+| AC-07a | Ftrace 选项配置化 | Ftrace 可选事件从 advanced.available_ftrace_events 读取，非硬编码 |
+| AC-07b | Ftrace 动态重建 | 导入含不同 available_ftrace_events 的配置后面板动态重建 |
 | AC-08 | 底栏固定 | 配置区可滚动，状态+按钮+日志始终在底部可见 |
 | AC-09 | 停止后打开文件夹 | 有导出文件时自动打开文件管理器 |
 | AC-10 | 断线 UI | 断线时等待重连、禁用保存/停止、可放弃会话 |

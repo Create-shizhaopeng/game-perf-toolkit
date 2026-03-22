@@ -9,6 +9,7 @@
 - [Phase 4 GUI 页面](#phase-4-gui-页面)
 - [Phase 5 插件集成](#phase-5-插件集成)
 - [Phase 6 测试与验证](#phase-6-测试与验证)
+- [Phase 7 配置导入与 Ftrace 配置化](#phase-7-配置导入与-ftrace-配置化)
 
 ## Phase 0: ADB 核心扩展
 
@@ -86,3 +87,22 @@
 | T040 | 新增 CaptureConfig Pydantic 模型测试 | T004 | ☐ |
 | T041 | 新增 service 层核心功能测试 | T010-T018 | ☐ |
 | T042 | spec analysis 一致性检查 | T001-T041 | ☐ |
+
+## Phase 7: 配置导入与 Ftrace 配置化
+
+> 对应需求变更 003-ui-enhancement C-001 / C-002
+
+| ID | 任务 | 依赖 | 状态 |
+|----|------|------|------|
+| T043 | `models.py` — `AdvancedConfig` 新增 `available_ftrace_events: list[str]` 字段，含 16 个默认事件 | T004 | ☐ |
+| T044 | `assets/config.json` + `data/config.json` — 新增 `available_ftrace_events` 默认列表 | T043 | ☐ |
+| T045 | `service.py` — `reload_config` 支持 `config_path: Path \| None` 可选参数 | T007 | ☐ |
+| T046 | `gui_tab.py` — `__init__` 加载初始配置到 `self._cfg`；Ftrace 面板从 `self._cfg.advanced.available_ftrace_events` 构建（移除硬编码） | T043 | ☐ |
+| T047 | `gui_tab.py` — `_on_import_config` 改用 `QFileDialog.getOpenFileName`，默认目录 `data/`，筛选 `*.json` | T045 | ☐ |
+| T048 | `gui_tab.py` — 新增 `_load_config_from_file(file_path)` 通用加载方法（替代旧 `_reload_config_from_disk`） | T045, T046 | ☐ |
+| T049 | `gui_tab.py` — 新增 `_rebuild_ftrace_panel(cfg)` 动态重建 Ftrace 面板（清除旧 widget、创建新 widget、`show()` + `_relayout()`） | T046 | ☐ |
+| T050 | `gui_tab.py` — 顶部统一 `from pathlib import Path`，移除局部 import | T047 | ☐ |
+| T051 | `gui_tab.py` — 导入 `QFileDialog` 到 PyQt6.QtWidgets import 列表 | T047 | ☐ |
+| T052 | 验证：导入配置后 Duration/Buffer/Atrace/Ftrace 全部正确刷新 | T047-T049 | ☐ |
+| T053 | 验证：导入含不同 `available_ftrace_events` 的配置后面板动态重建 | T049 | ☐ |
+| T054 | spec analysis — Phase 7 与 003-ui-enhancement spec + Constitution 一致性检查 | T043-T053 | ☐ |
