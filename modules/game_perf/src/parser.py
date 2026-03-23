@@ -159,6 +159,34 @@ class GamePerfParser:
                     )
                     self.freq_rows.append(row)
 
+    @staticmethod
+    def parse_freq_index_pair(raw: str) -> tuple[int, int] | None:
+        """解析 ``a_b`` 为两个整数，保留书写顺序；非法或缺 ``_`` 时返回 None。"""
+        s = (raw or "").strip().replace(" ", "")
+        if "_" not in s:
+            return None
+        try:
+            a_str, b_str = s.split("_", 1)
+            return (int(a_str), int(b_str))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def format_freq_index_str(raw: str) -> str | None:
+        """去掉空格后返回与输入顺序一致的 ``a_b`` 字符串；非法时返回 None。"""
+        p = GamePerfParser.parse_freq_index_pair(raw)
+        if p is None:
+            return None
+        a, b = p
+        return f"{a}_{b}"
+
+    def _cluster_freq_count(self, cluster: str) -> int:
+        if cluster == "Gpu" and self.gpu_cluster:
+            return len(self.gpu_cluster.frequencies)
+        if cluster in self.cpu_clusters:
+            return len(self.cpu_clusters[cluster].frequencies)
+        return 0
+
     def _build_freq_row(
         self,
         alias: str, pkg: str, mode: str,
@@ -174,19 +202,22 @@ class GamePerfParser:
         for item in tl.findall("item"):
             item_name = item.get("name", "")
             freq_range = (item.text or "").strip()
-            if not freq_range or "_" not in freq_range:
+            pair = self.parse_freq_index_pair(freq_range)
+            if pair is None:
                 continue
             try:
-                start, end = map(int, freq_range.split("_"))
+                a, b = pair
+                stored = f"{a}_{b}"
+                lo, hi = min(a, b), max(a, b)
                 if item_name == "Gold" and "Gold" in self.cpu_clusters:
-                    gold_idx = freq_range
-                    gold_min, gold_max = self._resolve_freq_range("Gold", start, end)
+                    gold_idx = stored
+                    gold_min, gold_max = self._resolve_freq_range("Gold", lo, hi)
                 elif item_name == "Prime" and "Prime" in self.cpu_clusters:
-                    prime_idx = freq_range
-                    prime_min, prime_max = self._resolve_freq_range("Prime", start, end)
+                    prime_idx = stored
+                    prime_min, prime_max = self._resolve_freq_range("Prime", lo, hi)
                 elif item_name == "Gpu" and self.gpu_cluster:
-                    gpu_idx = freq_range
-                    gpu_min, gpu_max = self._resolve_freq_range("Gpu", start, end)
+                    gpu_idx = stored
+                    gpu_min, gpu_max = self._resolve_freq_range("Gpu", lo, hi)
             except Exception:
                 continue
 
@@ -253,24 +284,35 @@ class GamePerfParser:
     # ------------------------------------------------------------------
 
     def update_freq_index(self, row_idx: int, cluster: str, new_index: str) -> bool:
-        """更新频率索引并反算 Hz"""
+        """更新频率索引并反算 Hz。
+
+        Gold/Prime/Gpu 串内顺序均与界面一致：``下限下标_上限下标``（左列→右列）。
+        频段仍按 ``min..max`` 下标取连续区间算 Hz（与 PreEnv 列表顺序无关）。
+        """
         if row_idx < 0 or row_idx >= len(self.freq_rows):
             return False
         row = self.freq_rows[row_idx]
-        try:
-            start, end = map(int, new_index.split("_"))
-        except (ValueError, AttributeError):
+        pair = self.parse_freq_index_pair(new_index)
+        if pair is None:
             return False
+        n = self._cluster_freq_count(cluster)
+        if n <= 0:
+            return False
+        a, b = pair
+        a = max(0, min(a, n - 1))
+        b = max(0, min(b, n - 1))
+        stored = f"{a}_{b}"
+        lo, hi = min(a, b), max(a, b)
 
         if cluster == "Gold":
-            row.gold_index = new_index
-            row.gold_min, row.gold_max = self._resolve_freq_range("Gold", start, end)
+            row.gold_index = stored
+            row.gold_min, row.gold_max = self._resolve_freq_range("Gold", lo, hi)
         elif cluster == "Prime":
-            row.prime_index = new_index
-            row.prime_min, row.prime_max = self._resolve_freq_range("Prime", start, end)
+            row.prime_index = stored
+            row.prime_min, row.prime_max = self._resolve_freq_range("Prime", lo, hi)
         elif cluster == "Gpu":
-            row.gpu_index = new_index
-            row.gpu_min, row.gpu_max = self._resolve_freq_range("Gpu", start, end)
+            row.gpu_index = stored
+            row.gpu_min, row.gpu_max = self._resolve_freq_range("Gpu", lo, hi)
         else:
             return False
 

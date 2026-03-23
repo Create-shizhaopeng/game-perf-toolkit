@@ -105,6 +105,31 @@ class TestFreqIndexEdit:
         ok = parser_copy.update_freq_index(0, "Gold", "invalid")
         assert not ok
 
+    def test_update_gold_index_order_preserved(self, parser_copy):
+        """大_小 按界面顺序原样写入；Hz 仍按 min..max 下标连续区间计算。"""
+        ok = parser_copy.update_freq_index(0, "Gold", "10_3")
+        assert ok
+        row = parser_copy.freq_rows[0]
+        assert row.gold_index == "10_3"
+        lo, hi = 3, 10
+        assert row.gold_min == min(parser_copy.cpu_clusters["Gold"].frequencies[lo : hi + 1])
+        assert row.gold_max == max(parser_copy.cpu_clusters["Gold"].frequencies[lo : hi + 1])
+
+    def test_update_gpu_index_order_preserved(self, parser_copy):
+        """Gpu 与 Gold/Prime 相同：串为 下限下标_上限下标，顺序原样保留。"""
+        ok = parser_copy.update_freq_index(0, "Gpu", "1_4")
+        assert ok
+        row = parser_copy.freq_rows[0]
+        assert row.gpu_index == "1_4"
+        lo, hi = 1, 4
+        vals = parser_copy.gpu_cluster.frequencies[lo : hi + 1]
+        assert row.gpu_min == min(vals)
+        assert row.gpu_max == max(vals)
+
+    def test_format_freq_index_preserves_order(self):
+        assert GamePerfParser.format_freq_index_str(" 10_3 ") == "10_3"
+        assert GamePerfParser.parse_freq_index_pair("10_3") == (10, 3)
+
 
 class TestTemperatureEdit:
     def test_update_temperature(self, parser_copy):
