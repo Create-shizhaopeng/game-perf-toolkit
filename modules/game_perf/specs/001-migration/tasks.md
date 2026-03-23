@@ -8,6 +8,7 @@
 - [Phase 4: GUI Tab 页](#phase-4-gui-tab-页)
 - [Phase 5: 插件集成](#phase-5-插件集成)
 - [Phase 6: 测试 + 回归验证](#phase-6-测试--回归验证)
+- [Phase 7: 连接后自动载入设备配置（US6）](#phase-7-连接后自动载入设备配置us6)
 - [FR ↔ Task Traceability](#fr--task-traceability)
 
 ---
@@ -198,6 +199,32 @@
 
 ---
 
+## Phase 7: 连接后自动载入设备配置（US6）
+
+### T025 — 数据模型：文档来源与自动拉取结果 *(P1)*
+- [x] `models.py`：`GamePerfDocumentOrigin`、`AutoDevicePullResult`（或等价命名）与 spec Key Entities 对齐
+- **依赖**: 无
+
+### T026 — Service：从设备读取 gameperfconfig *(P1)*
+- [ ] `GamePerfService`（或模块内专用方法）提供从设备标准路径读取内容的同步 API，供 GUI 线程包装调用；错误分类满足 FR-015
+- **依赖**: T025, T008
+
+### T027 — GUI：触发时机 + 进度 + 来源展示 *(P1)*
+- [ ] 设备连接/选中、Tab 进入等时机触发自动拉取（见 spec Assumptions US6）；后台或可取消进度（FR-017）
+- [ ] 配置文件区域展示「来自设备 / 本地」等标识（FR-014）；失败不阻塞全局（FR-015）
+- **依赖**: T026, T012
+
+### T028 — 未保存编辑与自动拉取冲突 *(P1)*
+- [ ] 脏文档时不静默覆盖，确认对话框或等效流程（FR-016、US6）
+- **依赖**: T027
+
+### T029 — 测试 *(P2)*
+- [ ] `test_service.py`：mock AdbManager 覆盖成功、文件不存在、权限/传输失败
+- [ ] `test_gui` 或交互文档：脏状态下连接设备不覆盖（可与手动验收二选一，优先单测）
+- **依赖**: T026-T028
+
+---
+
 ## FR ↔ Task Traceability
 
 | FR | 任务 |
@@ -214,3 +241,9 @@
 | FR-010 | T006 |
 | FR-011 | T009, T010, T011 |
 | FR-012 | T005, T006, T017, T018 |
+| FR-013 | T026, T027 |
+| FR-014 | T025, T027 |
+| FR-015 | T026, T027 |
+| FR-016 | T028 |
+| FR-017 | T027 |
+| FR-018 | T026（复用既有解析/校验） |

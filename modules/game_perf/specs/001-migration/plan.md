@@ -61,3 +61,15 @@
 4. **Phase 4**: GUI Tab 页（gui_tab.py）
 5. **Phase 5**: 插件集成（plugin.py）
 6. **Phase 6**: 测试 + 回归验证
+
+## 规格补充：连接后自动载入设备配置（US6 / FR-013～018）
+
+**目标**：设备连接可用后，自动从 `/system/etc/gameperfconfig.xml` 拉取并载入 GUI，失败可诊断、成功标明「来自设备」、有未保存本地编辑时不静默覆盖。详见同目录 [spec.md](./spec.md) 中 User Story 6 与 Assumptions（US6）。
+
+**实现要点（规划，不修改 `toolkit/`）**：
+
+- `GamePerfService`（或等价层）增加「从设备读取配置到临时文件/内存」的同步能力，复用现有 `AdbManager` 拉取语义；GUI 用 `QThread` 包装。
+- `GamePerfTab` 监听设备连接/选中变化与 Tab 可见性，按 spec 触发自动拉取；与 `models.py` 中来源枚举配合更新状态栏或配置文件行旁标识。
+- 与现有「配置文件路径」、`Push` 前写回逻辑对齐，避免双路径语义冲突。
+
+任务拆解见 [tasks.md](./tasks.md) **Phase 7**。

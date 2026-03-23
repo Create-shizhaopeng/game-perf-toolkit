@@ -4,7 +4,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import Any
+
+
+class GamePerfDocumentOrigin(str, Enum):
+    """当前配置缓冲区的文档来源（手动打开 / 自动从设备载入）。"""
+
+    NONE = "none"
+    LOCAL_FILE = "local_file"
+    DEVICE = "device"
+
+
+@dataclass
+class AutoDevicePullResult:
+    """从设备自动拉取 `gameperfconfig.xml` 的结果摘要（GUI 状态栏 / 日志）。
+
+    failure_kind：失败粗分类，如 missing、permission、transport、parse；成功时为 None。
+    """
+
+    ok: bool
+    user_message: str = ""
+    origin: GamePerfDocumentOrigin = GamePerfDocumentOrigin.NONE
+    failure_kind: str | None = None
 
 
 @dataclass
