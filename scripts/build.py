@@ -25,18 +25,23 @@ VERSION = "1.0.0"
 
 
 def _collect_modules() -> list[tuple[str, str]]:
-    """收集 modules/ 下所有模块文件（排除 __pycache__、data/、.specify/out/）。"""
+    """收集 modules/ 下运行时所需文件（排除开发文档、测试、IDE 配置等）。"""
     datas: list[tuple[str, str]] = []
     modules_dir = ROOT / "modules"
 
-    skip_dirs = {"__pycache__", "data", ".pytest_cache", "out"}
+    skip_dirs = {
+        "__pycache__", "data", ".pytest_cache", "out",
+        ".cursor", ".specify", "specs", "tests", "fixtures",
+        "image",
+    }
+    skip_exts = {".pyc", ".pyo", ".md"}
 
     for dirpath, dirnames, filenames in os.walk(modules_dir):
         dirnames[:] = [d for d in dirnames if d not in skip_dirs]
 
         rel = Path(dirpath).relative_to(ROOT)
         for f in filenames:
-            if f.endswith((".pyc", ".pyo")):
+            if any(f.endswith(ext) for ext in skip_exts):
                 continue
             src = str(Path(dirpath) / f)
             dst = str(rel)
