@@ -30,6 +30,33 @@ STANDARD_HZ = sorted(VSYNC_MS.keys())
 
 RATE_SWITCH_MIN_DURATION_NS = 1_000_000_000  # 刷新率切换最短持续时长：1 秒
 
+_popen_patched = False
+
+
+def _patch_popen_no_window() -> None:
+    """PyInstaller --noconsole 模式下 monkey-patch subprocess.Popen。
+
+    perfetto 的 load_shell 使用 CREATE_NEW_PROCESS_GROUP 但不带
+    CREATE_NO_WINDOW，导致子进程弹出黑色控制台并可能因无效句柄崩溃。
+    此补丁在 frozen 环境中自动追加 CREATE_NO_WINDOW 标志。
+    """
+    global _popen_patched
+    if _popen_patched or not getattr(sys, "frozen", False) or sys.platform != "win32":
+        return
+    _popen_patched = True
+
+    import subprocess
+    _OrigPopen = subprocess.Popen
+
+    class _NWPopen(_OrigPopen):  # type: ignore[misc]
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            flags = kwargs.get("creationflags", 0)
+            flags |= subprocess.CREATE_NO_WINDOW
+            kwargs["creationflags"] = flags
+            super().__init__(*args, **kwargs)
+
+    subprocess.Popen = _NWPopen  # type: ignore[misc]
+
 
 def _get_stand_vsync_ms(refresh_rate_hz: int | float) -> float:
     if refresh_rate_hz in VSYNC_MS:
@@ -200,6 +227,8 @@ def parse_trace_with_tp(
         from perfetto.trace_processor import TraceProcessor
     except ImportError as e:
         raise RuntimeError("请安装 perfetto: pip install perfetto") from e
+
+    _patch_popen_no_window()
 
     result = {
         "trace_path": str(trace_path.resolve()),
@@ -484,10 +513,25 @@ def parse_trace_with_tp(
             result["jank_times"] = jank_times
             result["frame_num"] = frame_num
     except Exception:
-        tp.close()
+        _safe_close_tp(tp)
         raise
 
     return result, tp
+
+
+def _safe_close_tp(tp: Any) -> None:
+    """安全关闭 TraceProcessor，忽略 --noconsole 模式下的无效句柄错误。"""
+    try:
+        if hasattr(tp, "subprocess") and tp.subprocess:
+            tp.subprocess.kill()
+            tp.subprocess.wait(timeout=5)
+            tp.subprocess = None
+        if hasattr(tp, "http"):
+            tp.http.conn.close()
+    except OSError:
+        pass
+    except Exception:
+        pass
 
 
 def parse_trace(
@@ -499,7 +543,7 @@ def parse_trace(
     向后兼容包装：解析后自动关闭 tp，仅返回 result_dict。
     """
     result, tp = parse_trace_with_tp(trace_path, refresh_rate_preset, process_filter)
-    tp.close()
+    _safe_close_tp(tp)
     return result
 
 

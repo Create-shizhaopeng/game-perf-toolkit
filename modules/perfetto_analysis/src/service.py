@@ -145,7 +145,7 @@ class PerfettoAnalysisService:
             if summary:
                 report_writer.write_summary_data_file(report_dir, summary)
 
-            tp.close()
+            self._safe_close_tp(tp)
 
             elapsed = time.perf_counter() - t0
             dims_completed = list(analysis_result.get("dimensions_completed", []))
@@ -328,7 +328,7 @@ class PerfettoAnalysisService:
                         process_name=process_name,
                     )
 
-            tp.close()
+            self._safe_close_tp(tp)
 
             elapsed = time.perf_counter() - t0
             detected = process_name or self._extract_process_from_track(
@@ -592,6 +592,21 @@ class PerfettoAnalysisService:
         if self._root_dir:
             return str(self._root_dir / "data" / "output" / "trace_report")
         return str(self._data_dir / "output" / "trace_report")
+
+    @staticmethod
+    def _safe_close_tp(tp: Any) -> None:
+        """安全关闭 TraceProcessor，忽略 --noconsole 模式下的无效句柄错误。"""
+        try:
+            if hasattr(tp, "subprocess") and tp.subprocess:
+                tp.subprocess.kill()
+                tp.subprocess.wait(timeout=5)
+                tp.subprocess = None
+            if hasattr(tp, "http"):
+                tp.http.conn.close()
+        except OSError:
+            pass
+        except Exception:
+            pass
 
     def _notify(self, callback: ProgressCallback, message: str) -> None:
         if callback:

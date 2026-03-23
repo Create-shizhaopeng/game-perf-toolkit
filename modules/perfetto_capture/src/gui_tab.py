@@ -241,10 +241,11 @@ class PerfettoCaptureTab(BaseTab):
         config_row.addSpacing(12)
         config_row.addWidget(QLabel("Buffer"))
         self._spin_buffer = QSpinBox()
-        self._spin_buffer.setRange(8192, 524288)
-        self._spin_buffer.setValue(32768)
+        self._spin_buffer.setRange(91136, 512000)
+        self._spin_buffer.setValue(91136)
         self._spin_buffer.setFixedSize(spin_width, ctrl_height)
         self._spin_buffer.setEnabled(False)
+        self._spin_buffer.setReadOnly(True)
         config_row.addWidget(self._spin_buffer)
         config_row.addWidget(QLabel("KB"))
         config_row.addSpacing(12)
@@ -301,11 +302,13 @@ class PerfettoCaptureTab(BaseTab):
             short = evt.split("/")[-1] if "/" in evt else evt
             cb = QCheckBox(short)
             cb.setToolTip(evt)
+            cb.toggled.connect(self._update_auto_buffer)
             self._ftrace_checks[evt] = cb
             self._ftrace_inner.add_widget(cb)
         ftrace_group_layout.addWidget(self._ftrace_inner)
         self._ftrace_group.setVisible(False)
         self._chk_ftrace.toggled.connect(self._ftrace_group.setVisible)
+        self._chk_ftrace.toggled.connect(lambda _: self._update_auto_buffer())
         scroll_layout.addWidget(self._ftrace_group)
 
         scroll_layout.addStretch()
@@ -503,6 +506,7 @@ class PerfettoCaptureTab(BaseTab):
             short = evt.split("/")[-1] if "/" in evt else evt
             cb = QCheckBox(short)
             cb.setToolTip(evt)
+            cb.toggled.connect(self._update_auto_buffer)
             self._ftrace_checks[evt] = cb
             self._ftrace_inner.add_widget(cb)
             cb.show()
@@ -510,19 +514,24 @@ class PerfettoCaptureTab(BaseTab):
 
     def _on_manual_buffer_toggled(self, checked: bool) -> None:
         self._spin_buffer.setEnabled(checked)
+        self._spin_buffer.setReadOnly(not checked)
         if not checked:
             self._update_auto_buffer()
 
     def _update_auto_buffer(self) -> None:
-        """根据 duration 和 categories 自动计算 buffer 并更新 SpinBox。"""
+        """根据 duration、atrace categories 和 ftrace events 自动计算 buffer。"""
         if self._chk_manual_buffer.isChecked():
             return
         if not self._service:
             return
         cat_count = sum(1 for cb in self._cat_checks.values() if cb.isChecked())
+        ftrace_count = 0
+        if self._chk_ftrace.isChecked():
+            ftrace_count = sum(1 for cb in self._ftrace_checks.values() if cb.isChecked())
         buf = self._service.calculate_buffer_size(
             duration_sec=self._spin_duration.value(),
             category_count=cat_count,
+            ftrace_count=ftrace_count,
         )
         self._spin_buffer.blockSignals(True)
         self._spin_buffer.setValue(buf)
@@ -748,7 +757,8 @@ class PerfettoCaptureTab(BaseTab):
         self._btn_save.setEnabled(capturing)
         self._btn_stop.setEnabled(capturing)
         self._spin_duration.setEnabled(not capturing)
-        self._spin_buffer.setEnabled(not capturing)
+        manual = self._chk_manual_buffer.isChecked()
+        self._spin_buffer.setEnabled(not capturing and manual)
         for cb in self._cat_checks.values():
             cb.setEnabled(not capturing)
 

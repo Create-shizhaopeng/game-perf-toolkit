@@ -4,8 +4,27 @@ from __future__ import annotations
 
 import faulthandler
 import logging
+import os
 import sys
 from pathlib import Path
+
+
+def _fix_frozen_stdio() -> None:
+    """PyInstaller --noconsole 模式下 sys.stdout/stderr 可能为 None 或无效句柄。
+
+    用 os.devnull 替换，防止 logging / subprocess / print 触发
+    [WinError 6] ERROR_INVALID_HANDLE。
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    devnull = open(os.devnull, "w", encoding="utf-8")
+    if sys.stdout is None:
+        sys.stdout = devnull
+    if sys.stderr is None:
+        sys.stderr = devnull
+
+
+_fix_frozen_stdio()
 
 if sys.stderr is not None:
     faulthandler.enable()

@@ -69,6 +69,12 @@ class PerfettoCaptureService:
 
     @property
     def output_dir(self) -> Path:
+        """开发环境: modules/perfetto_capture/data/output/trace
+        打包模式: <exe_dir>/output/trace/
+        """
+        import sys
+        if getattr(sys, "frozen", False):
+            return Path(sys.executable).parent / "output" / "trace"
         return self._data_dir / self.config.output_dir / "trace"
 
     def reload_config(self, config_path: Path | None = None) -> CaptureConfig:
@@ -79,34 +85,38 @@ class PerfettoCaptureService:
         return save_config(self.config)
 
     # ── Buffer 自动计算 ─────────────────────────────────────────
+    # 实测校准（游戏场景）: 90 MB / 10s ≈ 9 MB/s (7 cats)
 
-    LIGHT_RATE_KB_PER_SEC = 1400
-    HEAVY_PER_CAT_RATE_KB = 400
+    LIGHT_RATE_KB_PER_SEC = 9200
+    HEAVY_PER_CAT_RATE_KB = 2600
     LIGHT_CAT_THRESHOLD = 7
-    MIN_BUFFER_KB = 8192
-    MAX_BUFFER_KB = 524288
+    MIN_BUFFER_KB = 91136       # 89 MB floor
+    MAX_BUFFER_KB = 512000      # 500 MB ceiling
 
     def calculate_buffer_size(
         self,
         duration_sec: int | None = None,
         category_count: int | None = None,
         safety_factor: float | None = None,
+        ftrace_count: int | None = None,
     ) -> int:
-        """根据抓取时长和 category 数量自动计算合理的 buffer 大小（KB）。
+        """根据抓取时长、atrace category 和 ftrace event 数量自动计算 buffer（KB）。
 
-        使用分段速率模型（基于实测校准）：
-        - ≤7 categories (sched/gfx/view/input/am/wm/freq): ~1400 KB/s 整体
-        - >7 categories: 每增加一个重量级 category 额外 +400 KB/s
+        实测校准（游戏场景）:
+        - 90 MB / 10s ≈ 9200 KB/s（7 categories 默认配置）
+        - >7 tags: 每增加一个 tag 额外 +2600 KB/s（从 19-cat 实测数据等比缩放）
         """
         cfg = self.config
         dur = duration_sec if duration_sec is not None else cfg.duration_sec
         n_cats = category_count if category_count is not None else len(cfg.atrace_categories)
+        n_ftrace = ftrace_count if ftrace_count is not None else len(cfg.advanced.ftrace_events)
         sf = safety_factor if safety_factor is not None else cfg.buffer_safety_factor
 
-        if n_cats <= self.LIGHT_CAT_THRESHOLD:
+        total_tags = n_cats + n_ftrace
+        if total_tags <= self.LIGHT_CAT_THRESHOLD:
             estimated_rate = self.LIGHT_RATE_KB_PER_SEC
         else:
-            heavy_count = n_cats - self.LIGHT_CAT_THRESHOLD
+            heavy_count = total_tags - self.LIGHT_CAT_THRESHOLD
             estimated_rate = self.LIGHT_RATE_KB_PER_SEC + heavy_count * self.HEAVY_PER_CAT_RATE_KB
 
         raw = int(estimated_rate * dur * sf)

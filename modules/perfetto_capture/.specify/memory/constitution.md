@@ -5,6 +5,8 @@
 - [继承关系](#继承关系)
 - [模块边界约束](#模块边界约束)
 - [技术约束](#技术约束)
+  - [Ring buffer 自动估算](#ring-buffer-自动估算)
+  - [Trace 本机输出路径](#trace-本机输出路径)
 - [开发规范](#开发规范)
 
 ## 继承关系
@@ -23,7 +25,17 @@
 
 ## 技术约束
 
-[根据模块需求补充具体技术约束]
+### Ring buffer 自动估算
+
+- 标定基线速率 **LIGHT_RATE_KB_PER_SEC = 9200**（KB/s），对应实测 **约 90 MB / 10 s** 量级
+- 超过轻载阈值后每 tag 附加速率 **HEAVY_PER_CAT_RATE_KB = 2600**（KB/s）；**tag** 含 atrace category 与 ftrace event，二者均计入 `total_tags`（与 `calculate_buffer_size(..., ftrace_count=...)` 一致）
+- 安全系数 **buffer_safety_factor** 默认 **1.2**；结果 clamp 至 **MIN_BUFFER_KB = 91136**、**MAX_BUFFER_KB = 512000**（约 89 MB～500 MB）
+- 具体公式与验收口径以 `specs/002-auto-buffer/spec.md` 为准
+
+### Trace 本机输出路径
+
+- **开发模式**：MUST 将会话导出写入模块数据目录下 **`data/output/trace/`**（`output` 为配置项 `output_dir`）
+- **EXE 打包模式（`sys.frozen`）**：MUST 使用 **`<可执行文件所在目录>/output/trace/`** 作为根目录，保证用户与安装目录同盘可写、路径稳定
 
 ## 开发规范
 
