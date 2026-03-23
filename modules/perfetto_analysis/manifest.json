@@ -1,0 +1,30 @@
+{
+  "name": "perfetto_analysis",
+  "display_name": "Perfetto 解析分析",
+  "version": "0.1.0",
+  "description": "Perfetto trace 丢帧解析与多维度卡顿归因分析，支持 Phase 1 丢帧定位和 Phase 2 结构化数据拆解",
+  "author": "LV Game Toolkit Team",
+  "python_requires": ">=3.12",
+  "entry": "src.plugin",
+  "service_entry": "src.service",
+  "dependencies": {
+    "toolkit_modules": [],
+    "python_packages": ["perfetto>=0.16.0"]
+  },
+  "provides": {
+    "gui": true,
+    "cli": true,
+    "agent_tools": true,
+    "workflow_stages": ["parse", "analyze", "export"]
+  },
+  "cli_namespace": "analysis",
+  "events": {
+    "emits": ["perfetto_analysis.analysis_complete"],
+    "listens": ["perfetto_capture.trace_ready"]
+  },
+  "database": {
+    "migrations": "src/migrations/",
+    "tables": ["pa_analysis_tasks"]
+  },
+  "external_tools": ["perfetto"]
+}

@@ -1,0 +1,12 @@
+{
+  "output_dir": "output/trace_report",
+  "db_path": "perfetto_analysis.db",
+  "refresh_rate_preset": 60,
+  "app_type": "auto",
+  "analyze_top": 20,
+  "slow_binder_threshold_ms": 2.0,
+  "sched_latency_threshold_ms": 1.0,
+  "auto_analyze_on_capture": false,
+  "default_process": "",
+  "dimensions": []
+}
