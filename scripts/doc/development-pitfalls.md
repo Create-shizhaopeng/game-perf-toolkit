@@ -25,6 +25,9 @@
 - [P16 — Perfetto 同 UID 并发会话上限与残留进程](#p16--perfetto-同-uid-并发会话上限与残留进程)
 - [P17 — Ring buffer clone 覆盖的时间范围](#p17--ring-buffer-clone-覆盖的时间范围)
 - [P18 — PyQt6 设备监控与间歇性 COM 错误 (0x8001010d)](#p18--pyqt6-设备监控与间歇性-com-错误-0x8001010d)
+- [P19 — QComboBox 自定义 Popup 导致 Windows 崩溃](#p19--qcombobox-自定义-popup-导致-windows-崩溃)
+- [P20 — SQLite 跨线程连接访问](#p20--sqlite-跨线程连接访问)
+- [P21 — QTableWidget 操作按钮刷新竞态](#p21--qtablewidget-操作按钮刷新竞态)
 
 ---
 
@@ -574,3 +577,110 @@ GUI/自动化流程在启动新会话前，可增加「检测并提示清理」�
 
 - 不将 **P01** 与 **P18** 混为一谈：先排除 context 错键，再查监控路径上的线程边界
 - 与 **P05** 联动审查：所有从非 GUI 线程到界面的路径必须只有 signal/slot
+
+---
+
+## P19 — QComboBox 自定义 Popup 导致 Windows 崩溃
+
+### 现象
+
+使用 QComboBox 的子类实现多选下拉（override `hidePopup` 使其不自动关闭），在 Windows 上启动时即崩溃，报 `Windows fatal exception: code 0x8001010d`（COM 线程错误）。
+
+### 根因
+
+重写 `QComboBox.hidePopup()` 为空操作会破坏 Qt 内部的 popup 生命周期管理。Qt 在 Windows 上依赖 COM 机制管理弹出窗口（popup），当 `hidePopup` 被阻止时，内部状态机与 COM 线程之间产生不一致，导致跨线程 COM 调用崩溃。
+
+### 修复方案
+
+不使用 QComboBox 实现多选下拉，改用 QPushButton + QMenu 组合：
+
+```python
+class _PersistentMenu(QMenu):
+    """点击可勾选项后保持打开，点击其他区域才关闭。"""
+    def mouseReleaseEvent(self, event):
+        action = self.activeAction()
+        if action and action.isCheckable():
+            action.trigger()
+            return
+        super().mouseReleaseEvent(event)
+
+class _DimensionSelector(QPushButton):
+    def __init__(self, parent=None):
+        super().__init__("全部维度 ▾", parent)
+        self._menu = _PersistentMenu(self)
+        # 添加可勾选 action ...
+        self.clicked.connect(self._show_menu)
+
+    def _show_menu(self):
+        pos = self.mapToGlobal(self.rect().bottomLeft())
+        self._menu.popup(pos)
+```
+
+### 预防措施
+
+- MUST NOT override QComboBox.showPopup / hidePopup 来阻止关闭行为
+- 需要多选下拉时，使用 QPushButton + QMenu（checkable action）方案
+- QMenu 的 `mouseReleaseEvent` 可以安全地阻止关闭，因为 QMenu 的 popup 机制与 QComboBox 不同
+
+---
+
+## P20 — SQLite 跨线程连接访问
+
+### 现象
+
+从 QThread 工作线程中使用主线程创建的 SQLite 连接执行写入操作时，报 `sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread`。
+
+### 根因
+
+Python `sqlite3` 模块默认设置 `check_same_thread=True`，创建连接的线程与使用连接的线程不同时会抛出异常。toolkit 的 `DatabaseManager.connection` 属性在主线程创建连接，工作线程无法复用。
+
+### 修复方案
+
+工作线程中需要写入数据库时，创建独立的 `sqlite3.connect()` 连接：
+
+```python
+def _write_task_to_shared_db(self, task):
+    db_path = self._db_manager.connection  # 仅获取路径信息
+    conn = sqlite3.connect(str(db_path))   # 独立连接
+    try:
+        conn.execute("INSERT ...", (...))
+        conn.commit()
+    finally:
+        conn.close()
+```
+
+主线程读取可继续使用 `db_manager.connection` 属性。
+
+### 预防措施
+
+- 工作线程写入共享 DB MUST 使用独立连接
+- 不要将主线程的 DB 连接对象传递到工作线程
+- 考虑使用 `check_same_thread=False`（需自行保证线程安全）仅在确认不会并发写入时
+
+---
+
+## P21 — QTableWidget 操作按钮刷新竞态
+
+### 现象
+
+点击 QTableWidget 行内的操作按钮（如删除、重新分析）后，程序崩溃（`STATUS_STACK_BUFFER_OVERRUN`），或按钮回调中访问的表格行数据已被清除。
+
+### 根因
+
+按钮的 `clicked` 信号回调中直接调用了 `_refresh_history()`（清空并重填表格），此时按钮控件本身尚在事件处理中。Qt 在按钮被销毁后尝试完成事件循环，导致 use-after-free。
+
+### 修复方案
+
+使用 `QTimer.singleShot` 将刷新操作延迟到当前事件处理完成后：
+
+```python
+def _delete_report(self, report_dir, trace_path, task_id):
+    # ... 删除逻辑 ...
+    QTimer.singleShot(100, self._refresh_history)  # 延迟刷新
+```
+
+### 预防措施
+
+- QTableWidget 行内按钮的回调中 MUST NOT 直接清空/重填表格
+- 任何可能销毁当前控件的操作 MUST 延迟执行（`QTimer.singleShot`）
+- 推荐延迟时间 100ms，足以让当前事件循环完成

@@ -25,18 +25,23 @@ VERSION = "1.0.0"
 
 
 def _collect_modules() -> list[tuple[str, str]]:
-    """收集 modules/ 下所有模块文件（排除 __pycache__、data/、.specify/out/）。"""
+    """收集 modules/ 下运行时所需文件（排除开发文档、测试、IDE 配置等）。"""
     datas: list[tuple[str, str]] = []
     modules_dir = ROOT / "modules"
 
-    skip_dirs = {"__pycache__", "data", ".pytest_cache", "out"}
+    skip_dirs = {
+        "__pycache__", "data", ".pytest_cache", "out",
+        ".cursor", ".specify", "specs", "tests", "fixtures",
+        "image",
+    }
+    skip_exts = {".pyc", ".pyo", ".md"}
 
     for dirpath, dirnames, filenames in os.walk(modules_dir):
         dirnames[:] = [d for d in dirnames if d not in skip_dirs]
 
         rel = Path(dirpath).relative_to(ROOT)
         for f in filenames:
-            if f.endswith((".pyc", ".pyo")):
+            if any(f.endswith(ext) for ext in skip_exts):
                 continue
             src = str(Path(dirpath) / f)
             dst = str(rel)
@@ -73,6 +78,22 @@ def _collect_assets() -> list[tuple[str, str]]:
     return datas
 
 
+def _collect_perfetto_data() -> list[tuple[str, str]]:
+    """收集 perfetto 包的非 Python 数据文件（descriptor 等）。"""
+    import importlib.util
+    datas: list[tuple[str, str]] = []
+    spec = importlib.util.find_spec("perfetto")
+    if spec and spec.submodule_search_locations:
+        pkg_dir = Path(spec.submodule_search_locations[0])
+        data_exts = {".descriptor", ".proto"}
+        for dirpath, _, filenames in os.walk(pkg_dir):
+            rel = Path(dirpath).relative_to(pkg_dir.parent)
+            for f in filenames:
+                if any(f.endswith(ext) for ext in data_exts):
+                    datas.append((str(Path(dirpath) / f), str(rel)))
+    return datas
+
+
 def _hidden_imports() -> list[str]:
     """动态模块的 hidden imports。"""
     imports = [
@@ -94,6 +115,20 @@ def _hidden_imports() -> list[str]:
         "toolkit.gui.base_tab",
         "toolkit.gui.styles",
         "toolkit.cli.main",
+        "perfetto",
+        "perfetto.trace_processor",
+        "perfetto.trace_processor.api",
+        "perfetto.trace_processor.http",
+        "perfetto.trace_processor.shell",
+        "perfetto.trace_processor.platform",
+        "perfetto.trace_processor.protos",
+        "perfetto.common",
+        "perfetto.common.exceptions",
+        "perfetto.common.query_result_iterator",
+        "perfetto.trace_uri_resolver",
+        "perfetto.trace_uri_resolver.path",
+        "perfetto.trace_uri_resolver.registry",
+        "perfetto.trace_uri_resolver.resolver",
     ]
 
     modules_dir = ROOT / "modules"
@@ -115,7 +150,8 @@ def _hidden_imports() -> list[str]:
 
 def build(console: bool, name: str) -> None:
     """执行一次 PyInstaller 构建。"""
-    datas = _collect_modules() + _collect_data_dir() + _collect_assets()
+    datas = (_collect_modules() + _collect_data_dir()
+             + _collect_assets() + _collect_perfetto_data())
     hidden = _hidden_imports()
 
     icon_path = ROOT / "assets" / "app.ico"
@@ -133,7 +169,7 @@ def build(console: bool, name: str) -> None:
     if icon_path.exists():
         cmd.append(f"--icon={icon_path}")
 
-    for exclude in ["PIL", "Pillow", "numpy", "pandas", "matplotlib"]:
+    for exclude in ["PIL", "Pillow", "matplotlib"]:
         cmd.append(f"--exclude-module={exclude}")
 
     if not console:
@@ -148,7 +184,7 @@ def build(console: bool, name: str) -> None:
     cmd.append(str(ENTRY_POINT))
 
     print(f"\n{'='*60}")
-    print(f"  构建 {name} ({'GUI' if not console else 'CLI'}) ...")
+    print(f"  Building {name} ({'GUI' if not console else 'CLI'}) ...")
     print(f"{'='*60}\n")
 
     subprocess.run(cmd, check=True, cwd=str(ROOT))
@@ -164,7 +200,23 @@ def package() -> None:
     cli_dir = DIST_DIR / "toolkit-cli"
 
     if pkg_dir.exists():
-        shutil.rmtree(pkg_dir)
+        import time as _time
+        removed = False
+        for attempt in range(3):
+            try:
+                shutil.rmtree(pkg_dir)
+                removed = True
+                break
+            except PermissionError:
+                if attempt < 2:
+                    print(f"  Retry {attempt + 1}/3: waiting for locked files...")
+                    _time.sleep(3)
+        if not removed:
+            suffix = _time.strftime("%H%M%S")
+            alt_name = f"{pkg_name}-{suffix}"
+            print(f"  WARNING: Cannot remove old package dir, using: {alt_name}")
+            pkg_dir = DIST_DIR / alt_name
+            pkg_name = alt_name
 
     if gui_dir.exists():
         shutil.copytree(gui_dir, pkg_dir)
@@ -189,7 +241,7 @@ def package() -> None:
         shutil.make_archive(archive_base, "gztar", str(DIST_DIR), pkg_name)
 
     print(f"\n{'='*60}")
-    print(f"  ✓ 打包完成: {archive_base}.{ext}")
+    print(f"  OK - build complete: {archive_base}.{ext}")
     print(f"{'='*60}\n")
 
 

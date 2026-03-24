@@ -56,7 +56,7 @@ class CaptureConfig(BaseModel):
     duration_sec: int = Field(default=15, ge=1)
     buffer_size_kb: int | None = Field(default=None, ge=1)
     buffer_manual_override: bool = False
-    buffer_safety_factor: float = Field(default=1.05, ge=1.0, le=5.0)
+    buffer_safety_factor: float = Field(default=1.2, ge=1.0, le=5.0)
     device_trace_dir: str = "/data/misc/perfetto-traces"
     output_dir: str = "output"
     target: TargetConfig = Field(default_factory=TargetConfig)

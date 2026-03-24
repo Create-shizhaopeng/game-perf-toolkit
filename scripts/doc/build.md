@@ -67,10 +67,27 @@ dist/
 
 | 函数 | 收集内容 | 说明 |
 |------|----------|------|
-| `_collect_modules()` | `modules/` 下所有模块文件 | 排除 `__pycache__`、`data`、`.pytest_cache`、`out` |
+| `_collect_modules()` | `modules/` 下运行时所需文件 | 仅包含 `src/`、`assets/`、`manifest.json`、`migrations/` 等运行时文件 |
 | `_collect_data_dir()` | `data/` 目录结构 | 仅 `.gitkeep` 和必要模板 |
 | `_collect_assets()` | `assets/` 资源文件 | 图标（`app.ico`）、Logo 等 |
 | `_hidden_imports()` | 动态导入声明 | toolkit 核心、GUI、CLI 及各模块 src |
+
+### _collect_modules 排除规则
+
+| 排除项 | 类型 | 理由 |
+|--------|------|------|
+| `__pycache__` | 目录 | Python 编译缓存 |
+| `data` | 目录 | 运行时生成的数据（DB、用户配置），不打入产物 |
+| `.pytest_cache` | 目录 | pytest 缓存 |
+| `out` | 目录 | speckit 输出 |
+| `.cursor` | 目录 | Cursor IDE 命令配置 |
+| `.specify` | 目录 | Speckit 模板、脚本、constitution |
+| `specs` | 目录 | 规格文档（spec/plan/tasks/ui-design） |
+| `tests` | 目录 | 测试文件 |
+| `fixtures` | 目录 | 测试数据 |
+| `image` | 目录 | 文档配图（README 等），运行时不需要 |
+| `*.md` | 文件 | 开发文档（AGENTS.md 等） |
+| `*.pyc` / `*.pyo` | 文件 | 编译字节码 |
 
 新增模块或资源目录时，需在对应的收集函数中注册。
 
@@ -84,7 +101,7 @@ dist/
 常见问题：
 - **ModuleNotFoundError**: 新增模块后需确认 `_hidden_imports()` 覆盖
 - **缺少 DLL**: 检查 PyQt6 安装完整性
-- **文件过大**: 构建脚本已排除 PIL、numpy、pandas、matplotlib 等不必要包
+- **文件过大**: 构建脚本已排除 PIL、numpy、pandas、matplotlib 等不必要包；模块目录中的开发文档、测试、IDE 配置等已排除（详见排除规则表）
 - **GUI 启动崩溃**: 检查 `sys.stdout/stderr` 为 None 的情况（参见踩坑指南 P13）
 - **资源文件找不到**: 确认 `_collect_assets()` 已包含新增资源（参见踩坑指南 P14）
 

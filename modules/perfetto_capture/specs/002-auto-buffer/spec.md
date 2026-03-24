@@ -13,6 +13,7 @@
   - [FR-005: 双缓冲区保留进程名](#fr-005-双缓冲区保留进程名)
 - [数据模型变更](#数据模型变更)
 - [计算公式](#计算公式)
+  - [分档与 tag 计数](#分档与-tag-计数)
 - [验收标准](#验收标准)
 
 ## 背景与动机
@@ -29,8 +30,8 @@
 
 ## 需求概述
 
-采用**方案 A：自动计算 buffer 大小**，根据 `duration_sec` 和已选 atrace categories 
-数量，自动推算合理的 `buffer_size_kb`，使 RING_BUFFER 尽量能容纳用户期望时长的数据。
+采用**方案 A：自动计算 buffer 大小**，根据 `duration_sec`、已选 atrace categories 数量及
+ftrace events 数量（合计为 tag 总数），自动推算合理的 `buffer_size_kb`，使 RING_BUFFER 尽量能容纳用户期望时长的数据。
 
 ## 与双模抓取引擎的关系
 
@@ -42,29 +43,33 @@
 
 - `buffer_size_kb` 根据以下参数自动计算：
   - `duration_sec`：用户设定的期望抓取时长
-  - `category_count`：已选 atrace categories 数量
-  - `rate_factor`：每个 category 的估算速率因子（KB/s/category）
+  - **tag 总数**：已选 **atrace categories 数量** 与 **ftrace events 数量** 之和（二者均计入负载）
+  - `LIGHT_RATE_KB_PER_SEC`：轻载档基线速率（KB/s）
+  - `HEAVY_PER_CAT_RATE_KB`：超过轻载阈值后，每多一个 tag 的附加速率（KB/s/tag）
   - `safety_factor`：安全系数
+- `calculate_buffer_size(...)` 支持显式传入 `ftrace_count`；未传时从配置中的 `advanced.ftrace_events` 读取
 
 ### FR-002: 安全系数与上下限
 
-- 安全系数默认 **1.05**（在实测校准速率基础上略留余量）
-- 计算结果设下限 8192 KB（8MB），防止 buffer 过小
-- 计算结果设上限 524288 KB（512MB），防止 buffer 过大
+- 安全系数默认 **1.2**（在实测校准速率基础上留余量，覆盖突发）
+- 计算结果设下限 **91136 KB（约 89 MB）**，防止 buffer 过小
+- 计算结果设上限 **512000 KB（500 MB）**，防止 buffer 过大
 - 用户可通过配置文件调整安全系数（有效范围以 Pydantic 模型为准）
 
 ### FR-003: GUI 联动显示
 
 - `duration_sec` SpinBox 变化时实时更新 `buffer_size_kb` 显示值
 - Categories 勾选变化时实时更新 `buffer_size_kb` 显示值
-- Buffer 值显示为只读/计算值，带标注"(自动)"
-- 提供"手动覆盖"复选框切换到手动模式
+- **Ftrace Events** 复选框勾选/取消或具体 event 勾选变化时，同样触发 buffer 重新计算
+- Buffer SpinBox 取值范围 **91136～512000 KB**（约 89 MB～500 MB）；未勾选「手动设置 Buffer」时为 **只读**（`setReadOnly(True)`），与计算值联动
+- 自动模式下 Buffer 带标注「(自动)」；提供「手动覆盖」复选框切换到可编辑模式
+- 抓取中（`_set_capturing`）切换状态时，须正确处理手动覆盖开关与只读态，避免误改计算值
 
 ### FR-004: 手动覆盖支持
 
-- 用户可勾选"手动设置 Buffer"切换到手动模式
-- 手动模式下 Buffer SpinBox 可编辑
-- 手动模式下不随 duration/categories 变化
+- 用户可勾选「手动设置 Buffer」切换到手动模式
+- 手动模式下 Buffer SpinBox **可编辑**（解除只读）；未勾选时保持只读并与自动计算联动（见 FR-003）
+- 手动模式下不随 duration、categories、ftrace 勾选变化而改写用户固定值
 - 手动设置的值持久化到用户配置
 
 ### FR-005: 双缓冲区保留进程名
@@ -81,47 +86,58 @@ class CaptureConfig(BaseModel):
     duration_sec: int = 15
     buffer_size_kb: int | None = None  # None 表示自动计算
     buffer_manual_override: bool = False  # True 时使用 buffer_size_kb 固定值
-    buffer_safety_factor: float = 1.05
+    buffer_safety_factor: float = 1.2
     # ... 其余字段不变
 ```
 
 ## 计算公式
 
+记 **tag 总数** `total_tags = len(atrace_categories) + len(ftrace_events)`；`calculate_buffer_size` 的 `ftrace_count` 参数对应上式中的 ftrace 项（未传则从配置读取）。
+
 ```
-base_rate_kb_per_sec = 1400  # sched 基线速率 (KB/s)
-per_category_rate = 270      # 每个 category 额外速率 (KB/s)
+LIGHT_RATE_KB_PER_SEC = 9200       # 轻载档基线 (KB/s)，来自实测 90 MB / 10 s
+HEAVY_PER_CAT_RATE_KB = 2600       # 每多一个 tag 的附加速率 (KB/s)
+LIGHT_CAT_THRESHOLD = 7            # 轻载档 tag 上限（含）
 
-estimated_rate = base_rate_kb_per_sec + category_count × per_category_rate
-buffer_size_kb = duration_sec × estimated_rate × safety_factor
+若 total_tags ≤ 7:
+    estimated_rate = LIGHT_RATE_KB_PER_SEC
+否则:
+    heavy_count = total_tags - LIGHT_CAT_THRESHOLD
+    estimated_rate = LIGHT_RATE_KB_PER_SEC + heavy_count × HEAVY_PER_CAT_RATE_KB
 
-buffer_size_kb = clamp(buffer_size_kb, 8192, 524288)
+raw_kb = int(duration_sec × estimated_rate × safety_factor)
+buffer_size_kb = clamp(raw_kb, MIN_BUFFER_KB, MAX_BUFFER_KB)
+其中 MIN_BUFFER_KB = 91136，MAX_BUFFER_KB = 512000
 ```
 
-**实测校准数据**（设备 HA2DL5M3，游戏运行中，10 秒抓取）：
+### 分档与 tag 计数
 
-| 配置 | 大小 (MB) | 总速率 (KB/s) | 每 category (KB/s) |
-|------|-----------|--------------|---------------------|
-| 1 cat (sched) | 13.21 | 1,353 | 1,353 |
-| 3 cats | 13.29 | 1,361 | 454 |
-| 7 cats | 13.54 | 1,386 | 198 |
-| 19 cats | 60.50 | 6,195 | 326 |
+- **tag** 同时包含 atrace category 与 ftrace event，二者均增加 trace 写入负载，须一并计入 `total_tags`。
+- **轻载档**（`total_tags ≤ 7`）：仅使用基线速率 9200 KB/s。
+- **重载档**（`total_tags > 7`）：对超出 7 的每个 tag 追加 2600 KB/s（由多 category 实测曲线等比缩放得到）。
+
+**实测校准数据**（游戏场景，重新标定）：
+
+| 数据点 | 说明 |
+|--------|------|
+| **90 MB / 10 s** | 约 **9200 KB/s**，作为 7 个 atrace category 典型负载下的基线速率 |
 
 **参数选择依据**：
-- `base_rate = 1400`：sched 实测 1,353，向上取整
-- `per_category_rate = 270`：(6195-1353)/(19-1) ≈ 269，取 270
-- `safety_factor = 1.05`：在已用实测速率拟合的前提下，仅增加约 5% 余量以覆盖短时突发波动（默认值；用户可在配置中调高）
+- `LIGHT_RATE_KB_PER_SEC = 9200`：由 **90 MB / 10 s** 换算（≈ 9.2 MB/s）
+- `HEAVY_PER_CAT_RATE_KB = 2600`：高 category 数场景下相对轻载档的增量，与历史多 cat 实测趋势一致并缩放
+- `safety_factor` 默认 **1.2**：在标定速率上预留约 20% 余量以覆盖波动（可在配置中调整）
 
-示例：7 categories × 15 秒 × 安全系数 1.05  
-→ (1400 + 7×270) × 15 × 1.05 = 51,817.5 KB ≈ 50.6 MB
+示例：**7 个 atrace categories**、**0 个 ftrace event**、`duration_sec = 15`、**安全系数 1.2**（轻载档）  
+→ `9200 × 15 × 1.2 = 165600` KB ≈ **161.7 MB**
 
 ## 验收标准
 
 | ID | 验收标准 | 通过条件 |
 |----|---------|---------|
 | AC-01 | 默认模式下 buffer 随 duration 自动更新 | 修改 duration，buffer 值实时变化 |
-| AC-02 | 默认模式下 buffer 随 categories 数量更新 | 增减 categories，buffer 值实时变化 |
-| AC-03 | 自动计算值在合理范围 | 15s/7cat/默认安全系数 → 约 48–52MB 量级 |
-| AC-04 | 上下限生效 | 极短时长不低于 8MB，极长时长不超过 512MB |
+| AC-02 | 默认模式下 buffer 随 tag 负载更新 | 增减 categories 或 ftrace events，buffer 值实时变化 |
+| AC-03 | 自动计算值在合理范围 | 15s / 7 atrace categories / 无 ftrace / 默认安全系数 1.2 → 约 **160–170 MB** 量级 |
+| AC-04 | 上下限生效 | 自动计算结果不低于 **约 89 MB（91136 KB）**，不高于 **500 MB（512000 KB）** |
 | AC-05 | 手动模式可覆盖 | 勾选手动后 buffer 可自由编辑 |
 | AC-06 | 配置持久化 | 手动模式和值保存到用户配置，重启恢复 |
 | AC-07 | 进程名不丢失 | 高负载场景下抓取的 trace 仍有完整进程名 |

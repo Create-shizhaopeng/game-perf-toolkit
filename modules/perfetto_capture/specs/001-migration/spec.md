@@ -88,10 +88,11 @@ ConfigManager、EventBus 等基础设施，同时保留原有的全部业务逻�
 
 - 配置文件存放在模块 `assets/config.json`（默认模板）
 - 用户自定义配置存放在模块 `data/config.json`
-- 配置项包含: atrace_categories, duration_sec, buffer_size_kb, device_trace_dir, output_dir,
+- 配置项包含: atrace_categories, duration_sec, buffer_size_kb, buffer_manual_override, buffer_safety_factor（默认 **1.2**，与 [002-auto-buffer](../002-auto-buffer/spec.md) 一致）, device_trace_dir, output_dir,
   target (mode/packages), advanced (ftrace_events, sampling, raw_perfetto_config), export, logging
 - 使用 Pydantic 模型进行验证（替代原手写 validate_config）
 - 配置加载优先级: 用户自定义 > 默认模板
+- **Trace 本机输出根目录（环境感知）**：开发模式下为 `modules/perfetto_capture/data/output/trace/`（其中 `output` 来自配置项 `output_dir`，默认值为 `"output"`）；PyInstaller 打包且 `sys.frozen` 为真时，为 **`<exe 所在目录>/output/trace/`**。会话级导出子目录命名规则不变（见 FR-003）。
 
 ### FR-002 Perfetto 抓取引擎
 
@@ -116,7 +117,7 @@ ConfigManager、EventBus 等基础设施，同时保留原有的全部业务逻�
 - 一轮会话 = 启动 → 多次保存 → 导出退出
 - 保存行为依 `CaptureMode` 分流（clone 路径 vs stop→record→restart）
 - trace 文件名: `{MODEL}_{SOC}_{YYYYMMDD}_{HHMMSS}.perfetto-trace`
-- 会话导出目录: `data/output/{yyyy_MM_dd-HH_mm_ss}/`
+- 会话导出目录：位于 **Trace 本机输出根目录**（见 FR-001 环境感知说明）下的 `{yyyy_MM_dd-HH_mm_ss}/` 子目录
 - 断线时产生的故障段文件添加 `FAULT_` 前缀
 
 ### FR-004 设备断线重连
@@ -142,8 +143,10 @@ ConfigManager、EventBus 等基础设施，同时保留原有的全部业务逻�
 
 - Tab 标签: "Perfetto 抓取"，带图标
 - 配置区（可滚动）：核心参数、Categories、Ftrace（详见 [003-ui-enhancement](../003-ui-enhancement/spec.md)）
+- **Buffer**：SpinBox 取值范围 **91136～512000 KB**（约 89 MB～500 MB）；未勾选「手动设置 Buffer」时为 **只读**（`setReadOnly(True)`），与自动计算值联动；勾选手动后可编辑
+- **Ftrace Events**：勾选变化会触发 **buffer 自动重算**（与 atrace categories、duration 一致）；与 [002-auto-buffer](../002-auto-buffer/spec.md) 中 tag 计数规则一致
 - 底部固定区：状态、开始/保存/停止/放弃、日志 — 不在滚动区域内
-- 后台抓取线程使用 QThread + pyqtSignal
+- 后台抓取线程使用 QThread + pyqtSignal；进入/退出抓取态（`_set_capturing`）时需正确处理手动 Buffer 开关与 SpinBox 只读态
 
 ### FR-007 事件通知
 
@@ -217,6 +220,8 @@ class CaptureSession:
 | SC-010 | GUI 状态面板实时更新 | 功能 |
 | SC-011 | 双模引擎按能力选择 Snapshot 或 Autobuffer | 功能 |
 | SC-012 | 开始抓取前清理陈旧 perfetto 会话，避免并发会话数报错 | 功能 |
+
+> **说明（SC-002）**：仍要求 pbtxt **不含 `duration_ms`**（当前实现未新增该字段）。与自动 buffer 相关的默认值与 Trace 本机输出路径约定以 **002-auto-buffer** 及上文 **FR-001** 为准。
 
 ## 非目标
 
