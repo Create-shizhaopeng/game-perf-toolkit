@@ -1,6 +1,6 @@
 # Implementation Plan: PerfDog 导入与性能洞察报告
 
-**Branch**: `004-perfdog-import-insights` | **Date**: 2026-03-22 | **Spec**: [spec.md](./spec.md) | **Tasks**: [tasks.md](./tasks.md)
+**Branch**: `004-perfdog-import-insights` | **Date**: 2026-03-23 | **Spec**: [spec.md](./spec.md) | **Tasks**: [tasks.md](./tasks.md)
 
 > **布局规范**：与 [specs/003-adb-enhancement](../003-adb-enhancement/) 一致，本目录 **仅保留** `spec.md`、`plan.md`、`tasks.md` 三份主文件；原 `data-model.md`、`research.md`、`contracts/*`、`quickstart.md`、`implementation.md`、`checklists/*` 已 **合并入本 plan** 对应章节。
 
@@ -26,7 +26,7 @@
 
 ## 概述
 
-在 **Toolkit**（`lv-game-toolkit`，PyQt6）中提供 **「PerfDog分析」** Tab：拖拽 PerfDog **.xlsx/.xlsm**，后台解析 `all` / `@FrameInfo` / `@ThreadCpuUsageData`，生成摘要、洞察、启发式建议；支持 Markdown 导出/复制、双会话对比、与 **游戏性能配置** 的联合分析。核心逻辑在 **`toolkit/core/perfdog`** 与 **`toolkit/core/joint_assessment`**；UI 在 **`modules/perfdog_insights`**（`PerfdogInsightsService` 门面 + QThread）。
+在 **Toolkit**（`lv-game-toolkit`，PyQt6）中提供 **「PerfDog分析」** Tab：拖拽 PerfDog **.xlsx/.xlsm**，后台解析 `all` / `@FrameInfo` / `@ThreadCpuUsageData`，生成摘要与**异常洞察**（**当前 [spec.md](./spec.md)**：本期**不**强制交付可执行建议 / 联合侧策略修改建议；见 spec「本期交付边界」）；支持 Markdown 导出/复制、双会话对比、与 **游戏性能配置** 的联合分析。核心逻辑在 **`toolkit/core/perfdog`** 与 **`toolkit/core/joint_assessment`**；UI 在 **`modules/perfdog_insights`**（`PerfdogInsightsService` 门面 + QThread）。**实现侧**若仍保留 `recommendations` / 联合建议生成代码，须与 spec 对齐（隐藏或标为后续里程碑，避免与 **FR-007 / JA-FR-004** 本期表述冲突）。
 
 ## 技术上下文
 
@@ -793,6 +793,7 @@ plan 初稿中的 `lv-game-toolkit/source/core`、`source/ui` 在仓库中 **未
 | 2026-03-22 | **`perfdog_insights` 分层重构**：`PerfdogInsightsService` 承载解析/联合/对比/导出拼接；`analysis_worker` / `joint_worker` 注入 Service；`gui_tab` 不再直接 `import load_and_analyze` / `compare_reports`；新增 **`AGENTS.md`**；与本 plan **API 契约** 两节及联合契约 **§5** 修订表已同步。 |
 | 2026-03-22 | **模块目录与 `game_perf` 对齐**：新增 **`tests/`**、**`fixtures/`**、**`assets/`**、**`specs/004-perfdog-import-insights/`**（链到根规格）、**`.specify/`** / **`.cursor/commands/`**（自 game_perf 复制）；**`src/models.py`**；**`run_all_tests.py`** 登记本模块测试组；**`AGENTS.md`** 改为与 game_perf 同结构。 |
 | 2026-03-22 | **规格三文件规范**：与 `specs/003-adb-enhancement` 对齐，本目录仅保留 `spec.md` / `plan.md` / `tasks.md`；原 `data-model.md`、`research.md`、`contracts/*`、`quickstart.md`、`implementation.md`、`checklists/*`、`image/*` 已并入 **本 plan** 对应章节；`tasks.md` / `spec.md` / 模块索引与 `doc/README` 链接已改为 **plan 锚点**。 |
+| 2026-03-23 | **规格收窄**（见 [spec.md](./spec.md) 修订记录）：本期以 **异常定位与矛盾描述** 为主，**暂缓**可执行建议清单与联合 **策略修改建议**；本 plan **概述**已同步。实现与 UI 若仍展示建议区，应按 spec 收敛或标为后续里程碑。 |
 
 ---
 

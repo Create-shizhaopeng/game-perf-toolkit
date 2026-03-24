@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-import os
 import json
+import os
+import shutil
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
 from modules.game_perf.src.service import GamePerfService, XmlValidationError, is_valid_config_filename
-from modules.game_perf.src.models import PushRecord
+from modules.game_perf.src.models import GamePerfDocumentOrigin, PushRecord
 from toolkit.sdk.exceptions import AdbError
 
 FIXTURE_DIR = os.path.join(
@@ -127,3 +129,68 @@ class TestResetFlow:
     def test_reset_no_backup_raises(self, svc):
         with pytest.raises(AdbError, match="无可用备份"):
             svc.reset("DEV001")
+
+
+class TestPullDeviceConfig:
+    def test_empty_serial(self, svc):
+        r = svc.pull_device_config_from_device("")
+        assert r.ok is False
+        assert r.failure_kind == "transport"
+        assert "序列号" in r.user_message
+
+    def test_success_writes_valid_xml(self, svc, mock_adb, tmp_path):
+        def pull_impl(serial, remote, local_path):
+            shutil.copy(FIXTURE_XML, local_path)
+            return ""
+
+        mock_adb.pull.side_effect = pull_impl
+        r = svc.pull_device_config_from_device("DEV001")
+        assert r.ok is True
+        assert r.origin == GamePerfDocumentOrigin.DEVICE
+        assert r.local_path and os.path.isfile(r.local_path)
+        assert "pull_cache" in r.local_path.replace("\\", "/")
+
+    def test_adb_error_classified_missing(self, svc, mock_adb):
+        mock_adb.pull.side_effect = AdbError(
+            "adb: error: remote object '/system/etc/gameperfconfig.xml' does not exist"
+        )
+        r = svc.pull_device_config_from_device("DEV001")
+        assert r.ok is False
+        assert r.failure_kind == "missing"
+
+    def test_adb_error_classified_permission(self, svc, mock_adb):
+        mock_adb.pull.side_effect = AdbError("Permission denied")
+        r = svc.pull_device_config_from_device("DEV001")
+        assert r.ok is False
+        assert r.failure_kind == "permission"
+
+    def test_invalid_xml_after_pull(self, svc, mock_adb):
+        def pull_bad(serial, remote, local_path):
+            Path(local_path).write_text("<root><broken>", encoding="utf-8")
+            return ""
+
+        mock_adb.pull.side_effect = pull_bad
+        r = svc.pull_device_config_from_device("DEV001")
+        assert r.ok is False
+        assert r.failure_kind == "parse"
+
+    def test_pull_cancelled_before_adb(self, svc, mock_adb):
+        ev = threading.Event()
+        ev.set()
+        r = svc.pull_device_config_from_device("DEV001", cancel_event=ev)
+        assert r.ok is False
+        assert r.failure_kind == "cancelled"
+        mock_adb.root.assert_not_called()
+
+    def test_pull_cancelled_after_root(self, svc, mock_adb):
+        ev = threading.Event()
+
+        def root_side_effect(serial):
+            ev.set()
+            return ""
+
+        mock_adb.root.side_effect = root_side_effect
+        r = svc.pull_device_config_from_device("DEV001", cancel_event=ev)
+        assert r.ok is False
+        assert r.failure_kind == "cancelled"
+        mock_adb.remount.assert_not_called()

@@ -20,13 +20,15 @@ class GamePerfDocumentOrigin(str, Enum):
 class AutoDevicePullResult:
     """从设备自动拉取 `gameperfconfig.xml` 的结果摘要（GUI 状态栏 / 日志）。
 
-    failure_kind：失败粗分类，如 missing、permission、transport、parse；成功时为 None。
+    failure_kind：失败粗分类，如 missing、permission、transport、parse、cancelled；成功时为 None。
+    local_path：拉取成功后的本地可读路径；失败时为 None。
     """
 
     ok: bool
     user_message: str = ""
     origin: GamePerfDocumentOrigin = GamePerfDocumentOrigin.NONE
     failure_kind: str | None = None
+    local_path: str | None = None
 
 
 @dataclass

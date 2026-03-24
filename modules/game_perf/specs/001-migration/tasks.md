@@ -112,22 +112,20 @@
 - [x] 文件名校验：包含 "gameperfconfig" 且 .xml 后缀
 - **依赖**: 无
 
-### T013 — 游戏/模式过滤 + 备注 *(P1)*
-- [x] QComboBox × 2（游戏、模式）+ QLineEdit（备注）+ QPushButton（另存为）
+### T013 — 游戏/模式过滤 + 另存为 *(P1)*
+- [x] QComboBox × 2（游戏、模式）+ QPushButton（另存为）；推送备注不在主界面，见 Phase 7 Start 弹窗
 - [x] 切换游戏时更新模式列表
 - [x] 切换模式时刷新频率表和策略面板
 - **依赖**: T002
 
 ### T014 — 频率配置表 *(P1)*
 - [x] QTableWidget（11 列），从 parser 返回的 list[FreqRow] 填充
-- [x] 触发温度和索引列可编辑，其他列只读
-- [x] cellChanged 信号 → 调用 parser 编辑方法 → 刷新
+- [x] Gold/Prime/GPU 下限、上限为 QComboBox（PreEnv 全量频率，滚轮选取），变更后 `update_freq_index` 并刷新索引列
+- [x] 触发温度、索引列可编辑；cellChanged → parser → 刷新
 - **依赖**: T002, T003
 
-### T015 — 频率参考列表 *(P1)*
-- [x] 3 × QTextEdit（只读）：Gold、Prime、GPU 频率列表
-- [x] 从 parser.clusters 填充
-- [x] 自适应高度
+### T015 — 频率参考列表 *(P1)*（已移除侧栏）
+- [x] ~~3× QTextEdit 侧栏~~ 已删除；频率档位仅在 T014 表内上下限下拉展示（与 PreEnv 一致）
 - **依赖**: T002
 
 ### T016 — 策略面板 *(P1)*
@@ -206,21 +204,23 @@
 - **依赖**: 无
 
 ### T026 — Service：从设备读取 gameperfconfig *(P1)*
-- [ ] `GamePerfService`（或模块内专用方法）提供从设备标准路径读取内容的同步 API，供 GUI 线程包装调用；错误分类满足 FR-015
+- [x] `GamePerfService.pull_device_config_from_device` → `AutoDevicePullResult`（含 `local_path`、失败 `failure_kind`）；错误分类满足 FR-015
 - **依赖**: T025, T008
 
 ### T027 — GUI：触发时机 + 进度 + 来源展示 *(P1)*
-- [ ] 设备连接/选中、Tab 进入等时机触发自动拉取（见 spec Assumptions US6）；后台或可取消进度（FR-017）
-- [ ] 配置文件区域展示「来自设备 / 本地」等标识（FR-014）；失败不阻塞全局（FR-015）
+- [x] `on_devices_changed`（序列号变化时）与 `on_activated`（进入 Tab 且尚未加载时）触发 `pull_device_config_from_device`；`QThread` 后台执行；执行日志展示进度
+- [x] **FR-017**：自动拉取进行中显示「取消」按钮，置位 `threading.Event` 在各 adb 步骤间隙中止（单次 adb 阻塞内无法打断）
+- [x] 配置文件区「来源：设备 / 本地文件」标签（FR-014）；失败仅写日志，不阻塞 Tab（FR-015）
+- [x] **Start 推送**：点击 Start 先弹出**必填备注**对话框（预填上次成功提交的备注缓存），取消则不推送
 - **依赖**: T026, T012
 
 ### T028 — 未保存编辑与自动拉取冲突 *(P1)*
-- [ ] 脏文档时不静默覆盖，确认对话框或等效流程（FR-016、US6）
+- [x] `_document_dirty` + 自动拉取前 `QMessageBox` 确认（放弃并从设备载入 / 保留本地）（FR-016、US6）
 - **依赖**: T027
 
 ### T029 — 测试 *(P2)*
-- [ ] `test_service.py`：mock AdbManager 覆盖成功、文件不存在、权限/传输失败
-- [ ] `test_gui` 或交互文档：脏状态下连接设备不覆盖（可与手动验收二选一，优先单测）
+- [x] `test_service.py`：mock AdbManager 覆盖成功、不存在/权限/非法 XML、`cancel_event` 取消（见 `TestPullDeviceConfig`）
+- [x] GUI：无 pytest-qt；**手测** — ① 有未保存编辑时连设备须弹窗且不静默覆盖 ② 自动拉取时点「取消」须出现已取消日志 ③ Start 须弹备注框且空备注无法确定推送
 - **依赖**: T026-T028
 
 ---

@@ -1,6 +1,6 @@
 # PerfDog 分析（`perfdog_insights`）
 
-Toolkit 插件：离线导入 PerfDog **`.xlsx/.xlsm`**，生成摘要、洞察与建议；侧栏 **「PerfDog分析」**。结构与 **`game_perf`** 对齐（`specs/`、`tests/`、`fixtures/`、`assets/`、`.specify/`、`.cursor/`）。
+Toolkit 插件：离线导入 PerfDog **`.xlsx/.xlsm`**，生成摘要与**异常洞察**（当前规格不要求「可执行建议」章节；见仓库根目录 `specs/004-perfdog-import-insights/spec.md`）；侧栏 **「PerfDog分析」**。结构与 **`game_perf`** 对齐（`specs/`、`tests/`、`fixtures/`、`assets/`、`.specify/`、`.cursor/`）。
 
 ## 目录布局（与 `modules/game_perf` 同型）
 

@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import tempfile
+import threading
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from datetime import datetime
@@ -15,7 +16,12 @@ from datetime import datetime
 from toolkit.core.adb_manager import AdbManager
 from toolkit.sdk.exceptions import AdbError
 
-from .models import PushRecord, XmlErrorContext
+from .models import (
+    AutoDevicePullResult,
+    GamePerfDocumentOrigin,
+    PushRecord,
+    XmlErrorContext,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +210,151 @@ class GamePerfService:
         return os.path.isfile(self._get_backup_path(serial))
 
     # ------------------------------------------------------------------
+    # 从设备拉取配置（US6 / T026）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _pull_cancelled_result(local_path: str, cache_dir: str) -> AutoDevicePullResult:
+        GamePerfService._cleanup_pull_target(local_path, cache_dir)
+        return AutoDevicePullResult(
+            ok=False,
+            user_message="已取消从设备拉取。",
+            failure_kind="cancelled",
+        )
+
+    def pull_device_config_from_device(
+        self,
+        serial: str,
+        on_progress: ProgressCallback = None,
+        cancel_event: threading.Event | None = None,
+    ) -> AutoDevicePullResult:
+        """将设备上的 ``gameperfconfig.xml`` 拉到本地缓存目录并校验 XML。
+
+        与 push 前半段一致：root → remount → setenforce → adb pull，供 GUI 在后台线程调用。
+        成功时 ``local_path`` 指向 ``data_dir/pull_cache/<serial>/gameperfconfig.xml``。
+        ``cancel_event`` 置位后会在各步骤间隙中止（无法打断单次 adb 阻塞调用）。
+        """
+        serial = (serial or "").strip()
+        if not serial:
+            return AutoDevicePullResult(
+                ok=False,
+                user_message="未检测到设备序列号，请连接设备后重试。",
+                failure_kind="transport",
+            )
+
+        cache_dir = os.path.join(self._data_dir, "pull_cache", self._safe_serial_dir(serial))
+        local_path = os.path.join(cache_dir, "gameperfconfig.xml")
+        os.makedirs(cache_dir, exist_ok=True)
+
+        def cancelled() -> bool:
+            return cancel_event is not None and cancel_event.is_set()
+
+        try:
+            if cancelled():
+                return self._pull_cancelled_result(local_path, cache_dir)
+
+            self._notify(on_progress, "[拉取 1/5] adb root...")
+            self._adb.root(serial)
+            self._notify(on_progress, "✓ adb root 成功")
+            if cancelled():
+                return self._pull_cancelled_result(local_path, cache_dir)
+
+            self._notify(on_progress, "[拉取 2/5] adb remount...")
+            self._adb.remount(serial, on_progress=on_progress)
+            self._notify(on_progress, "✓ adb remount 成功")
+            if cancelled():
+                return self._pull_cancelled_result(local_path, cache_dir)
+
+            self._notify(on_progress, "[拉取 3/5] setenforce 0...")
+            self._adb.shell(serial, "setenforce 0")
+            self._notify(on_progress, "✓ setenforce 0 成功")
+            if cancelled():
+                return self._pull_cancelled_result(local_path, cache_dir)
+
+            self._notify(on_progress, f"[拉取 4/5] pull → {local_path}...")
+            self._adb.pull(serial, REMOTE_CONFIG_PATH, local_path)
+            self._notify(on_progress, "✓ pull 成功")
+            if cancelled():
+                return self._pull_cancelled_result(local_path, cache_dir)
+        except AdbError as e:
+            self._cleanup_pull_target(local_path, cache_dir)
+            kind, msg = self._classify_device_pull_error(e)
+            return AutoDevicePullResult(
+                ok=False,
+                user_message=msg,
+                failure_kind=kind,
+            )
+        except Exception as e:
+            logger.exception("pull_device_config_from_device 未预期异常")
+            self._cleanup_pull_target(local_path, cache_dir)
+            return AutoDevicePullResult(
+                ok=False,
+                user_message=f"从设备拉取失败：{e}",
+                failure_kind="transport",
+            )
+
+        if cancelled():
+            return self._pull_cancelled_result(local_path, cache_dir)
+
+        self._notify(on_progress, "[拉取 5/5] 校验 XML...")
+        xml_err = self.validate_xml(local_path)
+        if xml_err is not None:
+            self._cleanup_pull_target(local_path, cache_dir)
+            return AutoDevicePullResult(
+                ok=False,
+                user_message=(
+                    "设备上的配置文件不是合法 XML，无法载入。"
+                    f"（第 {xml_err.error_line} 行：{xml_err.error_msg}）"
+                ),
+                failure_kind="parse",
+            )
+
+        self._notify(on_progress, "✓ XML 校验通过")
+        return AutoDevicePullResult(
+            ok=True,
+            user_message="已从设备载入 gameperfconfig.xml。",
+            origin=GamePerfDocumentOrigin.DEVICE,
+            local_path=local_path,
+        )
+
+    @staticmethod
+    def _classify_device_pull_error(exc: AdbError) -> tuple[str, str]:
+        text = str(exc).lower()
+        if (
+            "no such file" in text
+            or "does not exist" in text
+            or "not found" in text
+            or "remote object" in text
+        ):
+            return (
+                "missing",
+                "设备上未找到 /system/etc/gameperfconfig.xml，或路径不可访问。",
+            )
+        if "permission" in text or "denied" in text:
+            return (
+                "permission",
+                "无法读取设备上的配置文件，请确认设备已 root 且 remount 成功。",
+            )
+        return ("transport", f"从设备拉取失败：{exc}")
+
+    @staticmethod
+    def _cleanup_pull_target(local_path: str, cache_dir: str) -> None:
+        try:
+            if os.path.isfile(local_path):
+                os.unlink(local_path)
+        except OSError:
+            pass
+        try:
+            if os.path.isdir(cache_dir) and not os.listdir(cache_dir):
+                os.rmdir(cache_dir)
+        except OSError:
+            pass
+
+    @staticmethod
+    def _safe_serial_dir(serial: str) -> str:
+        return re.sub(r'[\\/:*?"<>|]', "_", serial)
+
+    # ------------------------------------------------------------------
     # XML 校验
     # ------------------------------------------------------------------
 
@@ -300,7 +451,7 @@ class GamePerfService:
         return backup_file
 
     def _get_backup_dir(self, serial: str) -> str:
-        safe_serial = re.sub(r'[\\/:*?"<>|]', "_", serial)
+        safe_serial = self._safe_serial_dir(serial)
         path = os.path.join(self._data_dir, "backups", safe_serial)
         os.makedirs(path, exist_ok=True)
         return path

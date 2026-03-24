@@ -10,7 +10,7 @@
 
 ## 模块概述
 
-离线导入 PerfDog **`.xlsx/.xlsm`**，生成会话摘要、洞察与建议；可选与 **游戏性能配置**（`game_perf` 写入的 `gp_joint_policy_snapshot`）做联合分析。
+离线导入 PerfDog **`.xlsx/.xlsm`**，生成会话摘要与**异常洞察**（**本期规格**不要求「可执行建议」章节）；可选与 **游戏性能配置**（`game_perf` 写入的 `gp_joint_policy_snapshot`）做联合分析（联合侧**本期**亦以矛盾/异常结论为主，见根目录 `specs/004-perfdog-import-insights/spec.md`）。
 
 ## 继承的全局规则
 
