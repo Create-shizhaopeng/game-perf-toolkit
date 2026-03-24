@@ -67,3 +67,6 @@ UI示意图/
 /model名修改重置工具.md
 
 # 架构设计文档已迁移至 doc/architecture/（纳入 Git 管理）
+
+# 归档的源代码仓库（含嵌套 .git，不纳入主仓管理）
+_archived_source/

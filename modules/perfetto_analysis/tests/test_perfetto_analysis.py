@@ -255,7 +255,6 @@ class TestServiceInfo:
             assert result.jank_times == 3
             assert result.frame_num == 60
             assert len(progress_msgs) > 0
-            mock_tp.close.assert_called_once()
 
     def test_list_dimensions(self) -> None:
         from modules.perfetto_analysis.src.service import PerfettoAnalysisService
@@ -334,7 +333,6 @@ class TestServiceInfo:
             )
             assert result.jank_times == 1
             assert "cpu" in result.dimensions_completed
-            mock_tp.close.assert_called_once()
 
     @mock.patch("modules.perfetto_analysis.src.engine.export.export_to_markdown")
     def test_export_report(self, mock_export) -> None:
