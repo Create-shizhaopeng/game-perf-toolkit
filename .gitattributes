@@ -1,3 +1,12 @@
+# 文本文件统一 LF（与 .editorconfig end_of_line=lf 一致）
+# 覆盖各协作者的 core.autocrlf 差异，消除幽灵修改
+* text=auto eol=lf
+
+# Windows 脚本保持 CRLF（与 .editorconfig 一致）
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
 # 明确二进制类型，避免协作者环境下 diff/合并异常
 *.dll binary
 *.exe binary
