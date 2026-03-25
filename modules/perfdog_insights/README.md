@@ -24,7 +24,6 @@ modules/perfdog_insights/
     ├── cli_commands.py
     ├── gui_tab.py
     ├── analysis_worker.py
-    ├── joint_worker.py
     └── migrations/           # manifest 占位（当前无 DB 表）
 ```
 
@@ -35,7 +34,7 @@ modules/perfdog_insights/
 | **正文**（spec / plan / tasks；数据模型与实现记录在 **plan** 内） | 仓库根 [`specs/004-perfdog-import-insights/`](../../specs/004-perfdog-import-insights/) |
 | **模块内索引** | [`specs/004-perfdog-import-insights/spec.md`](specs/004-perfdog-import-insights/spec.md)（链接到根目录，避免双份维护） |
 
-联合分析依赖 **游戏性能** Tab 写入的 **`gp_joint_policy_snapshot`**。环境变量 **`SPECIFY_FEATURE=004-perfdog-import-insights`** 用于根目录 Speckit。
+环境变量 **`SPECIFY_FEATURE=004-perfdog-import-insights`** 用于根目录 Speckit。
 
 ## 测试
 

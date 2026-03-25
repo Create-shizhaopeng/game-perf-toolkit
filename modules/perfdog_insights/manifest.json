@@ -2,7 +2,7 @@
   "name": "perfdog_insights",
   "display_name": "PerfDog分析",
   "version": "0.1.0",
-  "description": "导入 PerfDog Excel 导出，生成性能摘要、洞察与建议",
+  "description": "导入 PerfDog Excel 导出，生成性能摘要与异常洞察",
   "author": "",
   "python_requires": ">=3.12",
   "entry": "src.plugin",
@@ -10,7 +10,6 @@
   "dependencies": {
     "toolkit_modules": [
       "device_disguise",
-      "game_perf",
       "perfetto_capture"
     ],
     "python_packages": []

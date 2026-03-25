@@ -12,16 +12,6 @@ from toolkit.sdk.exceptions import (
     ToolkitError,
     WorkflowError,
 )
-from toolkit.sdk.joint_models import (
-    FindingRef,
-    FreqPolicyRow,
-    JointAssessmentReport,
-    JointAssessOptions,
-    JointSuggestion,
-    ObservationsSnapshot,
-    PolicySnapshot,
-    RecRef,
-)
 from toolkit.sdk.models import AnalysisResult, CLIResponse, DeviceInfo, PluginInfo
 from toolkit.sdk.protocols import AnalyzableService, ComparableService, ServiceProtocol
 from toolkit.sdk.utils import ensure_dir, read_json, write_json
@@ -31,14 +21,6 @@ __all__ = [
     "APP_NAME",
     "AdbError",
     "AnalysisResult",
-    "FindingRef",
-    "FreqPolicyRow",
-    "JointAssessmentReport",
-    "JointAssessOptions",
-    "JointSuggestion",
-    "ObservationsSnapshot",
-    "PolicySnapshot",
-    "RecRef",
     "AnalyzableService",
     "BasePlugin",
     "CLIResponse",

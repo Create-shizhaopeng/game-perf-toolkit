@@ -48,3 +48,13 @@ LOW_FPS_GPU_CLOCK_WINDOW_MEDIAN_VS_GLOBAL: float = 0.88
 
 # 最低 FPS 相对目标占比 ≥ 该值时，文案中强调「轻度落差」、严重度可降级
 LOW_FPS_MILD_RATIO_VS_TARGET: float = 0.88
+
+# spec 附录 B §6 / FR-008：导出与 GUI 共用的「方法与局限性」正文（Markdown 段落，空行分段）
+REPORT_METHODS_AND_LIMITATIONS_ZH: str = (
+    "本报告由规则与阈值驱动的启发式分析生成，用于辅助在数据中定位异常区段与指标对照，"
+    "不构成系统级或唯一根因结论，也不能替代专业排障裁定。\n\n"
+    "结论不能替代 Systrace、Perfetto、内核跟踪等工具的深入分析；若需认定性能根因，请结合实机跟踪、"
+    "业务场景与复测后再下判断。\n\n"
+    "PerfDog 导出列因版本而异；「尚未登记别名的列」仅表示内部别名表未映射该列名，"
+    "不代表 Excel 中未读入数据。洞察中若缺少某类字段会明确提示数据缺口或不可用。"
+)

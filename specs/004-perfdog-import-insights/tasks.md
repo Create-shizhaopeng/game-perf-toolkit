@@ -8,7 +8,12 @@
 **实现记录**: [plan.md#实现记录](./plan.md#实现记录) — 新增/变更代码时请同步更新 **§9 修订记录** 与相关小节。  
 **Prerequisites**: plan.md ✅ spec.md ✅  
 
-**框架约定**：与 `modules/game_perf`、`toolkit/gui/main_window.py` 插件钩子一致 —— 新能力放在 **`modules/perfdog_insights/`**（GUI + worker），可复用逻辑放在 **`toolkit/core/perfdog/`**（与 plan 中 `source/core/perfdog` 对应，实际仓库根为 `toolkit/`）。
+**实现对齐说明（2026-03-24，与 [spec.md](./spec.md)「本期交付边界」一致）**：
+
+- **单文件**：`load_and_analyze` **不再**填充 `AnalysisReport.recommendations`；`build_markdown` **不含**「建议」章节（`toolkit/core/perfdog/recommendations.py` 仍保留供后续里程碑）。**Phase 5 / T022** 历史勾选表示曾实现过 UI/导出建议；**本期产品以 spec 为准**。
+- **2026-03-24（产品变更）**：**已移除**联合分析（`joint_assessment`、`joint_models`、`joint_worker`、`joint_adapter`、`gp_joint_policy_snapshot` 等）；**Phase 12～16 勾选保留为历史**。PerfDog Tab **仅**解析导入的 **`.xlsx/.xlsm`**，保留对比/导出；**不**再依赖「游戏性能配置」Tab。
+
+**框架约定**：与 `toolkit/gui/main_window.py` 插件钩子一致 —— 能力放在 **`modules/perfdog_insights/`**（GUI + worker），可复用逻辑放在 **`toolkit/core/perfdog/`**（与 plan 中 `source/core/perfdog` 对应，实际仓库根为 `toolkit/`）。
 
 **Tests**：spec 未强制 TDD；Phase 11 提供**最小 pytest 夹具**，其余可后续补。
 
@@ -93,11 +98,11 @@
 
 ---
 
-## Phase 5: US4 — 建议清单
+## Phase 5: US4 — 建议清单（**〔暂缓 / 非本期〕**，见 [spec.md](./spec.md) US4）
 
-**Goal**: 展示 `recommendations`，与 finding id 对应（界面可用小字或折叠显示 id）。
+**Goal（后续里程碑）**: 展示 `recommendations`…
 
-- [X] T022 [US4] 在 `modules/perfdog_insights/src/gui_tab.py` 增加「建议」区域，展示 `AnalysisReport.recommendations`，文案保持启发式（**FR-008**）
+- [X] T022 [US4] ~~在 GUI 增加「建议」~~ **本期已收敛**：主报告 HTML **不**展示建议；`build_markdown` **不**含「建议」节；`recommendations` 字段保持 **[]**。历史任务仍勾选表示曾实现，**以 spec 本期边界为准**。
 
 ---
 
@@ -174,7 +179,7 @@
 - [X] T040 实现 `toolkit/core/joint_assessment/engine.py`：`assess_joint(policy, observations, *, options=None) -> JointAssessmentReport`；填充 **policy_section** / **observation_section** / **consistency_section**；**disclaimer** 固定模板句（启发式、需复测）；若 `options.skip_package_warning` 为 False 且两侧包名可比对且不等，可将说明写入 **warnings**（最终弹窗在 T047）；**T040 可先返回空的** `bindcore_suggestions` / `freq_suggestions`，由 **T049** 填满
 - [X] T041 实现 `toolkit/core/joint_assessment/export_md.py`：`build_joint_markdown(joint, *, base_report=None) -> str`（UTF-8；二级标题建议 `## 游戏性能策略联合分析`，子节与 `toolkit/core/perfdog/export_md.py` 列表风格一致）
 - [X] T042 新建 `toolkit/core/joint_assessment/__init__.py` 并导出 `build_observations_snapshot`、`assess_joint`、`build_joint_markdown`（在 T039–T041 完成后聚合 re-export；可在 `pyproject.toml` / 包发现中确保 `toolkit.core` 子包可被导入）
-- [X] T043 [P] 新增 `toolkit/core/joint_assessment/tests/test_joint_assess.py`：至少 2 例 — (1) 合成 `PolicySnapshot` + 构造最小 `ObservationsSnapshot`（或经 `build_observations_snapshot` 的 mock report）断言 **consistency_section** 非空；(2) 观测侧 `data_gaps` 含缺频点说明时，调用 **T049 完成后**的 `assess_joint` 断言 **freq_suggestions** 为空且 **freq_insufficient_reason** 非空（若 T043 提交早于 T049，可先测 T040 行为并在 T049 后补第二条断言）
+- [X] T043 [P] 新增 `toolkit/core/joint_assessment/tests/test_joint_assess.py`：至少 2 例 — (1) 合成 policy + report 断言 **consistency_section** 非空；(2) 缺频点（JA-SC-004）时断言 **freq/bindcore_suggestions** 为空且 **insufficient_reason** 均为 **None**（**本期**不写可执行方案建议）。
 
 ---
 
@@ -199,20 +204,15 @@
 
 ---
 
-## Phase 14: US10 — 绑核/频点建议与合并导出（子特性 P2）
+## Phase 14: US10 — 绑核/频点建议与合并导出（**〔暂缓 / 非本期〕**可执行建议，见 spec）
 
-**Goal**: **bindcore_suggestions** / **freq_suggestions** 分区展示；数据不足时展示 **insufficient_reason**；导出/复制报告含联合章节（**JA-FR-007**）。
+**Goal（后续里程碑）**: **JointSuggestion** 分区与 **insufficient_reason**…
 
-**Independent Test**: 夹具下可见绑核或频点类建议至少一条，或明确「当前数据不足以…」；导出 md 含联合块。
+**本期实现**：`assess_joint` 固定 **bindcore_suggestions=[]**、**freq_suggestions=[]**、**insufficient_reason=None**；联合 **Markdown** 仅策略/观测/一致性/警告/免责声明；导出/复制仍拼接主报告 + `build_joint_markdown`（**JA-FR-007** 保留拼接契约）。
 
-**执行细则（Phase 14）**：
-
-- **T049**：每条 **JointSuggestion** 须含 **basis**（中文短句）+ **related_finding_ids**（若有）；无 BindCore 摘要且无线程类 finding 时 **bindcore_insufficient_reason**；无频点观测或 `data_gaps` 已声明缺频点 → **freq_insufficient_reason**（**JA-FR-004**）。
-- **T051**：推荐顺序：`build_markdown(report)` 全文 + 空行 + `build_joint_markdown(joint, base_report=None)` **避免**联合节重复会话摘要；若实现选择单文件分段，须在 `export_md` 注释写明。
-
-- [X] T049 [US10] 扩展 `toolkit/core/joint_assessment/engine.py`：在 `assess_joint` 内填充 **bindcore_suggestions** / **freq_suggestions**（`list[JointSuggestion]`）；规则绑定 **observations.finding_summaries** 与 **policy.freq_rows** / **bindcore_summary**；无依据时填 **bindcore_insufficient_reason** / **freq_insufficient_reason**（**JA-FR-004**）；措辞 **不得** 断言唯一根因（**JA-FR-005**）
-- [X] T050 [US10] 修改 `modules/perfdog_insights/src/gui_tab.py`：在联合分析区下增加「策略调整建议」：**绑核** / **频点** 两个子列表；列表项展示 **text** + **basis**（`setToolTip` 或小字）；无建议时展示对应 **insufficient_reason**
-- [X] T051 [US10] 修改 `modules/perfdog_insights/src/gui_tab.py`：**导出报告**与**复制报告**：若存在最新 `JointAssessmentReport`，输出为 `build_markdown(report) + "\n\n" + build_joint_markdown(joint, base_report=None)`（UTF-8）；代码注释固定该拼接契约（**JA-FR-007**）
+- [X] T049 [US10] **本期**：`engine.py` **不**生成启发式 **JointSuggestion**（字段保留、列表为空）。
+- [X] T050 [US10] **本期**：`gui_tab.py` **无**「策略调整建议」子列表。
+- [X] T051 [US10] **导出/复制**：`compose_export_markdown` / Service 仍 **`build_markdown` + `build_joint_markdown`**（UTF-8）；与实现一致。
 
 ---
 

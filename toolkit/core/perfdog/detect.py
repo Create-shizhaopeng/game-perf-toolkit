@@ -52,12 +52,15 @@ def finding_from_frame_stats(fs: FrameStats, target_fps: int) -> Finding | None:
         "秒级 Data_v4 与帧级表分列展示，交叉引用可按 1s bucket 对齐（见 research.md）。"
     )
     sev = FindingSeverity.warn if ratio > 0.05 or fs.max_ms > budget * 1.5 else FindingSeverity.info
+    t_max = fs.max_frame_at_ms
     return Finding(
         id=_new_id("frameinfo"),
         category=FindingCategory.stability,
         severity=sev,
         title="帧时长统计（@FrameInfo）",
         detail=detail,
+        time_start_ms=t_max,
+        time_end_ms=t_max,
         evidence={
             "frame_stats": True,
             "target_fps": target_fps,
@@ -471,9 +474,12 @@ def detect_findings(df: pd.DataFrame, target_fps: int) -> list[Finding]:
     # 温度（全段）
     if "battery_temp" in dfv.columns:
         bt = pd.to_numeric(dfv["battery_temp"], errors="coerce").dropna()
+        bt_full = pd.to_numeric(dfv["battery_temp"], errors="coerce")
         if len(bt) >= 10:
-            dt = bt.diff().abs()
-            if dt.max() >= THERMAL_DELTA_WARN_C:
+            dt_full = bt_full.diff().abs()
+            if float(dt_full.max()) >= THERMAL_DELTA_WARN_C:
+                imax = int(dt_full.to_numpy()[1:].argmax()) + 1  # 跃迁后时刻对应采样索引
+                t_heat = float(t_v.iloc[imax]) if imax < len(t_v) else None
                 findings.append(
                     Finding(
                         id=_new_id("thermal"),
@@ -481,10 +487,17 @@ def detect_findings(df: pd.DataFrame, target_fps: int) -> list[Finding]:
                         severity=FindingSeverity.warn,
                         title="电池温度变化明显",
                         detail=(
-                            f"相邻采样间温度变化最大约 {float(dt.max()):.1f}℃，"
+                            f"相邻采样间温度变化最大约 {float(dt_full.max()):.1f}℃，"
                             "可能与散热条件或负载突变相关；建议固定室温与电量复测。"
+                            + (
+                                f" 最大跃迁出现在相对时间约 {t_heat/1000:.2f}s。"
+                                if t_heat is not None
+                                else ""
+                            )
                         ),
-                        evidence={"max_step_c": float(dt.max())},
+                        time_start_ms=t_heat,
+                        time_end_ms=t_heat,
+                        evidence={"max_step_c": float(dt_full.max()), "at_time_ms": t_heat},
                     ),
                 )
         elif not bt.empty:

@@ -9,12 +9,8 @@ from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QGuiApplication
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFrame,
-    QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMessageBox,
     QProgressBar,
     QPushButton,
@@ -24,14 +20,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from toolkit.core.perfdog.config_defaults import REPORT_METHODS_AND_LIMITATIONS_ZH
+from toolkit.core.perfdog.export_md import format_finding_time_sentence
 from toolkit.gui.base_tab import BaseTab
 
 from .analysis_worker import PerfDogAnalysisWorker
-from .joint_worker import JointAssessmentWorker
 from .models import AnalysisReport, SessionComparePair
 from .service import PerfdogInsightsService
-
-_GP_JOINT_KEY = "gp_joint_policy_snapshot"
 
 
 class PerfdogInsightsTab(BaseTab):
@@ -49,9 +44,7 @@ class PerfdogInsightsTab(BaseTab):
         )
         self._report: AnalysisReport | None = None
         self._worker: PerfDogAnalysisWorker | None = None
-        self._joint_worker: JointAssessmentWorker | None = None
         self._last_good_report: AnalysisReport | None = None
-        self._joint_report: dict | None = None
         self._cmp_worker: PerfDogAnalysisWorker | None = None
         self._compare_report: AnalysisReport | None = None
         self._compare_pair: SessionComparePair | None = None
@@ -127,15 +120,8 @@ class PerfdogInsightsTab(BaseTab):
         self._copy_btn = QPushButton("复制报告")
         self._copy_btn.setFixedHeight(28)
         self._copy_btn.setEnabled(False)
-        self._joint_btn = QPushButton("联合分析")
-        self._joint_btn.setFixedHeight(28)
-        self._joint_btn.setToolTip(
-            "结合「游戏性能配置」中已加载的 XML 与当前 PerfDog 报告做对照（无需连接设备）。",
-        )
-        self._joint_btn.setEnabled(False)
         actions.addWidget(self._export_btn)
         actions.addWidget(self._copy_btn)
-        actions.addWidget(self._joint_btn)
         actions.addStretch()
         root.addLayout(actions)
 
@@ -149,35 +135,9 @@ class PerfdogInsightsTab(BaseTab):
         self._browser = QTextBrowser()
         self._browser.setOpenExternalLinks(False)
         self._browser.setPlaceholderText(
-            "导入 PerfDog 导出后，将在此显示会话摘要、问题与洞察、建议等。",
+            "导入 PerfDog 导出后，将在此显示会话摘要与异常洞察。",
         )
         inner_layout.addWidget(self._browser)
-
-        self._joint_group = QGroupBox("游戏性能策略联合分析")
-        jg = QVBoxLayout(self._joint_group)
-        self._joint_browser = QTextBrowser()
-        self._joint_browser.setOpenExternalLinks(False)
-        self._joint_browser.setPlaceholderText(
-            "点击「联合分析」后在此展示策略要点、观测要点、一致性解读与警告。",
-        )
-        self._joint_browser.setMinimumHeight(160)
-        jg.addWidget(self._joint_browser)
-
-        sug_title = QLabel("策略调整建议（启发式）")
-        sug_title.setProperty("class", "fieldLabel")
-        jg.addWidget(sug_title)
-        grid = QGridLayout()
-        grid.addWidget(QLabel("绑核"), 0, 0)
-        grid.addWidget(QLabel("频点"), 0, 1)
-        self._bind_suggest_list = QListWidget()
-        self._bind_suggest_list.setMinimumHeight(72)
-        self._freq_suggest_list = QListWidget()
-        self._freq_suggest_list.setMinimumHeight(72)
-        grid.addWidget(self._bind_suggest_list, 1, 0)
-        grid.addWidget(self._freq_suggest_list, 1, 1)
-        jg.addLayout(grid)
-
-        inner_layout.addWidget(self._joint_group)
 
         scroll.setWidget(inner)
         root.addWidget(scroll, 1)
@@ -187,12 +147,7 @@ class PerfdogInsightsTab(BaseTab):
         self._clear_btn.clicked.connect(self._on_clear)
         self._export_btn.clicked.connect(self._on_export)
         self._copy_btn.clicked.connect(self._on_copy)
-        self._joint_btn.clicked.connect(self._on_joint_analyze)
         self._compare_btn.clicked.connect(self._on_add_compare)
-
-    @staticmethod
-    def _norm_pkg(s: str | None) -> str:
-        return (s or "").strip().lower()
 
     def on_devices_changed(self, devices: list[str]) -> None:
         """离线分析：不因无设备禁用导入控件。"""
@@ -226,8 +181,8 @@ class PerfdogInsightsTab(BaseTab):
     def _set_selected_path(self, path: str) -> None:
         self._path_edit.setText(path)
         busy = (self._worker and self._worker.isRunning()) or (
-            self._joint_worker and self._joint_worker.isRunning()
-        ) or (self._cmp_worker and self._cmp_worker.isRunning())
+            self._cmp_worker and self._cmp_worker.isRunning()
+        )
         self._import_btn.setEnabled(bool(path) and not busy)
 
     def _on_browse(self) -> None:
@@ -257,7 +212,6 @@ class PerfdogInsightsTab(BaseTab):
             return
         self._browse_btn.setEnabled(False)
         self._import_btn.setEnabled(False)
-        self._joint_btn.setEnabled(False)
         self._compare_btn.setEnabled(False)
         self._progress.setVisible(True)
         self._status_lbl.setText("解析中…")
@@ -276,7 +230,6 @@ class PerfdogInsightsTab(BaseTab):
         self._render_report(report)
         self._export_btn.setEnabled(True)
         self._copy_btn.setEnabled(True)
-        self._joint_btn.setEnabled(True)
         self._compare_btn.setEnabled(True)
         self._status_lbl.setText("解析完成")
 
@@ -287,19 +240,15 @@ class PerfdogInsightsTab(BaseTab):
         if self._last_good_report is not None:
             self._report = self._last_good_report
             self._render_report(self._last_good_report)
-            self._joint_btn.setEnabled(True)
             self._compare_btn.setEnabled(True)
 
     def _on_worker_finished(self) -> None:
         self._progress.setVisible(False)
         self._browse_btn.setEnabled(True)
         p = self._path_edit.text().strip()
-        busy = (self._joint_worker and self._joint_worker.isRunning()) or (
-            self._cmp_worker and self._cmp_worker.isRunning()
-        )
+        busy = self._cmp_worker and self._cmp_worker.isRunning()
         self._import_btn.setEnabled(bool(p) and p != "未选择文件" and not busy)
         if self._report is not None and not busy:
-            self._joint_btn.setEnabled(True)
             self._compare_btn.setEnabled(True)
 
     def _render_report(self, report: AnalysisReport) -> None:
@@ -348,6 +297,11 @@ class PerfdogInsightsTab(BaseTab):
             html_parts.append(
                 f"<h4>{self._esc(f.title)} <code>{self._esc(f.id)}</code>{tr}</h4>",
             )
+            time_sent = format_finding_time_sentence(f)
+            if time_sent:
+                html_parts.append(
+                    f"<p><b>异常时间</b>：{self._esc(time_sent)}</p>",
+                )
             detail_html = self._esc(f.detail).replace("\n", "<br/>")
             html_parts.append(
                 f"<p><b>{f.severity.value}</b> · {f.category.value}<br/>{detail_html}</p>",
@@ -432,65 +386,19 @@ class PerfdogInsightsTab(BaseTab):
                 )
             html_parts.append("</ul>")
 
-        html_parts.append("<h3>建议</h3><ul>")
-        for r in report.recommendations:
-            ids = ", ".join(r.finding_ids) if r.finding_ids else "—"
-            html_parts.append(
-                f"<li><b>{self._esc(r.category)}</b> [{self._esc(ids)}]: "
-                f"{self._esc(r.text)}</li>",
-            )
-        html_parts.append("</ul>")
-
         if report.unrecognized_columns:
             html_parts.append("<h3>尚未登记别名的列名</h3>")
             html_parts.append("<p>")
             html_parts.append(self._esc(", ".join(report.unrecognized_columns[:60])))
             html_parts.append("</p>")
 
+        html_parts.append("<h3>方法与局限性</h3>")
+        for para in REPORT_METHODS_AND_LIMITATIONS_ZH.strip().split("\n\n"):
+            p = para.strip()
+            if p:
+                html_parts.append(f"<p>{self._esc(p)}</p>")
+
         self._browser.setHtml("".join(html_parts))
-
-    def _render_joint_ui(self, data: dict) -> None:
-        """将 joint model_dump 渲染到联合分析区（T048/T050）。"""
-        parts: list[str] = []
-
-        def ul(title: str, items: list[str]) -> None:
-            parts.append(f"<h4>{self._esc(title)}</h4><ul>")
-            for it in items:
-                parts.append(f"<li>{self._esc(it)}</li>")
-            parts.append("</ul>")
-
-        ul("策略侧要点", list(data.get("policy_section") or []))
-        ul("观测侧要点", list(data.get("observation_section") or []))
-        ul("一致性 / 矛盾与启发式解读", list(data.get("consistency_section") or []))
-        warns = list(data.get("warnings") or [])
-        if warns:
-            ul("警告与校验", warns)
-        disc = (data.get("disclaimer") or "").strip()
-        if disc:
-            parts.append(f"<p><i>{self._esc(disc)}</i></p>")
-        self._joint_browser.setHtml("".join(parts))
-
-        self._bind_suggest_list.clear()
-        self._freq_suggest_list.clear()
-        for s in data.get("bindcore_suggestions") or []:
-            it = QListWidgetItem(str(s.get("text", "")))
-            it.setToolTip(str(s.get("basis", "")))
-            self._bind_suggest_list.addItem(it)
-        br = data.get("bindcore_insufficient_reason")
-        if br and not (data.get("bindcore_suggestions") or []):
-            it = QListWidgetItem(f"（数据不足）{br}")
-            it.setFlags(it.flags() & ~Qt.ItemFlag.ItemIsEnabled)
-            self._bind_suggest_list.addItem(it)
-
-        for s in data.get("freq_suggestions") or []:
-            it = QListWidgetItem(str(s.get("text", "")))
-            it.setToolTip(str(s.get("basis", "")))
-            self._freq_suggest_list.addItem(it)
-        fr = data.get("freq_insufficient_reason")
-        if fr and not (data.get("freq_suggestions") or []):
-            it = QListWidgetItem(f"（数据不足）{fr}")
-            it.setFlags(it.flags() & ~Qt.ItemFlag.ItemIsEnabled)
-            self._freq_suggest_list.addItem(it)
 
     @staticmethod
     def _esc(s: str) -> str:
@@ -502,86 +410,13 @@ class PerfdogInsightsTab(BaseTab):
         )
 
     def _compose_export_markdown(self) -> str:
-        """PerfDog 全文 + 可选联合章节（JA-FR-007）+ 可选 A/B 对比节。"""
+        """PerfDog 全文 + 可选 A/B 对比节。"""
         if self._report is None:
             return ""
         return self._service.compose_export_markdown(
             self._report,
-            self._joint_report,
-            self._compare_pair,
+            compare_pair=self._compare_pair,
         )
-
-    def _on_joint_analyze(self) -> None:
-        policy = self._context.get(_GP_JOINT_KEY)
-        if not policy:
-            QMessageBox.information(
-                self,
-                "联合分析",
-                "请先在 **游戏性能配置** 中加载 gameperfconfig*.xml，并选择游戏与性能模式。",
-            )
-            return
-        if self._report is None:
-            QMessageBox.warning(self, "联合分析", "请先完成 PerfDog 文件分析。")
-            return
-        path = self._report.source_path
-        if not path or not Path(path).is_file():
-            QMessageBox.warning(self, "联合分析", "当前报告缺少有效的源文件路径，请重新分析。")
-            return
-
-        skip_warn = False
-        pol_pkg = str((policy.get("package_name") or "")).strip()
-        obs_pkg = str((self._report.session.package_name or "")).strip()
-        if pol_pkg and obs_pkg and self._norm_pkg(pol_pkg) != self._norm_pkg(obs_pkg):
-            r = QMessageBox.question(
-                self,
-                "包名不一致",
-                f"游戏性能配置包名：{pol_pkg}\nPerfDog 会话包名：{obs_pkg}\n\n"
-                "仍要继续联合分析吗？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if r != QMessageBox.StandardButton.Yes:
-                return
-            skip_warn = True
-
-        if self._joint_worker and self._joint_worker.isRunning():
-            return
-        self._joint_btn.setEnabled(False)
-        self._compare_btn.setEnabled(False)
-        self._import_btn.setEnabled(False)
-        self._progress.setVisible(True)
-        self._status_lbl.setText("联合分析中…")
-        self._joint_worker = JointAssessmentWorker(
-            path,
-            policy,
-            self._service,
-            skip_package_warning=skip_warn,
-            parent=self,
-        )
-        self._joint_worker.progress.connect(self._status_lbl.setText)
-        self._joint_worker.joint_finished_ok.connect(self._on_joint_ok)
-        self._joint_worker.joint_finished_err.connect(self._on_joint_err)
-        self._joint_worker.finished.connect(self._on_joint_finished)
-        self._joint_worker.start()
-
-    def _on_joint_ok(self, payload: object) -> None:
-        if isinstance(payload, dict):
-            self._joint_report = payload
-            self._render_joint_ui(payload)
-        self._status_lbl.setText("联合分析完成")
-
-    def _on_joint_err(self, message: str) -> None:
-        self._status_lbl.setText("联合分析失败")
-        QMessageBox.warning(self, "联合分析失败", message)
-
-    def _on_joint_finished(self) -> None:
-        self._progress.setVisible(False)
-        self._browse_btn.setEnabled(True)
-        p = self._path_edit.text().strip()
-        self._import_btn.setEnabled(bool(p) and p != "未选择文件")
-        if self._report is not None:
-            self._joint_btn.setEnabled(True)
-            self._compare_btn.setEnabled(True)
 
     def _on_add_compare(self) -> None:
         if self._report is None:
@@ -602,11 +437,8 @@ class PerfdogInsightsTab(BaseTab):
             return
         if self._worker and self._worker.isRunning():
             return
-        if self._joint_worker and self._joint_worker.isRunning():
-            return
         self._browse_btn.setEnabled(False)
         self._import_btn.setEnabled(False)
-        self._joint_btn.setEnabled(False)
         self._compare_btn.setEnabled(False)
         self._progress.setVisible(True)
         self._status_lbl.setText("加载对比文件…")
@@ -645,35 +477,25 @@ class PerfdogInsightsTab(BaseTab):
         self._progress.setVisible(False)
         self._browse_btn.setEnabled(True)
         p = self._path_edit.text().strip()
-        busy = self._joint_worker and self._joint_worker.isRunning()
-        self._import_btn.setEnabled(bool(p) and p != "未选择文件" and not busy)
-        if self._report is not None and not busy:
-            self._joint_btn.setEnabled(True)
+        self._import_btn.setEnabled(bool(p) and p != "未选择文件")
+        if self._report is not None:
             self._compare_btn.setEnabled(True)
 
     def _on_clear(self) -> None:
         if self._worker and self._worker.isRunning():
             self._worker.requestInterruption()
             self._worker.wait(3000)
-        if self._joint_worker and self._joint_worker.isRunning():
-            self._joint_worker.requestInterruption()
-            self._joint_worker.wait(3000)
         if self._cmp_worker and self._cmp_worker.isRunning():
             self._cmp_worker.requestInterruption()
             self._cmp_worker.wait(3000)
         self._report = None
         self._last_good_report = None
-        self._joint_report = None
         self._compare_report = None
         self._compare_pair = None
         self._browser.clear()
-        self._joint_browser.clear()
-        self._bind_suggest_list.clear()
-        self._freq_suggest_list.clear()
         self._path_edit.setText("未选择文件")
         self._export_btn.setEnabled(False)
         self._copy_btn.setEnabled(False)
-        self._joint_btn.setEnabled(False)
         self._compare_btn.setEnabled(False)
         self._status_lbl.setText("")
         self._import_btn.setEnabled(False)

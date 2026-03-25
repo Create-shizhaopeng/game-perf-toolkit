@@ -80,7 +80,7 @@ modules/game_perf/     context['gp_joint_policy_snapshot']
 |------|------|
 | Stat vs Data_v4 | 以 Data_v4 重算为主；差异超阈值则脚注（见 `compute_stat_disclaimer`） |
 | 异常窗口 | 默认 ±5s（`ANOMALY_WINDOW_MS`） |
-| MVP 范围 | US1,8 + US2,4,6,7；US3/5 分阶段；联合分析 US9～US11 |
+| MVP 范围 | US1,8 + US2,6,7（**US4 建议清单本期暂缓**）；US3/5 分阶段；联合分析 US9～US11（**可执行/XML 修改建议暂缓**） |
 
 ## 源码与文档结构
 
@@ -697,7 +697,7 @@ plan 初稿中的 `lv-game-toolkit/source/core`、`source/ui` 在仓库中 **未
 | 文件 | 职责 |
 |------|------|
 | `observations.py` | **`build_observations_snapshot(report)`**；`data_gaps` 含 JA-SC-004（缺频点摘要）；**不** import `column_aliases`（包边界：仅 `report_types` + `joint_models`） |
-| `engine.py` | **`assess_joint(policy, observations, options)`** → `JointAssessmentReport`（三段结论、warnings、绑核/频点建议与 insufficient 理由） |
+| `engine.py` | **`assess_joint(policy, observations, options)`** → `JointAssessmentReport`（策略/观测/一致性、warnings；**本期**建议类字段为空 / reason 为 **None**，与 spec 边界一致） |
 | `export_md.py` | **`build_joint_markdown(joint, base_report=None)`** |
 | `tests/test_joint_assess.py` | 联合分析回归（`pytest` 已纳入 `pyproject.toml` `testpaths`） |
 
@@ -794,6 +794,9 @@ plan 初稿中的 `lv-game-toolkit/source/core`、`source/ui` 在仓库中 **未
 | 2026-03-22 | **模块目录与 `game_perf` 对齐**：新增 **`tests/`**、**`fixtures/`**、**`assets/`**、**`specs/004-perfdog-import-insights/`**（链到根规格）、**`.specify/`** / **`.cursor/commands/`**（自 game_perf 复制）；**`src/models.py`**；**`run_all_tests.py`** 登记本模块测试组；**`AGENTS.md`** 改为与 game_perf 同结构。 |
 | 2026-03-22 | **规格三文件规范**：与 `specs/003-adb-enhancement` 对齐，本目录仅保留 `spec.md` / `plan.md` / `tasks.md`；原 `data-model.md`、`research.md`、`contracts/*`、`quickstart.md`、`implementation.md`、`checklists/*`、`image/*` 已并入 **本 plan** 对应章节；`tasks.md` / `spec.md` / 模块索引与 `doc/README` 链接已改为 **plan 锚点**。 |
 | 2026-03-23 | **规格收窄**（见 [spec.md](./spec.md) 修订记录）：本期以 **异常定位与矛盾描述** 为主，**暂缓**可执行建议清单与联合 **策略修改建议**；本 plan **概述**已同步。实现与 UI 若仍展示建议区，应按 spec 收敛或标为后续里程碑。 |
+| 2026-03-24 | **实现对齐**：`load_and_analyze` 不再生成单文件 **recommendations**；`export_md.build_markdown` 去除「建议」节；联合分析 **engine** 固定空 **JointSuggestion**、无 insufficient 文案导出；[tasks.md](./tasks.md) Phase 5 / 14 描述与 spec 本期边界同步。 |
+| 2026-03-24 | **附录 B §6**：`config_defaults.REPORT_METHODS_AND_LIMITATIONS_ZH` + `build_markdown` / PerfDog Tab **方法与局限性**（导出与界面一致，**FR-008**）。 |
+| 2026-03-24 | **移除联合分析**：删除 `toolkit/core/joint_assessment`、`toolkit/sdk/joint_models`、`game_perf` 的 `joint_adapter` 与 `gp_joint_policy_snapshot`、PerfDog `joint_worker` / UI；`compose_export_markdown` 仅主报告 + 可选对比；`perfdog_insights` manifest 不再依赖 `game_perf`。 |
 
 ---
 

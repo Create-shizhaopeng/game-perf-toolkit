@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from openpyxl import Workbook
 
-from toolkit.core.perfdog import compare_reports, load_and_analyze
+from toolkit.core.perfdog import build_markdown, compare_reports, load_and_analyze
 from toolkit.core.perfdog.errors import PerfDogParseError
 from toolkit.core.perfdog.report_types import (
     AnalysisReport,
@@ -42,7 +42,10 @@ def test_load_and_analyze_minimal_xlsx(tmp_path: Path) -> None:
     assert report.session.target_fps_hint is not None
     assert report.summary_metrics.get("采样点数") == 50
     assert len(report.findings) >= 1
-    assert len(report.recommendations) >= 1
+    assert report.recommendations == []  # 本期 spec：不生成单文件建议清单
+    md = build_markdown(report)
+    assert "## 方法与局限性" in md
+    assert "启发式" in md
 
 
 def test_reject_non_excel(tmp_path: Path) -> None:

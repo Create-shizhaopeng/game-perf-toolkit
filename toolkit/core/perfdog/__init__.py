@@ -10,8 +10,12 @@ from toolkit.core.perfdog.export_md import build_markdown
 from toolkit.core.perfdog.parse_all import compute_stat_disclaimer, parse_all
 from toolkit.core.perfdog.parse_frameinfo import parse_frameinfo
 from toolkit.core.perfdog.parse_threads import parse_thread_cpu
-from toolkit.core.perfdog.report_types import AnalysisReport, AnalyzeOptions, SessionComparePair
-from toolkit.core.perfdog.recommendations import build_recommendations
+from toolkit.core.perfdog.report_types import (
+    AnalysisReport,
+    AnalyzeOptions,
+    Recommendation,
+    SessionComparePair,
+)
 from toolkit.core.perfdog.session import build_session
 from toolkit.core.perfdog.threads_top import (
     attach_thread_top_to_findings,
@@ -63,7 +67,8 @@ def load_and_analyze(path: str, *, options: AnalyzeOptions | None = None) -> Ana
             t1 = te + opts.anomaly_window_ms
             thread_top = top_threads_in_window(thread_df, t0, t1)
 
-    recommendations = build_recommendations(findings)
+    # 本期 spec：不交付单文件「建议清单」；保留 recommendations 字段为空列表（后续里程碑可再接 recommendations 管线）。
+    recommendations: list[Recommendation] = []
 
     warn_crit = sum(
         1 for f in findings if f.severity.value in ("warn", "critical")

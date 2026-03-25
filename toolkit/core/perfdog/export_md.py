@@ -2,7 +2,24 @@
 
 from __future__ import annotations
 
-from toolkit.core.perfdog.report_types import AnalysisReport
+from toolkit.core.perfdog.config_defaults import REPORT_METHODS_AND_LIMITATIONS_ZH
+from toolkit.core.perfdog.report_types import AnalysisReport, Finding
+
+
+def format_finding_time_sentence(f: Finding) -> str | None:
+    """与 Data_v4 中 time_ms（别名映射后）同一坐标系：相对记录起点的秒。"""
+    if f.time_start_ms is None:
+        return None
+    t0 = f.time_start_ms / 1000.0
+    te = f.time_end_ms
+    if te is None or abs(te - f.time_start_ms) < 1e-3:
+        return f"约 {t0:.2f} s（相对记录起点，与导出表 Time(ms) 一致；单点/瞬时）"
+    t1 = te / 1000.0
+    lo, hi = (t0, t1) if t0 <= t1 else (t1, t0)
+    dur = hi - lo
+    return (
+        f"约 {lo:.2f} s ~ {hi:.2f} s（相对记录起点，与导出表 Time(ms) 一致；持续约 {dur:.2f} s）"
+    )
 
 
 def build_markdown(report: AnalysisReport) -> str:
@@ -46,15 +63,13 @@ def build_markdown(report: AnalysisReport) -> str:
             lines.append("")
             lines.append(f.severity.value.upper() + " · " + f.category.value)
             lines.append("")
+            time_s = format_finding_time_sentence(f)
+            if time_s:
+                # 句子内可能含 **单点/瞬时** 等 Markdown 加粗
+                lines.append(f"- **异常时间**：{time_s}")
+                lines.append("")
             lines.append(f.detail)
             lines.append("")
-
-    lines.append("## 建议")
-    lines.append("")
-    for r in report.recommendations:
-        ids = ", ".join(r.finding_ids) if r.finding_ids else "—"
-        lines.append(f"- **{r.category}** [{ids}]: {r.text}")
-    lines.append("")
 
     fs = report.frame_stats
     if fs is not None and fs.count:
@@ -106,5 +121,10 @@ def build_markdown(report: AnalysisReport) -> str:
         lines.append("")
         lines.append(", ".join(report.unrecognized_columns[:80]))
         lines.append("")
+
+    lines.append("## 方法与局限性")
+    lines.append("")
+    lines.append(REPORT_METHODS_AND_LIMITATIONS_ZH.strip())
+    lines.append("")
 
     return "\n".join(lines)
