@@ -109,6 +109,35 @@ def test_frameinfo_merged_into_report(tmp_path: Path) -> None:
     assert report.frame_stats.count == 40
     assert report.frame_stats.max_ms >= 45.0
     assert any("FrameInfo" in f.title for f in report.findings)
+    assert report.frameinfo_window_chunk is not None
+    assert len(report.frameinfo_window_chunk.rows) >= 1
+    md = build_markdown(report)
+    assert "## 帧级异常关联采样（@FrameInfo）" in md
+
+
+def test_anomaly_chunk_wall_clock_and_window_metrics(tmp_path: Path) -> None:
+    """Data_v4 含 AbsTime 时，异常窗片段应带墙钟与 CPU 窗内摘要。"""
+    p = tmp_path / "abs.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "all"
+    ws.append(["Data_v4"])
+    base_ms = 1_700_000_000_000
+    ws.append(["Time(ms)", "FPS", "AppCPU(%)", "AbsTime"])
+    for i in range(30):
+        t = float(i * 1000)
+        fps = 58.0 if 10 <= i <= 12 else 59.5
+        ws.append([t, fps, 42.0, base_ms + t])
+    wb.save(p)
+    report = load_and_analyze(str(p))
+    assert report.anomaly_data_chunks
+    ch0 = report.anomaly_data_chunks[0]
+    assert ch0.wall_clock_zh is not None
+    assert "Data_v4" in ch0.wall_clock_zh and "AbsTime" in ch0.wall_clock_zh
+    assert any("应用 CPU" in x for x in ch0.resource_summary_zh)
+    md = build_markdown(report)
+    assert "墙钟时间" in md
 
 
 def test_compare_reports_package_mismatch_warning(tmp_path: Path) -> None:

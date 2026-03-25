@@ -141,3 +141,94 @@ def parse_frameinfo(
         return stats, warn
     finally:
         wb.close()
+
+
+def _cell_str(v: Any) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, float) and math.isnan(v):
+        return ""
+    if isinstance(v, str):
+        return v.strip()
+    return str(v)
+
+
+def extract_frameinfo_window_table(
+    path: str,
+    options: AnalyzeOptions,
+    center_ms: float,
+    pad_ms: float,
+) -> tuple[list[str], list[list[str]]] | None:
+    """二次流式读取：截取 @FrameInfo 中 time 落在 [center_ms±pad_ms] 的帧行（制表符表用）。"""
+    t_lo = center_ms - pad_ms
+    t_hi = center_ms + pad_ms
+    wb = load_workbook(path, read_only=True, data_only=True, keep_links=False)
+    try:
+        names = list(wb.sheetnames)
+        sheet_name = _find_frameinfo_sheet(names)
+        if not sheet_name:
+            return None
+
+        ws = wb[sheet_name]
+        header_row: tuple[Any, ...] | None = None
+        header_excel_row = 1
+        for i, row in enumerate(
+            ws.iter_rows(min_row=1, max_row=32, values_only=True),
+            start=1,
+        ):
+            if not any(c is not None and str(c).strip() for c in row):
+                continue
+            ct, cf = _header_indices(row)
+            if ct is not None and cf is not None:
+                header_row = row
+                header_excel_row = i
+                break
+            if cf is not None and ct is None:
+                header_row = row
+                header_excel_row = i
+        if header_row is None:
+            return None
+
+        col_time, col_ft = _header_indices(header_row)
+        if col_ft is None:
+            return None
+        if col_time is None:
+            col_time = 0
+
+        width = len(header_row)
+        headers = [
+            _cell_str(header_row[j] if j < len(header_row) else None) for j in range(width)
+        ]
+        collected: list[list[str]] = []
+        count = 0
+        for row in ws.iter_rows(min_row=header_excel_row + 1, values_only=True):
+            if count >= options.max_frame_rows:
+                break
+            if not row or col_ft >= len(row):
+                continue
+            raw_ft = row[col_ft]
+            if raw_ft is None or (isinstance(raw_ft, float) and math.isnan(raw_ft)):
+                continue
+            try:
+                ft = float(raw_ft)
+            except (TypeError, ValueError):
+                continue
+            if ft < 0 or ft > 1_000_000:
+                continue
+            t_at = 0.0
+            if col_time is not None and col_time < len(row) and row[col_time] is not None:
+                try:
+                    t_at = float(row[col_time])
+                except (TypeError, ValueError):
+                    t_at = float(count)
+            if t_lo <= t_at <= t_hi:
+                collected.append(
+                    [_cell_str(row[j] if j < len(row) else None) for j in range(width)],
+                )
+            count += 1
+
+        if not collected:
+            return None
+        return headers, collected
+    finally:
+        wb.close()

@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 
 from toolkit.core.perfdog.config_defaults import REPORT_METHODS_AND_LIMITATIONS_ZH
 from toolkit.core.perfdog.export_md import anomaly_chunk_to_tsv, format_finding_anomaly_period
+from toolkit.core.perfdog.report_types import AnomalyDataChunk
 from toolkit.gui.base_tab import BaseTab
 
 from .analysis_worker import PerfDogAnalysisWorker
@@ -327,6 +328,26 @@ class PerfdogInsightsTab(BaseTab):
                 )
             html_parts.append("</ul>")
 
+        chfi = report.frameinfo_window_chunk
+        if chfi is not None and chfi.rows:
+            html_parts.append("<h3>帧级异常关联采样（@FrameInfo）</h3>")
+            html_parts.append(
+                "<p>最大帧耗时附近逐帧行（<b>time</b> ∈ "
+                f"[{chfi.time_lo_ms:.1f}, {chfi.time_hi_ms:.1f}] ms，"
+                f"共 <b>{len(chfi.rows)}</b> 行；非全量帧表。</p>",
+            )
+            html_parts.append(
+                f"<h4><code>{self._esc(chfi.finding_id)}</code> "
+                f"{self._esc(chfi.finding_title)}</h4>",
+            )
+            self._html_anomaly_chunk_detail(html_parts, chfi)
+            tsv = anomaly_chunk_to_tsv(chfi)
+            html_parts.append(
+                '<pre style="white-space:pre;overflow:auto;max-height:360px;font-size:10px;line-height:1.2">',
+            )
+            html_parts.append(html.escape(tsv, quote=False))
+            html_parts.append("</pre>")
+
         html_parts.append("<h3>关联分析（线程 / 频点）</h3>")
         if not report.has_thread_cpu_sheet:
             html_parts.append(
@@ -363,10 +384,7 @@ class PerfdogInsightsTab(BaseTab):
                     f"<h4><code>{self._esc(ch.finding_id)}</code> "
                     f"{self._esc(ch.finding_title)}</h4>",
                 )
-                html_parts.append(
-                    "<p><b>截取时间窗（ms）</b>："
-                    f"{ch.time_lo_ms:.1f} ~ {ch.time_hi_ms:.1f}</p>",
-                )
+                self._html_anomaly_chunk_detail(html_parts, ch)
                 tsv = anomaly_chunk_to_tsv(ch)
                 if not tsv:
                     html_parts.append("<p>（该时间窗内无秒级采样点。）</p>")
@@ -398,6 +416,35 @@ class PerfdogInsightsTab(BaseTab):
                 html_parts.append(f"<p>{self._esc(p)}</p>")
 
         self._browser.setHtml("".join(html_parts))
+
+    def _html_anomaly_chunk_detail(self, html_parts: list[str], ch: AnomalyDataChunk) -> None:
+        """墙钟、时间窗、CPU/GPU/各核、线程 Top（与 export_md 并列）。"""
+        if ch.wall_clock_zh:
+            html_parts.append(f"<p><b>墙钟时间</b>：{self._esc(ch.wall_clock_zh)}</p>")
+        html_parts.append(
+            "<p><b>截取相对时间窗（ms）</b>："
+            f"{ch.time_lo_ms:.1f} ~ {ch.time_hi_ms:.1f}</p>",
+        )
+        if (
+            ch.metrics_time_lo_ms is not None
+            and ch.metrics_time_hi_ms is not None
+            and (
+                abs(ch.metrics_time_lo_ms - ch.time_lo_ms) > 0.5
+                or abs(ch.metrics_time_hi_ms - ch.time_hi_ms) > 0.5
+            )
+        ):
+            html_parts.append(
+                "<p><b>对齐 Data_v4 指标窗（ms）</b>："
+                f"{ch.metrics_time_lo_ms:.1f} ~ {ch.metrics_time_hi_ms:.1f}</p>",
+            )
+        html_parts.append("<p><b>窗内资源摘要</b></p><ul>")
+        for s in ch.resource_summary_zh:
+            html_parts.append(f"<li>{self._esc(s)}</li>")
+        html_parts.append("</ul>")
+        html_parts.append("<p><b>线程 CPU Top（@ThreadCpuUsageData）</b></p><ul>")
+        for s in ch.thread_summary_zh:
+            html_parts.append(f"<li>{self._esc(s)}</li>")
+        html_parts.append("</ul>")
 
     @staticmethod
     def _esc(s: str) -> str:

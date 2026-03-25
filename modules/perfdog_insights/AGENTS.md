@@ -35,5 +35,5 @@
 
 ## 测试要求
 
-- Service 与可单测逻辑须有 **`modules/perfdog_insights/tests/`** 覆盖
+- Service 烟测见根目录 **`tests/test_perfdog_insights_service.py`**（`modules/.../tests` 易与 pytest 包名冲突，故放在顶层 `tests/`）
 - 脱敏样例可放在 **`fixtures/`**；与核心库共用的烟测仍见根目录 **`tests/test_perfdog_workbook.py`**

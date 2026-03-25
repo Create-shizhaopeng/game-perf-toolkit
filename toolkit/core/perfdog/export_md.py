@@ -39,6 +39,36 @@ def anomaly_chunk_to_tsv(chunk: AnomalyDataChunk) -> str:
     return "\n".join(lines)
 
 
+def append_anomaly_chunk_context(lines: list[str], ch: AnomalyDataChunk) -> None:
+    """墙钟、相对/ms 窗、与 Data_v4 对齐窗说明，以及 CPU/GPU/各核/线程摘要。"""
+    if ch.wall_clock_zh:
+        lines.append(f"- **墙钟时间**：{ch.wall_clock_zh}")
+    lines.append(
+        f"- **截取相对时间窗（ms）**：{ch.time_lo_ms:.1f} ~ {ch.time_hi_ms:.1f}",
+    )
+    if (
+        ch.metrics_time_lo_ms is not None
+        and ch.metrics_time_hi_ms is not None
+        and (
+            abs(ch.metrics_time_lo_ms - ch.time_lo_ms) > 0.5
+            or abs(ch.metrics_time_hi_ms - ch.time_hi_ms) > 0.5
+        )
+    ):
+        lines.append(
+            f"- **对齐 Data_v4 指标窗（ms）**：{ch.metrics_time_lo_ms:.1f} ~ "
+            f"{ch.metrics_time_hi_ms:.1f}（以下 CPU/GPU/各核/线程按此窗统计）",
+        )
+    lines.append("")
+    lines.append("**窗内资源摘要**")
+    for s in ch.resource_summary_zh:
+        lines.append(s)
+    lines.append("")
+    lines.append("**线程 CPU Top（@ThreadCpuUsageData）**")
+    for s in ch.thread_summary_zh:
+        lines.append(s)
+    lines.append("")
+
+
 def build_markdown(report: AnalysisReport) -> str:
     lines: list[str] = []
     s = report.session
@@ -99,6 +129,23 @@ def build_markdown(report: AnalysisReport) -> str:
             lines.append(f"- 最大帧相对时间约: {fs.max_frame_at_ms/1000:.2f} s")
         lines.append("")
 
+    chfi = report.frameinfo_window_chunk
+    if chfi is not None and chfi.rows:
+        lines.append("## 帧级异常关联采样（@FrameInfo）")
+        lines.append("")
+        lines.append(
+            f"下列为 **最大帧耗时附近** 的逐帧行（**time ∈ [{chfi.time_lo_ms:.1f}, {chfi.time_hi_ms:.1f}]** ms，"
+            "与 @FrameInfo 表内 Time 列同一坐标；**非全量**帧表。",
+        )
+        lines.append("")
+        lines.append(f"### `{chfi.finding_id}` {chfi.finding_title}")
+        lines.append("")
+        append_anomaly_chunk_context(lines, chfi)
+        lines.append("```text")
+        lines.append(anomaly_chunk_to_tsv(chfi))
+        lines.append("```")
+        lines.append("")
+
     if any((f.evidence or {}).get("freq_gpu_window_vs_global") for f in report.findings):
         lines.append("## 频点与 GPU（异常窗 vs 全段）")
         lines.append("")
@@ -135,10 +182,7 @@ def build_markdown(report: AnalysisReport) -> str:
         for ch in report.anomaly_data_chunks:
             lines.append(f"### `{ch.finding_id}` {ch.finding_title}")
             lines.append("")
-            lines.append(
-                f"- **截取时间窗（ms，与导出表一致）**: {ch.time_lo_ms:.1f} ~ {ch.time_hi_ms:.1f}",
-            )
-            lines.append("")
+            append_anomaly_chunk_context(lines, ch)
             tsv = anomaly_chunk_to_tsv(ch)
             if not tsv:
                 lines.append("（该时间窗内无秒级采样点。）")

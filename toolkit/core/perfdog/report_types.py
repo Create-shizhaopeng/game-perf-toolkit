@@ -82,6 +82,11 @@ class AnomalyDataChunk:
     time_hi_ms: float
     columns: list[str]
     rows: list[list[str]]
+    wall_clock_zh: str | None = None
+    resource_summary_zh: list[str] = field(default_factory=list)
+    thread_summary_zh: list[str] = field(default_factory=list)
+    metrics_time_lo_ms: float | None = None
+    metrics_time_hi_ms: float | None = None
 
 
 @dataclass
@@ -101,6 +106,8 @@ class AnalysisReport:
     anomaly_data_chunks: list[AnomalyDataChunk] = field(default_factory=list)
     anomaly_sample_pad_ms: int = 0
     non_anomaly_summary_zh: str = ""
+    # 最大帧时刻附近 @FrameInfo 逐帧行（与 Data_v4 时间轴独立，单位同表内 Time 列）
+    frameinfo_window_chunk: AnomalyDataChunk | None = None
 
 
 @dataclass

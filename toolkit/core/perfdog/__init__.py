@@ -9,11 +9,12 @@ from toolkit.core.perfdog.detect import detect_findings, finding_from_frame_stat
 from toolkit.core.perfdog.errors import PerfDogParseError, PerfDogUnsupportedError
 from toolkit.core.perfdog.export_md import build_markdown
 from toolkit.core.perfdog.parse_all import compute_stat_disclaimer, parse_all
-from toolkit.core.perfdog.parse_frameinfo import parse_frameinfo
+from toolkit.core.perfdog.parse_frameinfo import extract_frameinfo_window_table, parse_frameinfo
 from toolkit.core.perfdog.parse_threads import parse_thread_cpu
 from toolkit.core.perfdog.report_types import (
     AnalysisReport,
     AnalyzeOptions,
+    AnomalyDataChunk,
     Recommendation,
     SessionComparePair,
 )
@@ -23,6 +24,8 @@ from toolkit.core.perfdog.threads_top import (
     pick_anomaly_window_ms,
     top_threads_in_window,
 )
+from toolkit.core.perfdog.wall_clock import datav4_window_near_frame_center
+from toolkit.core.perfdog.window_metrics import enrich_anomaly_chunk
 
 __all__ = [
     "load_and_analyze",
@@ -83,6 +86,44 @@ def load_and_analyze(path: str, *, options: AnalyzeOptions | None = None) -> Ana
     anomaly_chunks = build_anomaly_data_chunks(df, findings, pad_ms=pad_used)
     non_anomaly_zh = build_non_anomaly_summary_zh(session, summary_metrics)
 
+    fi_window: AnomalyDataChunk | None = None
+    fs_for_fi = frame_stats if frame_stats and frame_stats.count else None
+    if fs_for_fi is not None and fs_for_fi.max_frame_at_ms is not None:
+        fi_tbl = extract_frameinfo_window_table(
+            path,
+            opts,
+            float(fs_for_fi.max_frame_at_ms),
+            float(pad_used),
+        )
+        if fi_tbl:
+            fcols, frows = fi_tbl
+            if fcols and frows:
+                c = float(fs_for_fi.max_frame_at_ms)
+                fi_window = AnomalyDataChunk(
+                    finding_id="frameinfo-max-window",
+                    finding_title="最大帧耗时附近（@FrameInfo）",
+                    time_lo_ms=c - pad_used,
+                    time_hi_ms=c + pad_used,
+                    columns=fcols,
+                    rows=frows,
+                )
+
+    for ch in anomaly_chunks:
+        enrich_anomaly_chunk(ch, df, thread_df)
+    if fi_window is not None and fs_for_fi is not None and fs_for_fi.max_frame_at_ms is not None:
+        dv_lo, dv_hi = datav4_window_near_frame_center(
+            df,
+            float(fs_for_fi.max_frame_at_ms),
+            float(pad_used),
+        )
+        enrich_anomaly_chunk(
+            fi_window,
+            df,
+            thread_df,
+            metrics_lo=dv_lo,
+            metrics_hi=dv_hi,
+        )
+
     return AnalysisReport(
         session=session,
         summary_metrics=summary_metrics,
@@ -97,4 +138,5 @@ def load_and_analyze(path: str, *, options: AnalyzeOptions | None = None) -> Ana
         anomaly_data_chunks=anomaly_chunks,
         anomaly_sample_pad_ms=pad_used,
         non_anomaly_summary_zh=non_anomaly_zh,
+        frameinfo_window_chunk=fi_window,
     )
