@@ -28,6 +28,7 @@
 - [P19 — QComboBox 自定义 Popup 导致 Windows 崩溃](#p19--qcombobox-自定义-popup-导致-windows-崩溃)
 - [P20 — SQLite 跨线程连接访问](#p20--sqlite-跨线程连接访问)
 - [P21 — QTableWidget 操作按钮刷新竞态](#p21--qtablewidget-操作按钮刷新竞态)
+- [P22 — core.autocrlf 与 .editorconfig 行尾符冲突导致幽灵修改](#p22--coreautocrlf-与-editorconfig-行尾符冲突导致幽灵修改)
 
 ---
 
@@ -684,3 +685,64 @@ def _delete_report(self, report_dir, trace_path, task_id):
 - QTableWidget 行内按钮的回调中 MUST NOT 直接清空/重填表格
 - 任何可能销毁当前控件的操作 MUST 延迟执行（`QTimer.singleShot`）
 - 推荐延迟时间 100ms，足以让当前事件循环完成
+
+---
+
+## P22 — core.autocrlf 与 .editorconfig 行尾符冲突导致幽灵修改
+
+### 现象
+
+`git status` 显示大量文件 `modified`，但 `git diff` 无任何内容差异（0 行变更）。重复出现：`git checkout` 恢复后，编辑器一保存又变 modified。
+
+### 根因
+
+三方配置冲突形成恶性循环：
+
+1. **`core.autocrlf = true`**（Windows 全局默认）：checkout 时 LF→CRLF
+2. **`.editorconfig end_of_line = lf`**：编辑器保存时统一 LF
+3. 工作目录始终是 LF，但 git 期望 CRLF → 标记 modified
+4. `git diff` 比较时两侧归一化为 LF → 无差异
+
+附带问题：空占位文件（`.gitkeep`、`__init__.py`）被 `.editorconfig` 的 `insert_final_newline = true` 添加尾换行，产生 0→1 字节变更。
+
+### 诊断方法
+
+```bash
+# 确认内容哈希一致（证明是 stat cache 问题而非内容差异）
+git ls-files -s -- <file>          # 索引哈希
+git hash-object <file>             # 工作目录哈希
+# 若两者一致，则为幽灵修改
+
+# 检查文件实际行尾
+git ls-files --eol -- <file>       # i/lf w/lf 表示均为 LF
+```
+
+### 修复方案
+
+在 `.gitattributes` 中显式声明文本归一化规则，覆盖各协作者的 `autocrlf` 差异：
+
+```gitattributes
+# 文本文件统一 LF（与 .editorconfig 一致）
+* text=auto eol=lf
+
+# Windows 脚本保持 CRLF（与 .editorconfig 一致）
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+```
+
+修复后执行：
+
+```bash
+git add --renormalize .    # 刷新索引
+git commit -m "normalize line endings"
+# 对已被 autocrlf 转换的文件需要完整重建 stat cache：
+git rm --cached <file> && git checkout HEAD -- <file>
+```
+
+### 预防措施
+
+- 新项目 MUST 在首次提交时包含 `.gitattributes` 的 `* text=auto eol=lf` 规则
+- `.gitattributes` 的 `eol` 设置 MUST 与 `.editorconfig` 的 `end_of_line` 一致
+- 不要依赖 `core.autocrlf` 全局设置来统一行尾符——每个协作者的设置可能不同
+- 出现幽灵修改时，先用 `git hash-object` 对比哈希，再用 `git ls-files --eol` 检查行尾
