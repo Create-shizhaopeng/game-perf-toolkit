@@ -797,6 +797,7 @@ plan 初稿中的 `lv-game-toolkit/source/core`、`source/ui` 在仓库中 **未
 | 2026-03-24 | **实现对齐**：`load_and_analyze` 不再生成单文件 **recommendations**；`export_md.build_markdown` 去除「建议」节；联合分析 **engine** 固定空 **JointSuggestion**、无 insufficient 文案导出；[tasks.md](./tasks.md) Phase 5 / 14 描述与 spec 本期边界同步。 |
 | 2026-03-24 | **附录 B §6**：`config_defaults.REPORT_METHODS_AND_LIMITATIONS_ZH` + `build_markdown` / PerfDog Tab **方法与局限性**（导出与界面一致，**FR-008**）。 |
 | 2026-03-24 | **移除联合分析**：删除 `toolkit/core/joint_assessment`、`toolkit/sdk/joint_models`、`game_perf` 的 `joint_adapter` 与 `gp_joint_policy_snapshot`、PerfDog `joint_worker` / UI；`compose_export_markdown` 仅主报告 + 可选对比；`perfdog_insights` manifest 不再依赖 `game_perf`。 |
+| 2026-03-25 | **报告展示**：`AnalysisReport` 增加 `anomaly_data_chunks` / `non_anomaly_summary_zh`（`anomaly_rows.py`、`data_table.py`）；导出与 GUI **仅**展示洞察时间窗内 Data_v4 切片；**移除** Tab 内「添加对比文件」与 Service 侧对比拼接（`compare.py` 仍可用于测试）。 |
 
 ---
 

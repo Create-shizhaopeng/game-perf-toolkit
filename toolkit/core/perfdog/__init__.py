@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from toolkit.core.perfdog.compare import build_compare_markdown, compare_reports
+from toolkit.core.perfdog.anomaly_rows import build_anomaly_data_chunks, build_non_anomaly_summary_zh
 from toolkit.core.perfdog.correlate import correlate_findings_with_freq
 from toolkit.core.perfdog.detect import detect_findings, finding_from_frame_stats
 from toolkit.core.perfdog.errors import PerfDogParseError, PerfDogUnsupportedError
@@ -78,6 +79,10 @@ def load_and_analyze(path: str, *, options: AnalyzeOptions | None = None) -> Ana
         "明显异常项数( warn/critical )": warn_crit,
     }
 
+    pad_used = min(5000, max(500, int(opts.anomaly_window_ms)))
+    anomaly_chunks = build_anomaly_data_chunks(df, findings, pad_ms=pad_used)
+    non_anomaly_zh = build_non_anomaly_summary_zh(session, summary_metrics)
+
     return AnalysisReport(
         session=session,
         summary_metrics=summary_metrics,
@@ -89,4 +94,7 @@ def load_and_analyze(path: str, *, options: AnalyzeOptions | None = None) -> Ana
         source_path=path,
         unrecognized_columns=parsed.unrecognized_columns,
         has_thread_cpu_sheet=has_thread_sheet,
+        anomaly_data_chunks=anomaly_chunks,
+        anomaly_sample_pad_ms=pad_used,
+        non_anomaly_summary_zh=non_anomaly_zh,
     )

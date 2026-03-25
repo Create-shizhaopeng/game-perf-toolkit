@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
@@ -21,11 +22,11 @@ from PyQt6.QtWidgets import (
 )
 
 from toolkit.core.perfdog.config_defaults import REPORT_METHODS_AND_LIMITATIONS_ZH
-from toolkit.core.perfdog.export_md import format_finding_time_sentence
+from toolkit.core.perfdog.export_md import anomaly_chunk_to_tsv, format_finding_anomaly_period
 from toolkit.gui.base_tab import BaseTab
 
 from .analysis_worker import PerfDogAnalysisWorker
-from .models import AnalysisReport, SessionComparePair
+from .models import AnalysisReport
 from .service import PerfdogInsightsService
 
 
@@ -45,9 +46,6 @@ class PerfdogInsightsTab(BaseTab):
         self._report: AnalysisReport | None = None
         self._worker: PerfDogAnalysisWorker | None = None
         self._last_good_report: AnalysisReport | None = None
-        self._cmp_worker: PerfDogAnalysisWorker | None = None
-        self._compare_report: AnalysisReport | None = None
-        self._compare_pair: SessionComparePair | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -92,11 +90,6 @@ class PerfdogInsightsTab(BaseTab):
         self._clear_btn = QPushButton("清除当前分析")
         self._clear_btn.setFixedHeight(28)
         path_row.addWidget(self._clear_btn)
-        self._compare_btn = QPushButton("添加对比文件…")
-        self._compare_btn.setFixedHeight(28)
-        self._compare_btn.setToolTip("加载第二份 PerfDog 导出，与当前主会话并列对比（FR-011/012）。")
-        self._compare_btn.setEnabled(False)
-        path_row.addWidget(self._compare_btn)
         dc_layout.addLayout(path_row)
 
         self._progress = QProgressBar()
@@ -147,7 +140,6 @@ class PerfdogInsightsTab(BaseTab):
         self._clear_btn.clicked.connect(self._on_clear)
         self._export_btn.clicked.connect(self._on_export)
         self._copy_btn.clicked.connect(self._on_copy)
-        self._compare_btn.clicked.connect(self._on_add_compare)
 
     def on_devices_changed(self, devices: list[str]) -> None:
         """离线分析：不因无设备禁用导入控件。"""
@@ -180,9 +172,7 @@ class PerfdogInsightsTab(BaseTab):
 
     def _set_selected_path(self, path: str) -> None:
         self._path_edit.setText(path)
-        busy = (self._worker and self._worker.isRunning()) or (
-            self._cmp_worker and self._cmp_worker.isRunning()
-        )
+        busy = self._worker and self._worker.isRunning()
         self._import_btn.setEnabled(bool(path) and not busy)
 
     def _on_browse(self) -> None:
@@ -208,11 +198,8 @@ class PerfdogInsightsTab(BaseTab):
     def _start_worker(self, path: str) -> None:
         if self._worker and self._worker.isRunning():
             return
-        if self._cmp_worker and self._cmp_worker.isRunning():
-            return
         self._browse_btn.setEnabled(False)
         self._import_btn.setEnabled(False)
-        self._compare_btn.setEnabled(False)
         self._progress.setVisible(True)
         self._status_lbl.setText("解析中…")
         self._worker = PerfDogAnalysisWorker(path, self._service, self)
@@ -230,7 +217,6 @@ class PerfdogInsightsTab(BaseTab):
         self._render_report(report)
         self._export_btn.setEnabled(True)
         self._copy_btn.setEnabled(True)
-        self._compare_btn.setEnabled(True)
         self._status_lbl.setText("解析完成")
 
     def _on_worker_err(self, message: str) -> None:
@@ -240,16 +226,12 @@ class PerfdogInsightsTab(BaseTab):
         if self._last_good_report is not None:
             self._report = self._last_good_report
             self._render_report(self._last_good_report)
-            self._compare_btn.setEnabled(True)
 
     def _on_worker_finished(self) -> None:
         self._progress.setVisible(False)
         self._browse_btn.setEnabled(True)
         p = self._path_edit.text().strip()
-        busy = self._cmp_worker and self._cmp_worker.isRunning()
-        self._import_btn.setEnabled(bool(p) and p != "未选择文件" and not busy)
-        if self._report is not None and not busy:
-            self._compare_btn.setEnabled(True)
+        self._import_btn.setEnabled(bool(p) and p != "未选择文件")
 
     def _render_report(self, report: AnalysisReport) -> None:
         html_parts: list[str] = []
@@ -297,10 +279,10 @@ class PerfdogInsightsTab(BaseTab):
             html_parts.append(
                 f"<h4>{self._esc(f.title)} <code>{self._esc(f.id)}</code>{tr}</h4>",
             )
-            time_sent = format_finding_time_sentence(f)
-            if time_sent:
+            period = format_finding_anomaly_period(f)
+            if period:
                 html_parts.append(
-                    f"<p><b>异常时间</b>：{self._esc(time_sent)}</p>",
+                    f"<p><b>异常时间段</b>：{self._esc(period)}</p>",
                 )
             detail_html = self._esc(f.detail).replace("\n", "<br/>")
             html_parts.append(
@@ -369,22 +351,39 @@ class PerfdogInsightsTab(BaseTab):
                     )
                 html_parts.append("</ul>")
 
-        if self._compare_pair is not None:
-            cp = self._compare_pair
-            html_parts.append("<h3>双会话对比（B 相对当前主会话 A）</h3>")
-            if cp.warnings:
-                html_parts.append("<p><b>警告</b><ul>")
-                for w in cp.warnings:
-                    html_parts.append(f"<li>{self._esc(w)}</li>")
-                html_parts.append("</ul></p>")
-            html_parts.append("<p><b>指标对照</b></p><ul>")
-            for k in cp.aligned_columns[:80]:
-                va, vb = cp.delta_metrics[k]
+        html_parts.append("<h3>异常关联采样（Data_v4）</h3>")
+        if report.anomaly_data_chunks:
+            html_parts.append(
+                "<p>各段为 <code>time_ms</code> 落在「异常时间段」± "
+                f"<b>{report.anomaly_sample_pad_ms}</b> ms 内的秒级采样（制表符分隔）；"
+                "其余时段不逐行展开。</p>",
+            )
+            for ch in report.anomaly_data_chunks:
                 html_parts.append(
-                    f"<li><b>{self._esc(str(k))}</b>: A={self._esc(str(va))} | "
-                    f"B={self._esc(str(vb))}</li>",
+                    f"<h4><code>{self._esc(ch.finding_id)}</code> "
+                    f"{self._esc(ch.finding_title)}</h4>",
                 )
-            html_parts.append("</ul>")
+                html_parts.append(
+                    "<p><b>截取时间窗（ms）</b>："
+                    f"{ch.time_lo_ms:.1f} ~ {ch.time_hi_ms:.1f}</p>",
+                )
+                tsv = anomaly_chunk_to_tsv(ch)
+                if not tsv:
+                    html_parts.append("<p>（该时间窗内无秒级采样点。）</p>")
+                else:
+                    html_parts.append(
+                        '<pre style="white-space:pre;overflow:auto;max-height:360px;font-size:10px;line-height:1.2">',
+                    )
+                    html_parts.append(html.escape(tsv, quote=False))
+                    html_parts.append("</pre>")
+        else:
+            html_parts.append(
+                "<p>（当前无带「异常时间段」的洞察，或 Data_v4 中无匹配采样行。）</p>",
+            )
+
+        html_parts.append("<h3>其余时段说明</h3>")
+        na = (report.non_anomaly_summary_zh or "").strip() or "（无）"
+        html_parts.append(f"<p>{self._esc(na)}</p>")
 
         if report.unrecognized_columns:
             html_parts.append("<h3>尚未登记别名的列名</h3>")
@@ -410,93 +409,20 @@ class PerfdogInsightsTab(BaseTab):
         )
 
     def _compose_export_markdown(self) -> str:
-        """PerfDog 全文 + 可选 A/B 对比节。"""
         if self._report is None:
             return ""
-        return self._service.compose_export_markdown(
-            self._report,
-            compare_pair=self._compare_pair,
-        )
-
-    def _on_add_compare(self) -> None:
-        if self._report is None:
-            QMessageBox.information(self, "对比", "请先完成主会话分析，再添加对比文件。")
-            return
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "选择对比用 PerfDog 导出",
-            "",
-            "Excel (*.xlsx *.xlsm)",
-        )
-        if not path:
-            return
-        self._start_compare_worker(path)
-
-    def _start_compare_worker(self, path: str) -> None:
-        if self._cmp_worker and self._cmp_worker.isRunning():
-            return
-        if self._worker and self._worker.isRunning():
-            return
-        self._browse_btn.setEnabled(False)
-        self._import_btn.setEnabled(False)
-        self._compare_btn.setEnabled(False)
-        self._progress.setVisible(True)
-        self._status_lbl.setText("加载对比文件…")
-        self._cmp_worker = PerfDogAnalysisWorker(path, self._service, self)
-        self._cmp_worker.progress.connect(self._status_lbl.setText)
-        self._cmp_worker.finished_ok.connect(self._on_cmp_ok)
-        self._cmp_worker.finished_err.connect(self._on_cmp_err)
-        self._cmp_worker.finished.connect(self._on_cmp_finished)
-        self._cmp_worker.start()
-
-    def _on_cmp_ok(self, report: object) -> None:
-        if not isinstance(report, AnalysisReport) or self._report is None:
-            return
-        pair = self._service.compare_reports_pair(self._report, report)
-        mismatch = any("包名不一致" in w for w in pair.warnings)
-        if mismatch:
-            r = QMessageBox.question(
-                self,
-                "包名不一致",
-                "两份会话的应用/包名不一致，仍要加载并列对比吗？（FR-012）",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if r != QMessageBox.StandardButton.Yes:
-                return
-        self._compare_report = report
-        self._compare_pair = pair
-        self._render_report(self._report)
-        self._status_lbl.setText("对比文件已加载")
-
-    def _on_cmp_err(self, message: str) -> None:
-        self._status_lbl.setText("对比文件加载失败")
-        QMessageBox.warning(self, "对比", message)
-
-    def _on_cmp_finished(self) -> None:
-        self._progress.setVisible(False)
-        self._browse_btn.setEnabled(True)
-        p = self._path_edit.text().strip()
-        self._import_btn.setEnabled(bool(p) and p != "未选择文件")
-        if self._report is not None:
-            self._compare_btn.setEnabled(True)
+        return self._service.compose_export_markdown(self._report)
 
     def _on_clear(self) -> None:
         if self._worker and self._worker.isRunning():
             self._worker.requestInterruption()
             self._worker.wait(3000)
-        if self._cmp_worker and self._cmp_worker.isRunning():
-            self._cmp_worker.requestInterruption()
-            self._cmp_worker.wait(3000)
         self._report = None
         self._last_good_report = None
-        self._compare_report = None
-        self._compare_pair = None
         self._browser.clear()
         self._path_edit.setText("未选择文件")
         self._export_btn.setEnabled(False)
         self._copy_btn.setEnabled(False)
-        self._compare_btn.setEnabled(False)
         self._status_lbl.setText("")
         self._import_btn.setEnabled(False)
 

@@ -11,7 +11,8 @@
 **实现对齐说明（2026-03-24，与 [spec.md](./spec.md)「本期交付边界」一致）**：
 
 - **单文件**：`load_and_analyze` **不再**填充 `AnalysisReport.recommendations`；`build_markdown` **不含**「建议」章节（`toolkit/core/perfdog/recommendations.py` 仍保留供后续里程碑）。**Phase 5 / T022** 历史勾选表示曾实现过 UI/导出建议；**本期产品以 spec 为准**。
-- **2026-03-24（产品变更）**：**已移除**联合分析（`joint_assessment`、`joint_models`、`joint_worker`、`joint_adapter`、`gp_joint_policy_snapshot` 等）；**Phase 12～16 勾选保留为历史**。PerfDog Tab **仅**解析导入的 **`.xlsx/.xlsm`**，保留对比/导出；**不**再依赖「游戏性能配置」Tab。
+- **2026-03-24（产品变更）**：**已移除**联合分析（`joint_assessment`、`joint_models`、`joint_worker`、`joint_adapter`、`gp_joint_policy_snapshot` 等）；**Phase 12～16 勾选保留为历史**。PerfDog Tab **仅**解析导入的 **`.xlsx/.xlsm`**，**Markdown/UI 导出**单会话报告；**不**再依赖「游戏性能配置」Tab。
+- **2026-03-25（展示策略）**：GUI **已移除**「双文件 A/B 对比」（`toolkit/core/perfdog/compare.py` 仍保留供单测/后续）；报告含 **异常时间段**、**异常关联采样（Data_v4 按洞察时间窗切片）** 与 **其余时段概括说明**，**不**再嵌入全量秒级表。
 
 **框架约定**：与 `toolkit/gui/main_window.py` 插件钩子一致 —— 能力放在 **`modules/perfdog_insights/`**（GUI + worker），可复用逻辑放在 **`toolkit/core/perfdog/`**（与 plan 中 `source/core/perfdog` 对应，实际仓库根为 `toolkit/`）。
 

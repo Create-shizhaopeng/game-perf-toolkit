@@ -73,6 +73,18 @@ class Recommendation:
 
 
 @dataclass
+class AnomalyDataChunk:
+    """某条 Finding 在 Data_v4 上截取的异常关联采样（非全量）。"""
+
+    finding_id: str
+    finding_title: str
+    time_lo_ms: float
+    time_hi_ms: float
+    columns: list[str]
+    rows: list[list[str]]
+
+
+@dataclass
 class AnalysisReport:
     session: SessionSummary
     summary_metrics: dict[str, Any]
@@ -85,6 +97,10 @@ class AnalysisReport:
     source_path: str | None = None
     unrecognized_columns: list[str] = field(default_factory=list)
     has_thread_cpu_sheet: bool = False
+    # 各洞察时间段对应的 Data_v4 采样切片（± anomaly_sample_pad_ms）
+    anomaly_data_chunks: list[AnomalyDataChunk] = field(default_factory=list)
+    anomaly_sample_pad_ms: int = 0
+    non_anomaly_summary_zh: str = ""
 
 
 @dataclass

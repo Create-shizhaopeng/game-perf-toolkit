@@ -10,7 +10,7 @@
 
 ## 模块概述
 
-离线导入 PerfDog **`.xlsx/.xlsm`**，生成会话摘要与**异常洞察**、可选 A/B 对比（**本期规格**不要求「可执行建议」章节）；见根目录 `specs/004-perfdog-import-insights/spec.md`。
+离线导入 PerfDog **`.xlsx/.xlsm`**，生成会话摘要、**异常洞察**（含**异常时间段**与 **Data_v4 异常关联采样切片**），并对其余时段作概括说明（**本期规格**不要求「可执行建议」章节）；见根目录 `specs/004-perfdog-import-insights/spec.md`。
 
 ## 继承的全局规则
 
@@ -29,7 +29,7 @@
 
 ## 模块特有规则
 
-- 解析与对比逻辑经 **`PerfdogInsightsService`** 调用 **`toolkit.core.perfdog`**，不在本模块复制 Data_v4 解析
+- 解析与导出经 **`PerfdogInsightsService`** 调用 **`toolkit.core.perfdog`**，不在本模块复制 Data_v4 解析
 - 耗时任务在 **`analysis_worker`**（`QThread`）中执行，**禁止**在工作线程直接操作控件
 - 模块内 **`specs/004-perfdog-import-insights/`** 为指向仓库根 **`specs/004-perfdog-import-insights/`** 的索引；**正文以根目录为准**
 

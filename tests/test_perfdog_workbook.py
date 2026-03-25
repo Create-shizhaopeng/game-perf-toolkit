@@ -45,6 +45,13 @@ def test_load_and_analyze_minimal_xlsx(tmp_path: Path) -> None:
     assert report.recommendations == []  # 本期 spec：不生成单文件建议清单
     md = build_markdown(report)
     assert "## 方法与局限性" in md
+    assert "## 异常关联采样（Data_v4）" in md
+    assert "## 其余时段说明" in md
+    assert "## 秒级采样全量" not in md
+    assert "```text" in md
+    assert report.anomaly_sample_pad_ms >= 500
+    assert len(report.anomaly_data_chunks) >= 1
+    assert "异常时间段" in md
     assert "启发式" in md
 
 
