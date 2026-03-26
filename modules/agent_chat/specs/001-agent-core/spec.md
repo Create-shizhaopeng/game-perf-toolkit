@@ -8,7 +8,11 @@
 ## 目录
 
 - [Clarifications](#clarifications)
+  - [Session 2026-03-25](#session-2026-03-25)
 - [设计背景](#设计背景)
+  - [现有架构预留](#现有架构预留)
+  - [核心使用场景](#核心使用场景)
+  - [用户群体](#用户群体)
 - [User Scenarios & Testing](#user-scenarios--testing)
   - [US-1 SOP 自动发现与渐进式披露](#us-1-sop-自动发现与渐进式披露-priority-p1)
   - [US-2 Trace 分析](#us-2-trace-分析-priority-p1)
@@ -27,7 +31,11 @@
 - [Key Entities](#key-entities)
 - [架构决策](#架构决策)
 - [LLM Provider 技术选型](#llm-provider-技术选型)
+  - [Claude (Anthropic API)](#claude-anthropic-api)
+  - [GLM (智谱 API)](#glm-智谱-api)
+  - [Provider 切换](#provider-切换)
 - [Success Criteria](#success-criteria)
+  - [Measurable Outcomes](#measurable-outcomes)
 
 ---
 

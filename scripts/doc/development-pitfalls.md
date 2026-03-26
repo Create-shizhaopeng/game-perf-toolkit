@@ -1,9 +1,5 @@
 # 模块开发常见踩坑指南
 
-## 代码规则（与本文档的关系）
-
-本文件描述 **具体反例与修法**；**总纲级约定**（分层、Ruff、context 前缀、框架边界、合并前测试等）以架构文档 **[§5.0 代码规则（总纲）](../../doc/architecture/architecture-overview.md#50-代码规则总纲)** 与 **`.specify/memory/constitution.md`** 为准。踩坑条目中的 **MUST** 与总纲一并遵守。
-
 ## 目录
 
 - [代码规则（与本文档的关系）](#代码规则与本文档的关系)
@@ -32,6 +28,12 @@
 - [P23 — GLM API 400 错误：对话历史格式不合规](#p23--glm-api-400-错误对话历史格式不合规)
 - [P24 — LLM Tool Schema 中 Callable 参数导致 API 拒绝](#p24--llm-tool-schema-中-callable-参数导致-api-拒绝)
 - [P25 — Python 3.14 from \_\_future\_\_ import annotations 与 get\_type\_hints 冲突](#p25--python-314-from-__future__-import-annotations-与-get_type_hints-冲突)
+
+---
+
+## 代码规则（与本文档的关系）
+
+本文件描述 **具体反例与修法**；**总纲级约定**（分层、Ruff、context 前缀、框架边界、合并前测试等）以架构文档 **[§5.0 代码规则（总纲）](../../doc/architecture/architecture-overview.md#50-代码规则总纲)** 与 **`.specify/memory/constitution.md`** 为准。踩坑条目中的 **MUST** 与总纲一并遵守。
 
 ---
 
