@@ -9,6 +9,7 @@
 - [Phase 5: 插件集成](#phase-5-插件集成)
 - [Phase 6: 测试 + 回归验证](#phase-6-测试--回归验证)
 - [Phase 7: 连接后自动载入设备配置（US6）](#phase-7-连接后自动载入设备配置us6)
+- [Phase 8: BindCore 绑核 — 单条删除（补 FR-006）](#phase-8-bindcore-绑核--单条删除补-fr-006)
 - [FR ↔ Task Traceability](#fr--task-traceability)
 
 ---
@@ -225,6 +226,22 @@
 
 ---
 
+## Phase 8: BindCore 绑核 — 单条删除（补 FR-006）
+
+**背景**：策略面板中 BindCore 已有「+ 添加」与「× 删除整块」（`remove_subtree` 删整个 `BindCore` 根）。**缺少**删除**单条**子节点（如单个 `tid` 行）的能力，与 **FR-006「动态增删子项」** 不完整对齐。
+
+**独立验收**：加载含多行 BindCore 子项的 XML → 删除其中一行 → 仅该行从 DOM 消失，BindCore 块与其它键值仍在；保存/推送前 XML 结构合法。
+
+- [x] T030 [P] [US1] 在 `modules/game_perf/src/parser.py` 实现 `remove_bindcore_child(child_el: _Element) -> bool`：校验 `child_el.getparent()` 为 `BindCore`；`parent.remove(child_el)` 后 `_refresh_game_policy()`；不得用于删除 BindCore 根节点本身
+- [x] T031 [US1] 在 `modules/game_perf/src/gui_tab.py` 的 `_append_strategy_block` 中，对 `is_bindcore` 分支内每一行 `p["dom"]`（StrategyItem 子元素）增加「删除此行」控件，连接 `_on_bindcore_remove_row`（调用 `parser.remove_bindcore_child`）；成功后 `_refresh_strategy()`；可选 `QMessageBox` 确认以免误触
+- [x] T032 [P] [US1] 在 `modules/game_perf/tests/test_parser.py` 增加用例：含多个同名子 tag 的 BindCore，`remove_bindcore_child` 删除其一后剩余子节点数量与标签正确
+
+**依赖**：T004（已有 `add_bindcore_row` / `remove_subtree`）、T016（BindCore 布局）
+
+**并行**：T030 与 T032 可同时开工（parser + 测试）；T031 依赖 T030。
+
+---
+
 ## FR ↔ Task Traceability
 
 | FR | 任务 |
@@ -234,7 +251,7 @@
 | FR-003 | T003, T014 |
 | FR-004 | T003 |
 | FR-005 | T004, T016 |
-| FR-006 | T004, T016 |
+| FR-006 | T004, T016, **T030, T031**（单条删除） |
 | FR-007 | T004, T016 |
 | FR-008 | T005 |
 | FR-009 | T005, T017 |

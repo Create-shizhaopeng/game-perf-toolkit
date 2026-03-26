@@ -372,6 +372,17 @@ class GamePerfParser:
         self._refresh_game_policy()
         return True
 
+    def remove_bindcore_child(self, child_el: etree._Element) -> bool:
+        """删除 BindCore 下一条直接子节点；不得用于移除 BindCore 根。"""
+        if child_el is None or child_el.tag == "BindCore":
+            return False
+        parent = child_el.getparent()
+        if parent is None or parent.tag != "BindCore":
+            return False
+        parent.remove(child_el)
+        self._refresh_game_policy()
+        return True
+
     def save_as(self, path: str | Path) -> bool:
         return self._write_xml(str(path))
 

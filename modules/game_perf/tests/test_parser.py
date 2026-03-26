@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from lxml import etree
+
 from modules.game_perf.src.parser import GamePerfParser
 
 FIXTURE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fixtures")
@@ -24,6 +26,33 @@ def parser_copy(tmp_path):
     """可写的副本用于编辑测试"""
     copy_path = tmp_path / "gameperfconfig.xml"
     shutil.copy2(FIXTURE_XML, copy_path)
+    return GamePerfParser(str(copy_path))
+
+
+@pytest.fixture
+def parser_with_bindcore(tmp_path):
+    """在 Normal 模式下插入含多条同名 tid 的 BindCore，用于绑核单删测试"""
+    copy_path = tmp_path / "gameperfconfig.xml"
+    shutil.copy2(FIXTURE_XML, copy_path)
+    tree = etree.parse(str(copy_path))
+    root = tree.getroot()
+    mode = root.find(".//Mode[@name='Normal']")
+    assert mode is not None
+    bind = etree.Element("BindCore")
+    for name, text in (("first", "0"), ("second", "1"), ("third", "2")):
+        tid = etree.SubElement(bind, "tid")
+        tid.set("name", name)
+        tid.text = text
+    for i, ch in enumerate(mode):
+        if ch.tag == "Policy":
+            mode.insert(i, bind)
+            break
+    tree.write(
+        str(copy_path),
+        encoding="utf-8",
+        xml_declaration=True,
+        pretty_print=True,
+    )
     return GamePerfParser(str(copy_path))
 
 
@@ -170,3 +199,35 @@ class TestSerializable:
         assert "game_alias" in d
         assert "xml_node" not in d
         assert d["gold_index"] == "2_8"
+
+
+class TestBindCoreRemove:
+    def test_remove_bindcore_child_deletes_one_of_many_tid(self, parser_with_bindcore):
+        p = parser_with_bindcore
+        bc = p._root.find(".//BindCore")
+        assert bc is not None
+        children = list(bc)
+        assert len(children) == 3
+        assert all(c.tag == "tid" for c in children)
+        mid = children[1]
+        assert mid.get("name") == "second"
+        assert p.remove_bindcore_child(mid)
+        bc = p._root.find(".//BindCore")
+        assert bc is not None
+        remaining = list(bc)
+        assert len(remaining) == 2
+        assert [c.tag for c in remaining] == ["tid", "tid"]
+        assert [c.get("name") for c in remaining] == ["first", "third"]
+
+    def test_remove_bindcore_child_rejects_bindcore_root(self, parser_with_bindcore):
+        p = parser_with_bindcore
+        bc = p._root.find(".//BindCore")
+        assert bc is not None
+        assert not p.remove_bindcore_child(bc)
+
+    def test_remove_bindcore_child_rejects_non_direct_child(self, parser_with_bindcore):
+        p = parser_with_bindcore
+        mode = p._root.find(".//Mode[@name='Normal']")
+        tsc = mode.find("ThermalSceneCode")
+        assert tsc is not None
+        assert not p.remove_bindcore_child(tsc)

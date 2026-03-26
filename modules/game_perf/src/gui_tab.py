@@ -5,7 +5,7 @@ from __future__ import annotations
 import functools
 import os
 import threading
-from typing import Any
+from typing import Any, Optional
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QComboBox, QLabel,
@@ -651,10 +651,17 @@ class GamePerfTab(BaseTab):
         grid.setVerticalSpacing(2)
         grid.addWidget(QLabel("Key"), 0, 0)
         grid.addWidget(QLabel("Value"), 0, 1)
-        grid.setColumnStretch(0, 2)
-        grid.setColumnStretch(1, 3)
+        if is_bindcore:
+            grid.addWidget(QLabel("操作"), 0, 2)
+            grid.setColumnStretch(0, 2)
+            grid.setColumnStretch(1, 3)
+            grid.setColumnStretch(2, 0)
+        else:
+            grid.setColumnStretch(0, 2)
+            grid.setColumnStretch(1, 3)
 
         row_idx = 1
+        seen_bindcore_children: set[int] = set()
         for p in (item.pairs or []):
             if not isinstance(p, dict) or p.get("dom") is None:
                 continue
@@ -668,6 +675,22 @@ class GamePerfTab(BaseTab):
             )
             grid.addWidget(kl, row_idx, 0)
             grid.addWidget(ed, row_idx, 1)
+            if is_bindcore:
+                target = self._bindcore_direct_child_for_remove(item.element, p["dom"])
+                del_btn: Optional[QPushButton] = None
+                if target is not None:
+                    tid = id(target)
+                    if tid not in seen_bindcore_children:
+                        seen_bindcore_children.add(tid)
+                        del_btn = QPushButton("删此行")
+                        del_btn.setFixedHeight(26)
+                        del_btn.clicked.connect(
+                            functools.partial(self._on_bindcore_remove_row, target)
+                        )
+                if del_btn is not None:
+                    grid.addWidget(del_btn, row_idx, 2)
+                else:
+                    grid.addWidget(QLabel(""), row_idx, 2)
             row_idx += 1
         bl.addLayout(grid)
         parent_layout.addWidget(block)
@@ -789,6 +812,36 @@ class GamePerfTab(BaseTab):
         if self.parser and self.parser.add_bindcore_row(root_el):
             self._document_dirty = True
             self._refresh()
+
+    @staticmethod
+    def _bindcore_direct_child_for_remove(bind_root, dom) -> Any:
+        """从扁平化后的 dom 定位到 BindCore 的直接子节点（用于整段删除）。"""
+        if bind_root is None or dom is None:
+            return None
+        cur = dom
+        while cur is not None:
+            par = cur.getparent()
+            if par == bind_root:
+                return None if cur.tag == "BindCore" else cur
+            if par is None:
+                return None
+            cur = par
+        return None
+
+    def _on_bindcore_remove_row(self, child_el) -> None:
+        if not self.parser:
+            return
+        r = QMessageBox.question(
+            self.window(),
+            "确认删除",
+            "确定删除该绑核子项？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if r != QMessageBox.StandardButton.Yes:
+            return
+        if self.parser.remove_bindcore_child(child_el):
+            self._document_dirty = True
+            self._refresh_strategy()
 
     def _on_remove_subtree(self, element):
         r = QMessageBox.question(
