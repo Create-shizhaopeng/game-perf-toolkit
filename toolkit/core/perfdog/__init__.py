@@ -18,6 +18,7 @@ from toolkit.core.perfdog.report_types import (
     Recommendation,
     SessionComparePair,
 )
+from toolkit.core.perfdog.serialize_report import report_to_json, report_to_plain_dict
 from toolkit.core.perfdog.session import build_session
 from toolkit.core.perfdog.threads_top import (
     attach_thread_top_to_findings,
@@ -32,6 +33,8 @@ __all__ = [
     "build_markdown",
     "build_compare_markdown",
     "compare_reports",
+    "report_to_plain_dict",
+    "report_to_json",
     "AnalysisReport",
     "AnalyzeOptions",
     "SessionComparePair",

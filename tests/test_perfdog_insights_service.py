@@ -21,6 +21,16 @@ def _minimal_xlsx(path: Path) -> None:
     wb.save(path)
 
 
+def test_service_report_to_plain_dict(tmp_path: Path) -> None:
+    p = tmp_path / "b.xlsx"
+    _minimal_xlsx(p)
+    svc = PerfdogInsightsService()
+    report = svc.load_report(str(p))
+    d = svc.report_to_plain_dict(report, include_chunk_rows=False)
+    assert d.get("schema_version") == 1
+    assert "anomaly_data_chunks" in d
+
+
 def test_service_load_and_compose_markdown(tmp_path: Path) -> None:
     p = tmp_path / "a.xlsx"
     _minimal_xlsx(p)

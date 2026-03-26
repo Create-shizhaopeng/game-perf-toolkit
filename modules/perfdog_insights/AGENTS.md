@@ -36,4 +36,5 @@
 ## 测试要求
 
 - Service 烟测见根目录 **`tests/test_perfdog_insights_service.py`**（`modules/.../tests` 易与 pytest 包名冲突，故放在顶层 `tests/`）
+- **自定义 UI**：优先消费 **`PerfdogInsightsService.report_to_plain_dict` / `report_to_json`**（或 `toolkit.core.perfdog.report_to_plain_dict`），与 PyQt 解耦；命令行可用 **`toolkit perfdog analyze FILE --json out.json`**（可选 `--markdown`、`--compact`）
 - 脱敏样例可放在 **`fixtures/`**；与核心库共用的烟测仍见根目录 **`tests/test_perfdog_workbook.py`**

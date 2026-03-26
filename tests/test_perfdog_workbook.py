@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from openpyxl import Workbook
 
-from toolkit.core.perfdog import build_markdown, compare_reports, load_and_analyze
+from toolkit.core.perfdog import build_markdown, compare_reports, load_and_analyze, report_to_plain_dict
 from toolkit.core.perfdog.errors import PerfDogParseError
 from toolkit.core.perfdog.report_types import (
     AnalysisReport,
@@ -33,6 +33,19 @@ def _write_minimal_perfdog_xlsx(path: Path) -> None:
         fps = 58.0 if 10 <= i <= 20 else 59.5
         ws.append([t, fps, 0.95])
     wb.save(path)
+
+
+def test_report_to_plain_dict_schema(tmp_path: Path) -> None:
+    p = tmp_path / "min.xlsx"
+    _write_minimal_perfdog_xlsx(p)
+    report = load_and_analyze(str(p))
+    d = report_to_plain_dict(report, include_chunk_rows=False)
+    assert d["schema_version"] == 1
+    assert "session" in d and "findings" in d
+    assert "anomaly_data_chunks" in d
+    assert d["anomaly_data_chunks"]
+    assert "row_count" in d["anomaly_data_chunks"][0]
+    assert "rows" not in d["anomaly_data_chunks"][0]
 
 
 def test_load_and_analyze_minimal_xlsx(tmp_path: Path) -> None:
