@@ -150,3 +150,36 @@ class AnalysisResult:
     dimensions_skipped: list[str] = field(default_factory=list)
     parse_result: dict[str, Any] = field(default_factory=dict)
     analysis_data: dict[str, Any] = field(default_factory=dict)
+
+    def to_summary_dict(self) -> dict[str, Any]:
+        """返回 Agent 可消费的结构化摘要。"""
+        jank_ratio = (
+            round(self.jank_times / self.frame_num * 100, 3)
+            if self.frame_num > 0
+            else 0.0
+        )
+        per_dim: dict[str, str] = {}
+        for dim in self.dimensions_completed:
+            dim_data = self.analysis_data.get(dim, {})
+            if isinstance(dim_data, dict):
+                issues = dim_data.get("issues", [])
+                if issues:
+                    per_dim[dim] = str(issues[0]) if len(issues) == 1 else f"{len(issues)} 个问题"
+                else:
+                    per_dim[dim] = "无异常"
+            else:
+                per_dim[dim] = "已分析"
+        return {
+            "trace_path": self.trace_path,
+            "detected_process": self.detected_process,
+            "frame_count": self.frame_num,
+            "jank_count": self.jank_times,
+            "jank_ratio_percent": jank_ratio,
+            "refresh_rate_hz": self.refresh_rate_hz,
+            "elapsed_seconds": round(self.elapsed_seconds, 2),
+            "dimensions_completed": self.dimensions_completed,
+            "dimensions_skipped": self.dimensions_skipped,
+            "per_dimension_issues": per_dim,
+            "report_path": self.report_path,
+            "report_dir": self.report_dir,
+        }

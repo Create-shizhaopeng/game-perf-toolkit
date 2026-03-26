@@ -31,6 +31,35 @@ class PerfdogInsightsService:
             "version": "0.1.0",
         }
 
+    def summarize_report(self, path: str) -> dict:
+        """加载 PerfDog 报告并返回关键指标摘要。"""
+        report = self.load_report(path)
+        metrics = report.summary_metrics or {}
+        session = report.session
+
+        fps_stats: dict = {}
+        for key in ("avg_fps", "min_fps", "max_fps", "p1_fps", "fps_avg", "fps_min", "fps_max"):
+            if key in metrics:
+                fps_stats[key] = metrics[key]
+
+        bottlenecks = []
+        for f in report.findings:
+            bottlenecks.append({"detail": f.detail, "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity)})
+
+        return {
+            "package_name": session.package_name or "",
+            "device_name": session.device_name or "",
+            "duration_ms": session.duration_ms,
+            "fps_stats": fps_stats,
+            "jank_rate": metrics.get("jank_rate", metrics.get("jank_ratio", None)),
+            "memory_peak": metrics.get("memory_peak", metrics.get("pss_max", None)),
+            "power_avg": metrics.get("power_avg", metrics.get("current_avg", None)),
+            "key_bottlenecks": bottlenecks[:10],
+            "recommendations": [r.text for r in report.recommendations[:5]],
+            "finding_count": len(report.findings),
+            "source_path": path,
+        }
+
     def load_report(
         self,
         path: str,

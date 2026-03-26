@@ -29,6 +29,9 @@
 - [P20 — SQLite 跨线程连接访问](#p20--sqlite-跨线程连接访问)
 - [P21 — QTableWidget 操作按钮刷新竞态](#p21--qtablewidget-操作按钮刷新竞态)
 - [P22 — core.autocrlf 与 .editorconfig 行尾符冲突导致幽灵修改](#p22--coreautocrlf-与-editorconfig-行尾符冲突导致幽灵修改)
+- [P23 — GLM API 400 错误：对话历史格式不合规](#p23--glm-api-400-错误对话历史格式不合规)
+- [P24 — LLM Tool Schema 中 Callable 参数导致 API 拒绝](#p24--llm-tool-schema-中-callable-参数导致-api-拒绝)
+- [P25 — Python 3.14 from \_\_future\_\_ import annotations 与 get\_type\_hints 冲突](#p25--python-314-from-__future__-import-annotations-与-get_type_hints-冲突)
 
 ---
 
@@ -746,3 +749,107 @@ git rm --cached <file> && git checkout HEAD -- <file>
 - `.gitattributes` 的 `eol` 设置 MUST 与 `.editorconfig` 的 `end_of_line` 一致
 - 不要依赖 `core.autocrlf` 全局设置来统一行尾符——每个协作者的设置可能不同
 - 出现幽灵修改时，先用 `git hash-object` 对比哈希，再用 `git ls-files --eol` 检查行尾
+
+---
+
+## P23 — GLM API 400 错误：对话历史格式不合规
+
+**严重程度**：严重（多轮对话必现）
+
+### 问题描述
+
+Agent 首次消息正常，第二条消息起 GLM API 返回 `Error code: 400, "API调用参数有误"`。原因是多轮对话时历史消息格式不符合 OpenAI 兼容 API 的要求。
+
+### 错误根因（三个并发）
+
+1. **`arguments` 未序列化为 JSON string**：assistant 消息中的 `tool_calls[].function.arguments` 必须是 JSON 字符串，但代码中传递了 Python dict
+2. **`tool_call_id` 缺失**：tool 角色消息必须包含 `tool_call_id` 字段，但未从 `Message` 对象中提取
+3. **未知字段干扰**：消息中包含 API 不认识的额外字段（如 `report_paths`）
+
+### 修复方案
+
+在 `glm_provider.py` 中添加 `_sanitize_messages()` 函数，在发送前统一清洗：
+
+```python
+def _sanitize_messages(messages: list[dict]) -> list[dict]:
+    _VALID_KEYS = {
+        "system": {"role", "content"},
+        "user": {"role", "content"},
+        "assistant": {"role", "content", "tool_calls"},
+        "tool": {"role", "content", "tool_call_id"},
+    }
+    # 1. 仅保留各角色允许的字段
+    # 2. assistant + tool_calls: arguments 序列化为 JSON string
+    # 3. assistant + tool_calls + 无 content: content 设为 None
+    # 4. tool 消息必须有 tool_call_id，否则跳过
+```
+
+同时在 `Message` 数据模型中新增 `tool_call_id: str = ""` 字段，并在 `ConversationStore` 的 messages 表中持久化。
+
+### 预防措施
+
+- 凡是向 LLM API 发送历史消息，MUST 在发送前执行格式清洗
+- 数据模型的字段变更 MUST 同步更新数据库 schema 和 CRUD 方法
+- 在多轮对话测试中，MUST 包含至少一次工具调用后再发消息的场景
+
+---
+
+## P24 — LLM Tool Schema 中 Callable 参数导致 API 拒绝
+
+**严重程度**：中等（特定工具注册时触发）
+
+### 问题描述
+
+通过 `inspect.signature()` + `get_type_hints()` 自动生成工具的 JSON Schema 时，Python 的 `Callable` 类型参数（如回调函数 `on_progress: Callable`）会被转换为 `{"type": "string"}`，LLM 无法传递回调函数，GLM API 可能拒绝该参数定义。
+
+### 修复方案
+
+在 `ToolRegistry._enhance_schema()` 中添加 `_is_callable_type()` 过滤函数：
+
+```python
+def _is_callable_type(hint: Any) -> bool:
+    """检查是否为 Callable/Optional[Callable]/Callable | None。"""
+    origin = getattr(hint, "__origin__", None)
+    if origin is collections.abc.Callable:
+        return True
+    # 递归检查 Union 类型中的 Callable 成员
+    ...
+```
+
+在遍历参数时跳过所有 `Callable` 类型的参数。
+
+### 预防措施
+
+- 模块暴露给 Agent 的方法 SHOULD 避免使用 `Callable` 参数；如需回调，提供不含回调的重载版本
+- `register_agent_tools()` 中 SHOULD 显式提供 `parameters` JSON Schema 而非依赖自动推断
+- 自动推断 MUST 过滤掉 `Callable`、`Generator`、`Iterator` 等非序列化类型
+
+---
+
+## P25 — Python 3.14 from \_\_future\_\_ import annotations 与 get\_type\_hints 冲突
+
+**严重程度**：低（仅影响测试）
+
+### 问题描述
+
+在使用 `from __future__ import annotations` 的模块中，通过 `exec()` 或局部定义的函数使用 `typing.Callable` 作为类型注解时，`get_type_hints()` 会抛出 `NameError: name 'Callable' is not defined`。这是因为 `annotations` future 将所有注解变为字符串，求值时在函数的 `__globals__` 中找不到 `Callable`。
+
+### 修复方案
+
+测试中定义带类型注解的函数时，使用 `exec()` 在独立命名空间中创建，并使用 `collections.abc.Callable` 代替 `typing.Callable`：
+
+```python
+func_code = (
+    "import collections.abc\n"
+    "def my_tool(path: str, callback: collections.abc.Callable | None = None) -> str:\n"
+    "    return 'ok'\n"
+)
+ns: dict = {}
+exec(func_code, ns)
+my_tool = ns["my_tool"]
+```
+
+### 预防措施
+
+- 在测试中定义需要 `get_type_hints()` 处理的函数时，MUST 确保类型注解在函数的 `__globals__` 中可解析
+- 优先使用 `collections.abc.Callable` 而非 `typing.Callable`（前者不受 annotations future 影响）

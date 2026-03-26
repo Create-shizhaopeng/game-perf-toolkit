@@ -46,17 +46,52 @@ class GamePerfPlugin(BasePlugin):
             {
                 "name": "perf_push",
                 "description": "推送性能配置文件到设备",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "serial": {"type": "string", "description": "设备序列号"},
+                        "config_file": {"type": "string", "description": "gameperfconfig.xml 文件路径"},
+                        "notes": {"type": "string", "description": "推送备注"},
+                    },
+                    "required": ["serial", "config_file"],
+                },
                 "method": self._service.push,
             },
             {
                 "name": "perf_reset",
                 "description": "将设备性能配置还原为备份版本",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "serial": {"type": "string", "description": "设备序列号"},
+                    },
+                    "required": ["serial"],
+                },
                 "method": self._service.reset,
             },
             {
                 "name": "perf_info",
                 "description": "查询设备上的性能配置信息",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "serial": {"type": "string", "description": "设备序列号"},
+                    },
+                    "required": ["serial"],
+                },
                 "method": self._service.get_info,
+            },
+            {
+                "name": "gp_analyze_config",
+                "description": "解析 gameperfconfig.xml 策略配置文件，返回 CPU/GPU 频点、支持的游戏列表、场景策略概览。用于策略审查和优化建议。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "xml_path": {"type": "string", "description": "gameperfconfig.xml 文件路径"},
+                    },
+                    "required": ["xml_path"],
+                },
+                "method": self._service.analyze_config,
             },
         ]
 

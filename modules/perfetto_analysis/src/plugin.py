@@ -41,27 +41,54 @@ class PerfettoAnalysisPlugin(BasePlugin):
         return [
             {
                 "name": "pa_analyze",
-                "description": "完整分析 Perfetto trace（Phase 1 + Phase 2 + 导出报告）",
+                "description": "完整分析 Perfetto trace 文件（丢帧检测 + 全维度分析 + 导出报告）。返回分析摘要和报告路径。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "Perfetto trace 文件路径（.perfetto-trace）"},
+                        "process_name": {"type": "string", "description": "目标进程名（留空则自动检测）"},
+                    },
+                    "required": ["trace_path"],
+                },
                 "method": self._service.analyze,
             },
             {
                 "name": "pa_parse",
-                "description": "仅解析 Perfetto trace（Phase 1 丢帧定位）",
+                "description": "仅解析 Perfetto trace（Phase 1 丢帧定位），不进行维度分析。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "Perfetto trace 文件路径"},
+                        "process_name": {"type": "string", "description": "目标进程名（留空则自动检测）"},
+                    },
+                    "required": ["trace_path"],
+                },
                 "method": self._service.parse_only,
             },
             {
                 "name": "pa_analyze_dims",
-                "description": "按维度独立分析 Perfetto trace",
+                "description": "按指定维度分析 Perfetto trace（如 cpu_freq, binder, sched 等）。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "Perfetto trace 文件路径"},
+                        "process_name": {"type": "string", "description": "目标进程名（留空则自动检测）"},
+                        "dimensions": {"type": "array", "items": {"type": "string"}, "description": "要分析的维度列表（留空则全部）"},
+                    },
+                    "required": ["trace_path"],
+                },
                 "method": self._service.analyze_dimensions,
             },
             {
                 "name": "pa_list_dims",
-                "description": "列出可用分析维度",
+                "description": "列出所有可用的 Perfetto 分析维度及其说明。",
+                "parameters": {"type": "object", "properties": {}},
                 "method": self._service.list_dimensions,
             },
             {
                 "name": "pa_history",
-                "description": "查询分析历史记录",
+                "description": "查询 Perfetto 分析历史记录，返回已完成分析的列表。",
+                "parameters": {"type": "object", "properties": {}},
                 "method": self._service.get_analysis_history,
             },
         ]

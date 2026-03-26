@@ -34,7 +34,34 @@ class PerfdogInsightsPlugin(BasePlugin):
 
     @hookimpl
     def register_agent_tools(self) -> list:
-        return []
+        if not self._service:
+            return []
+        return [
+            {
+                "name": "pdi_load_report",
+                "description": "加载并解析 PerfDog 导出的 Excel 报告（.xlsx），返回性能指标分析结果。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "PerfDog 导出的 .xlsx 文件路径"},
+                    },
+                    "required": ["path"],
+                },
+                "method": self._service.load_report,
+            },
+            {
+                "name": "pdi_summarize",
+                "description": "汇总已加载的 PerfDog 报告的关键性能指标（FPS、Jank、内存、功耗等）。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "PerfDog 导出的 .xlsx 文件路径"},
+                    },
+                    "required": ["path"],
+                },
+                "method": self._service.summarize_report,
+            },
+        ]
 
     @hookimpl
     def on_startup(self, context: dict) -> None:

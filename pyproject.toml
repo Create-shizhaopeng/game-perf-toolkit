@@ -19,6 +19,11 @@ dev = [
   "pytest>=7.0.0",
   "pyinstaller>=6.0.0",
 ]
+agent = [
+  "zhipuai>=2.1.5",
+  "anthropic>=0.40.0",
+  "pyyaml>=6.0",
+]
 
 [project.scripts]
 toolkit = "toolkit.app:main"

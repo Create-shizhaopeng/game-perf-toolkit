@@ -54,10 +54,15 @@
   - [8.4 BaseTab 基类](#84-basetab-基类)
   - [8.5 通用 UI 组件库](#85-通用-ui-组件库)
   - [8.6 主题系统](#86-主题系统)
-- [9. Agent AI 预留设计](#9-agent-ai-预留设计)
+- [9. Agent 智能助手模块](#9-agent-智能助手模块)
   - [9.1 设计定位](#91-设计定位)
-  - [9.2 架构预留](#92-架构预留)
-  - [9.3 交互协议](#93-交互协议)
+  - [9.2 模块架构](#92-模块架构)
+  - [9.3 对话循环](#93-对话循环核心流程)
+  - [9.4 工具注册协议](#94-工具注册协议)
+  - [9.5 LLM Provider 体系](#95-llm-provider-体系)
+  - [9.6 SOP 工作流管理](#96-sop-工作流管理)
+  - [9.7 GUI Agent Tab](#97-gui-agent-tab)
+  - [9.8 已适配的模块工具](#98-已适配的模块工具)
   - [9.4 LLM Provider 抽象](#94-llm-provider-抽象)
   - [9.5 渐进式开发路线](#95-渐进式开发路线)
 - [10. 构建与部署方案](#10-构建与部署方案)
@@ -1206,56 +1211,133 @@ class BaseTab(QWidget):
 
 ---
 
-## 9. Agent AI 预留设计
+## 9. Agent 智能助手模块
 
 ### 9.1 设计定位
 
-Agent 是远期目标。当前架构做接口预留，不实现具体功能。核心原则：所有模块都按照「提供结构化 Service + 声明 Agent Tools」的规范开发，未来 Agent 集成时零改造。
+Agent 智能助手（`modules/agent_chat/`）是项目的核心交互入口，通过 LLM 驱动的对话方式编排各模块工具，实现自动化性能分析工作流。所有模块按照「提供结构化 Service + 声明 Agent Tools」的规范开发，Agent 通过 `register_agent_tools` 钩子自动发现并调用各模块能力。
 
-### 9.2 架构预留
+### 9.2 模块架构
 
 ```
-Agent 模块 (modules/agent_chat/)
-├── Agent Core
-│   ├── LLM Provider      ← 可配置的 LLM 后端（云端 API）
-│   ├── Tool Executor      ← 调用 ServiceRegistry 中的工具
-│   ├── Memory             ← 对话记忆
-│   └── Prompt Manager     ← 提示词管理
-├── Agent GUI Tab          ← 对话界面
+modules/agent_chat/
+├── src/
+│   ├── models.py              ← Pydantic/dataclass 数据模型（AgentConfig, Message, ToolDefinition 等）
+│   ├── service.py             ← AgentService 对话循环核心（LLM 调用 → 工具执行 → 递归）
+│   ├── plugin.py              ← pluggy 注册入口（on_startup, register_gui_tab, register_cli 等）
+│   ├── cli_commands.py        ← Typer CLI: agent ask / agent sop list / agent sop show
+│   ├── gui_tab.py             ← PyQt6 GUI Tab（聊天、历史、SOP管理、设置）
+│   ├── llm/
+│   │   ├── base.py            ← LLMProvider 抽象基类（stream_chat, count_tokens）
+│   │   ├── glm_provider.py    ← 智谱 GLM Provider（zhipuai SDK）+ 消息清洗
+│   │   └── claude_provider.py ← Anthropic Claude Provider（anthropic SDK）
+│   ├── tools/
+│   │   ├── registry.py        ← ToolRegistry — 收集各模块工具 + 自动 JSON Schema 生成
+│   │   ├── executor.py        ← ToolExecutor — 安全执行 + 结果序列化/截断 + report_paths 提取
+│   │   └── builtin.py         ← 内置工具: create_workspace / list_workspace_files
+│   ├── sop/
+│   │   └── manager.py         ← SOPManager — 加载/导入/导出/删除 SOP Markdown 文档
+│   ├── memory/
+│   │   └── conversation.py    ← ConversationStore — SQLite 对话/消息持久化
+│   ├── workflow/
+│   │   ├── tracker.py         ← WorkflowTracker — 记录工具调用序列 + 沉淀条件检测
+│   │   └── generator.py       ← SOP 自动生成: generate_sop_from_trace + save_sop
+│   └── knowledge/
+│       └── report_index.py    ← ReportIndex — 扫描历史报告目录提取摘要
+├── assets/
+│   ├── config.json            ← 默认配置模板
+│   └── sops/                  ← 内置 SOP 文档（trace/perfdog/strategy/comprehensive）
+├── tests/                     ← 10 个测试文件，208 项测试
+└── specs/001-agent-core/      ← Speckit 工作流文档
 ```
 
-### 9.3 交互协议
+### 9.3 对话循环（核心流程）
 
-每个模块通过 `register_agent_tools` 钩子暴露工具，格式与 LLM Function Calling 对齐：
+```
+用户消息
+  ↓
+AgentService.chat()
+  ↓ 构建 system prompt（SOP 元数据 + 工具列表 + 历史报告摘要）
+  ↓ 加载对话上下文
+  ↓
+_run_loop（最多 10 轮递归）
+  ↓ 调用 LLMProvider.stream_chat() 流式输出
+  ↓
+  ├── LLM 返回纯文本 → 保存消息 → 返回 LLMResponse
+  └── LLM 返回 tool_use → ToolExecutor 执行 → 结果反馈 → 递归 _run_loop
+      ↓ WorkflowTracker 记录每次工具调用
+      ↓ 失败时自动重试 1 次
+  ↓
+检查工作流沉淀条件 → 触发 WORKFLOW_DEPOSIT 事件
+```
+
+### 9.4 工具注册协议
+
+各模块通过 `register_agent_tools` 钩子暴露工具，格式与 LLM Function Calling 对齐：
 
 ```python
-{
-    "name": "device_list",
-    "description": "列出所有已连接的 ADB 设备",
-    "parameters": {...},
-    "handler": self.service.list_devices,
-}
+@hookimpl
+def register_agent_tools(self) -> list:
+    return [
+        {
+            "name": "pa_analyze",
+            "description": "执行 Perfetto Trace 完整分析",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "trace_path": {"type": "string", "description": "trace 文件路径"},
+                },
+                "required": ["trace_path"],
+            },
+            "method": self._service.analyze,
+        },
+    ]
 ```
 
-### 9.4 LLM Provider 抽象
+ToolRegistry 自动增强：对缺少 `parameters` 的工具通过 `inspect.signature()` + `get_type_hints()` 自动生成 JSON Schema，并过滤 `Callable` 类型参数。
+
+### 9.5 LLM Provider 体系
 
 ```python
 class LLMProvider(ABC):
-    def chat(self, messages, tools=None) -> dict: ...
-    def stream_chat(self, messages, tools=None): ...
-
-# 预留实现：OpenAIProvider, ClaudeProvider, LocalProvider
+    def stream_chat(self, messages, tools=None, system_prompt="") -> Iterator[StreamChunk]: ...
+    def count_tokens(self, messages) -> int: ...
+    def get_available_models(self) -> list[str]: ...
+    @property
+    def provider_name(self) -> str: ...
 ```
 
-### 9.5 渐进式开发路线
+| Provider | SDK | 预设模型 | 特性 |
+|----------|-----|---------|------|
+| GLM | `zhipuai` | glm-4-plus, glm-4-flash, glm-4-long | 默认 Provider，含消息清洗 (`_sanitize_messages`) |
+| Claude | `anthropic` | claude-sonnet-4-20250514, claude-3-5-haiku | 复杂分析推荐，流式 tool_use 处理 |
 
-| 阶段 | 内容 |
-|------|------|
-| 阶段 0（当前） | 占位页面 + 接口预留 |
-| 阶段 1 | 简单对话 + 固定命令映射 |
-| 阶段 2 | 接入云端 LLM API，支持 Tool Use |
-| 阶段 3 | 多轮对话、上下文记忆、工作流编排 |
-| 阶段 4 | Agent 主导的智能分析和预测 |
+### 9.6 SOP 工作流管理
+
+SOP（Standard Operating Procedure）以 Markdown + YAML frontmatter 格式定义，指导 Agent 按步骤完成分析任务：
+
+- **内置 SOP**：`assets/sops/` 下的预置流程（trace_analysis, perfdog_analysis, strategy_review, jank_comprehensive）
+- **自定义 SOP**：`data/sops/` 下用户创建或自动沉淀的工作流
+- **自动沉淀**：WorkflowTracker 检测到符合条件时（2+ 工具无 SOP / SOP 偏差），提示保存为新 SOP
+
+### 9.7 GUI Agent Tab
+
+AgentTab 继承 `BaseTab`，提供完整对话界面：
+
+- 左侧 220px 固定面板：会话历史（按日期分组）+ SOP 树形管理
+- 右侧聊天区：消息气泡（用户/Agent）+ 工具调用卡片（可折叠）+ 工作流沉淀卡片
+- 输入区：自适应高度 QTextEdit + 发送/停止按钮 + 文件拖拽
+- 设置弹窗：模型配置 + SOP 管理 + 高级设置
+- 异步执行：`_AgentWorker(QThread)` + `pyqtSignal` 流式更新
+
+### 9.8 已适配的模块工具
+
+| 模块 | 注册工具 | 功能 |
+|------|---------|------|
+| perfetto_analysis | pa_analyze, pa_parse, pa_analyze_dims, pa_list_dims, pa_history | Trace 分析全流程 |
+| perfdog_insights | pdi_load_report, pdi_summarize | PerfDog 报告解析 |
+| game_perf | gp_analyze_config, perf_push, perf_reset, perf_info | 策略配置管理 |
+| agent_chat (内置) | create_workspace, list_workspace_files | 分析工作目录管理 |
 
 ---
 
@@ -1388,6 +1470,6 @@ scope: framework / sdk / gui / cli / {模块名}
 
 ---
 
-> 文档版本：v1.0.0
+> 文档版本：v1.1.0
 > 创建日期：2026-03-20
 > 最后更新：2026-03-20

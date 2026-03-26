@@ -109,9 +109,18 @@ def run_gui() -> None:
     window = MainWindow(context)
 
     tabs = pm.pm.hook.register_gui_tab()
+    agent_tab = None
+    other_tabs = []
     for tab in tabs:
         if tab is not None:
-            window.add_tab(tab)
+            if getattr(tab, "tab_title", "") == "Agent 智能助手":
+                agent_tab = tab
+            else:
+                other_tabs.append(tab)
+    if agent_tab:
+        window.add_tab(agent_tab)
+    for tab in other_tabs:
+        window.add_tab(tab)
 
     modules_info = [
         {k: v for k, v in m.items() if not k.startswith("_")}

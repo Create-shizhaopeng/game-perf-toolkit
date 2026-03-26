@@ -210,6 +210,56 @@ class GamePerfService:
         return os.path.isfile(self._get_backup_path(serial))
 
     # ------------------------------------------------------------------
+    # 配置文件分析（Agent 工具）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def analyze_config(xml_path: str) -> dict:
+        """解析 gameperfconfig.xml 并返回结构化策略摘要。
+
+        Agent 可通过此方法获取 CPU/GPU 频点、支持的游戏列表、
+        场景策略、温控配置等信息，用于策略审查和优化建议。
+        """
+        from .parser import GamePerfParser
+
+        p = GamePerfParser(xml_path)
+        cpu_clusters = {}
+        for name, ci in p.cpu_clusters.items():
+            cpu_clusters[name] = {
+                "frequencies_mhz": ci.frequencies,
+                "count": len(ci.frequencies),
+            }
+        gpu_freq = {}
+        if p.gpu_cluster:
+            gpu_freq = {
+                "frequencies_mhz": p.gpu_cluster.frequencies,
+                "count": len(p.gpu_cluster.frequencies),
+            }
+
+        supported_games = []
+        for pkg, scenes in p.game_scenes.items():
+            from .parser import GAME_ALIAS_MAP
+            alias = GAME_ALIAS_MAP.get(pkg, pkg)
+            supported_games.append({
+                "package": pkg,
+                "alias": alias,
+                "scene_count": len(scenes),
+            })
+
+        scene_policies = []
+        for row in p.freq_rows[:30]:
+            scene_policies.append(row.to_dict())
+
+        return {
+            "xml_path": xml_path,
+            "cpu_clusters": cpu_clusters,
+            "gpu_freq": gpu_freq,
+            "supported_games": supported_games,
+            "scene_policies_sample": scene_policies,
+            "total_freq_rows": len(p.freq_rows),
+        }
+
+    # ------------------------------------------------------------------
     # 从设备拉取配置（US6 / T026）
     # ------------------------------------------------------------------
 

@@ -40,9 +40,13 @@ def _collect_modules() -> list[tuple[str, str]]:
         dirnames[:] = [d for d in dirnames if d not in skip_dirs]
 
         rel = Path(dirpath).relative_to(ROOT)
+        is_sop_dir = "sops" in Path(dirpath).parts
         for f in filenames:
             if any(f.endswith(ext) for ext in skip_exts):
-                continue
+                if f.endswith(".md") and is_sop_dir:
+                    pass
+                else:
+                    continue
             src = str(Path(dirpath) / f)
             dst = str(rel)
             datas.append((src, dst))
@@ -139,11 +143,23 @@ def _hidden_imports() -> list[str]:
         if not manifest.exists():
             continue
         mod_name = mod_dir.name
-        for py_file in (mod_dir / "src").glob("*.py"):
-            if py_file.name == "__init__.py":
-                imports.append(f"modules.{mod_name}.src")
-            else:
-                imports.append(f"modules.{mod_name}.src.{py_file.stem}")
+        src_dir = mod_dir / "src"
+        if not src_dir.exists():
+            continue
+        for py_file in src_dir.rglob("*.py"):
+            rel = py_file.relative_to(mod_dir)
+            parts = list(rel.with_suffix("").parts)
+            if parts[-1] == "__init__":
+                parts.pop()
+            if parts:
+                imports.append(f"modules.{mod_name}.{'.'.join(parts)}")
+
+    for optional in ["zhipuai", "anthropic", "yaml", "jwt"]:
+        try:
+            __import__(optional)
+            imports.append(optional)
+        except ImportError:
+            print(f"  [INFO] Optional dependency '{optional}' not installed, skipping")
 
     return imports
 
