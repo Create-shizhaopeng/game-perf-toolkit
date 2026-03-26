@@ -121,3 +121,89 @@ class TestNoDevice:
             result = runner.invoke(device_app, ["status"])
             assert result.exit_code == 1
             assert "未检测到" in result.output
+
+
+class TestProfileList:
+    def test_empty_list(self):
+        import modules.device_disguise.src.cli_commands as cli_mod
+
+        mgr = MagicMock()
+        mgr.get_all.return_value = []
+        cli_mod._profile_mgr = mgr
+        result = runner.invoke(device_app, ["profile", "list"])
+        assert result.exit_code == 0
+        assert "档案库为空" in result.output
+
+    def test_list_shows_profiles(self):
+        from modules.device_disguise.src.models import DeviceProfile
+        import modules.device_disguise.src.cli_commands as cli_mod
+
+        mgr = MagicMock()
+        mgr.get_all.return_value = [
+            DeviceProfile(brand="Samsung", manufacturer="Samsung", model="SM-G991B"),
+        ]
+        cli_mod._profile_mgr = mgr
+        result = runner.invoke(device_app, ["profile", "list"])
+        assert result.exit_code == 0
+        assert "Samsung" in result.output
+
+
+class TestProfileAdd:
+    def test_add_success(self):
+        import modules.device_disguise.src.cli_commands as cli_mod
+
+        mgr = MagicMock()
+        cli_mod._profile_mgr = mgr
+        result = runner.invoke(device_app, [
+            "profile", "add",
+            "--brand", "Xiaomi",
+            "--manufacturer", "Xiaomi",
+            "--model", "Mi14",
+        ])
+        assert result.exit_code == 0
+        assert "已添加" in result.output
+        mgr.add.assert_called_once()
+
+    def test_add_duplicate_fails(self):
+        import modules.device_disguise.src.cli_commands as cli_mod
+
+        mgr = MagicMock()
+        mgr.add.side_effect = ValueError("已存在")
+        cli_mod._profile_mgr = mgr
+        result = runner.invoke(device_app, [
+            "profile", "add",
+            "--brand", "X", "--manufacturer", "X", "--model", "X",
+        ])
+        assert result.exit_code == 1
+        assert "已存在" in result.output
+
+
+class TestProfileImport:
+    def test_import_success(self, tmp_path):
+        import modules.device_disguise.src.cli_commands as cli_mod
+
+        mgr = MagicMock()
+        mgr.import_from.return_value = {"imported": 2, "skipped": 0}
+        cli_mod._profile_mgr = mgr
+        f = tmp_path / "profiles.json"
+        f.write_text("[]", encoding="utf-8")
+        result = runner.invoke(device_app, [
+            "profile", "import", "--file", str(f),
+        ])
+        assert result.exit_code == 0
+        assert "导入完成" in result.output
+
+    def test_import_bad_json(self, tmp_path):
+        import json as _json
+        import modules.device_disguise.src.cli_commands as cli_mod
+
+        mgr = MagicMock()
+        mgr.import_from.side_effect = _json.JSONDecodeError("bad", "", 0)
+        cli_mod._profile_mgr = mgr
+        f = tmp_path / "bad.json"
+        f.write_text("{bad", encoding="utf-8")
+        result = runner.invoke(device_app, [
+            "profile", "import", "--file", str(f),
+        ])
+        assert result.exit_code == 1
+        assert "导入失败" in result.output
