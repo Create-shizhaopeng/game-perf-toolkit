@@ -166,8 +166,12 @@ def _hidden_imports() -> list[str]:
 
 def build(console: bool, name: str) -> None:
     """执行一次 PyInstaller 构建。"""
-    datas = (_collect_modules() + _collect_data_dir()
-             + _collect_assets() + _collect_perfetto_data())
+    datas = (
+        _collect_modules()
+        + _collect_data_dir()
+        + _collect_assets()
+        + _collect_perfetto_data()
+    )
     hidden = _hidden_imports()
 
     icon_path = ROOT / "assets" / "app.ico"

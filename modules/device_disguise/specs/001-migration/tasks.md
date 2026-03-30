@@ -25,7 +25,7 @@
 - JSON 文件读写（原子写入，tempfile + replace）
 - CRUD 方法：`get_all`, `exists`, `find`, `add`, `update`, `delete`
 - `import_from(path)` 批量导入，返回 `{"imported": N, "skipped": M}`
-- 存储路径：`modules/device_disguise/data/device_profiles.json`
+- 存储路径：`modules/device_disguise/data/device_info.json`（见 specs/002-device-info-json）
 - **依赖**: T001
 
 ---
@@ -138,7 +138,7 @@
 - **依赖**: T003-T007
 
 ### T018 — 创建初始档案文件 *(P3)* ✅
-- [x] `modules/device_disguise/data/device_profiles.json` 初始化为 `[]`
+- [x] `modules/device_disguise/data/device_info.json` 档案库（002 迭代后替代 `device_profiles.json`）
 - **依赖**: 无
 
 ---

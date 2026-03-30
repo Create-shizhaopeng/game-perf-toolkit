@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 from collections.abc import Callable
 
@@ -12,6 +13,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QCompleter,
     QDialog,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -198,6 +200,12 @@ class DeviceDisguiseTab(BaseTab):
         self._btn_save_profile = QPushButton("保存档案")
         self._btn_save_profile.clicked.connect(self._on_save_profile)
 
+        self._btn_import_config = QPushButton("导入配置")
+        self._btn_import_config.setToolTip(
+            "从 JSON 文件导入设备档案（合并到当前列表，重复项跳过）"
+        )
+        self._btn_import_config.clicked.connect(self._on_import_config)
+
         self._btn_disguise = QPushButton("伪装")
         self._btn_disguise.setEnabled(False)
         self._btn_disguise.clicked.connect(self._on_disguise)
@@ -208,6 +216,7 @@ class DeviceDisguiseTab(BaseTab):
 
         bar.addWidget(self._btn_profile)
         bar.addWidget(self._btn_save_profile)
+        bar.addWidget(self._btn_import_config)
         bar.addStretch()
         bar.addWidget(self._btn_disguise)
         bar.addWidget(self._btn_reset)
@@ -444,6 +453,7 @@ class DeviceDisguiseTab(BaseTab):
         self._btn_reset.setEnabled(enabled and self.device_connected)
         self._btn_profile.setEnabled(enabled)
         self._btn_save_profile.setEnabled(enabled)
+        self._btn_import_config.setEnabled(enabled)
 
     # ------------------------------------------------------------------
     # 日志
@@ -501,6 +511,38 @@ class DeviceDisguiseTab(BaseTab):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             notes = dlg.notes_text
             self._save_profile_record(brand, mfr, model, notes)
+
+    def _on_import_config(self) -> None:
+        profile_mgr = self.context.get("dd_profile_mgr")
+        if not profile_mgr:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "导入设备配置 (JSON)",
+            "",
+            "JSON 文件 (*.json);;所有文件 (*.*)",
+        )
+        if not path:
+            return
+        try:
+            result = profile_mgr.import_from(path)
+        except (OSError, json.JSONDecodeError, ValueError) as e:
+            QMessageBox.critical(self, "导入失败", str(e))
+            self._append_log(f"✗ 导入配置失败: {e}", ok=False)
+            return
+        except Exception as e:
+            QMessageBox.critical(self, "导入失败", str(e))
+            self._append_log(f"✗ 导入配置失败: {e}", ok=False)
+            return
+        msg = (
+            f"已导入 {result['imported']} 条，跳过 {result['skipped']} 条。\n"
+            "档案已同步写入配置文件。"
+        )
+        QMessageBox.information(self, "导入完成", msg)
+        self._append_log(
+            f"✓ 导入配置: 新增 {result['imported']} 条, 跳过 {result['skipped']} 条"
+        )
+        self.refresh_completers()
 
     def _save_profile_record(
         self, brand: str, mfr: str, model: str, notes: str = ""

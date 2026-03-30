@@ -54,7 +54,7 @@
 | `modules/device_disguise/tests/test_service.py` | 服务层测试 |
 | `modules/device_disguise/tests/test_models.py` | 模型测试 |
 | `modules/device_disguise/tests/test_cli.py` | CLI 测试 |
-| `modules/device_disguise/data/device_profiles.json` | 初始空档案库 |
+| `modules/device_disguise/data/device_info.json` | 设备档案库（演进见 [002-device-info-json](../002-device-info-json/spec.md)） |
 
 ### 修改文件
 

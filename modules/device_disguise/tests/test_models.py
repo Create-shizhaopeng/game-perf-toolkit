@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from modules.device_disguise.src.models import DeviceProfile, ProfileManager
+from modules.device_disguise.src.models import (
+    DEVICE_INFO_FILENAME,
+    DeviceProfile,
+    ProfileManager,
+    resolve_device_info_json_path,
+)
 
 
 class TestDeviceProfile:
@@ -115,6 +120,14 @@ class TestProfileManager:
         assert result["imported"] == 0
         assert result["skipped"] == 1
 
+    def test_import_requires_json_array_root(
+        self, pm: ProfileManager, tmp_path: Path
+    ) -> None:
+        bad = tmp_path / "bad.json"
+        bad.write_text('{"brand":"A"}', encoding="utf-8")
+        with pytest.raises(ValueError, match="数组"):
+            pm.import_from(str(bad))
+
     def test_persistence(self, tmp_path: Path):
         path = tmp_path / "profiles.json"
         pm1 = ProfileManager(data_path=path)
@@ -129,3 +142,57 @@ class TestProfileManager:
         path.write_text("{invalid", encoding="utf-8")
         pm = ProfileManager(data_path=path)
         assert pm.get_all() == []
+
+
+class TestResolveDeviceInfoJsonPath:
+    def test_dev_points_to_module_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import sys
+
+        monkeypatch.setattr(sys, "frozen", False, raising=False)
+        p = resolve_device_info_json_path()
+        assert p.name == DEVICE_INFO_FILENAME
+        assert p.parent.name == "data"
+        assert "device_disguise" in p.parts
+
+    def test_frozen_points_next_to_exe(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import sys
+
+        exe = tmp_path / "Toolkit.exe"
+        exe.write_bytes(b"")
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(sys, "executable", str(exe))
+        p = resolve_device_info_json_path()
+        assert p == exe.parent / "data" / DEVICE_INFO_FILENAME
+
+
+class TestLegacyMigration:
+    def test_migrates_device_profiles_in_same_dir(self, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        legacy = data_dir / "device_profiles.json"
+        legacy.write_text(
+            '[{"brand":"A","manufacturer":"B","model":"C","notes":""}]',
+            encoding="utf-8",
+        )
+        new_path = data_dir / DEVICE_INFO_FILENAME
+        pm = ProfileManager(data_path=new_path)
+        assert pm.get_all()[0].brand == "A"
+        assert new_path.is_file()
+
+    def test_skips_migration_if_device_info_exists(self, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        new_path = data_dir / DEVICE_INFO_FILENAME
+        new_path.write_text(
+            '[{"brand":"X","manufacturer":"Y","model":"Z","notes":""}]',
+            encoding="utf-8",
+        )
+        legacy = data_dir / "device_profiles.json"
+        legacy.write_text(
+            '[{"brand":"A","manufacturer":"B","model":"C","notes":""}]',
+            encoding="utf-8",
+        )
+        pm = ProfileManager(data_path=new_path)
+        assert pm.get_all()[0].brand == "X"
