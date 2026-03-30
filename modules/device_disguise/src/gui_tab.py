@@ -170,9 +170,9 @@ class DeviceDisguiseTab(BaseTab):
         form = QFormLayout(group)
         form.setSpacing(8)
 
-        self._combo_brand = self._make_combo("品牌", "brand")
-        self._combo_manufacturer = self._make_combo("厂商", "manufacturer")
-        self._combo_model = self._make_combo("型号", "model")
+        self._combo_brand = self._make_combo("品牌", "ro.product.odm.brand")
+        self._combo_manufacturer = self._make_combo("厂商", "ro.product.odm.manufacturer")
+        self._combo_model = self._make_combo("型号", "ro.product.odm.model")
 
         form.addRow("目标品牌:", self._combo_brand)
         form.addRow("目标厂商:", self._combo_manufacturer)
@@ -180,13 +180,12 @@ class DeviceDisguiseTab(BaseTab):
 
         return group
 
-    def _make_combo(self, placeholder: str, field: str) -> QComboBox:
+    def _make_combo(self, placeholder: str, prop_name: str) -> QComboBox:
         combo = QComboBox()
         combo.setEditable(True)
         combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        combo.lineEdit().setPlaceholderText(f"输入{placeholder}...")
+        combo.lineEdit().setPlaceholderText(f"通过 '{prop_name}' 属性获取")
         combo.lineEdit().textChanged.connect(self._on_input_changed)
-        combo.activated.connect(lambda idx: self._on_combo_selected(field))
         return combo
 
     def _build_button_bar(self) -> QHBoxLayout:
@@ -346,32 +345,6 @@ class DeviceDisguiseTab(BaseTab):
     # 操作
     # ------------------------------------------------------------------
 
-    def _on_combo_selected(self, field: str) -> None:
-        """从下拉选中一项后，根据档案库联动填充其他字段"""
-        profile_mgr = self.context.get("dd_profile_mgr")
-        if not profile_mgr:
-            return
-
-        value = {
-            "brand": self._combo_brand.currentText().strip(),
-            "manufacturer": self._combo_manufacturer.currentText().strip(),
-            "model": self._combo_model.currentText().strip(),
-        }.get(field, "")
-
-        if not value:
-            return
-
-        matches = profile_mgr.find(field, value)
-        exact = [p for p in matches if getattr(p, field, "").lower() == value.lower()]
-        if len(exact) == 1:
-            p = exact[0]
-            if field != "brand":
-                self._combo_brand.setCurrentText(p.brand)
-            if field != "manufacturer":
-                self._combo_manufacturer.setCurrentText(p.manufacturer)
-            if field != "model":
-                self._combo_model.setCurrentText(p.model)
-
     def _on_input_changed(self) -> None:
         brand = self._combo_brand.currentText().strip()
         mfr = self._combo_manufacturer.currentText().strip()
@@ -508,12 +481,13 @@ class DeviceDisguiseTab(BaseTab):
             QMessageBox.information(self, "档案库", "档案库为空，请先添加档案。")
             return
 
-        dlg = _ProfileSelectDialog(profiles, self._theme, self)
+        dlg = _ProfileSelectDialog(profile_mgr, self._theme, self)
         if dlg.exec() == QDialog.DialogCode.Accepted and dlg.selected:
             p = dlg.selected
             self._combo_brand.setCurrentText(p.brand)
             self._combo_manufacturer.setCurrentText(p.manufacturer)
             self._combo_model.setCurrentText(p.model)
+            self.refresh_completers()
 
     def _on_save_profile(self) -> None:
         brand = self._combo_brand.currentText().strip()
@@ -568,20 +542,19 @@ class DeviceDisguiseTab(BaseTab):
 
 
 class _ProfileSelectDialog(QDialog):
-    """档案选取弹窗：搜索 + 列表 + 双击选取"""
+    """档案选取弹窗：搜索 + 列表 + 选取 / 编辑 / 删除"""
 
-    def __init__(self, profiles, theme: str, parent=None):
+    def __init__(self, profile_mgr, theme: str, parent=None):
         super().__init__(parent)
         self.setWindowTitle("选择设备档案")
-        self.setMinimumSize(400, 300)
+        self.setMinimumSize(480, 360)
         self.selected = None
-        self._profiles = profiles
+        self._profile_mgr = profile_mgr
         self._theme = theme
         self._init_ui()
 
     def _init_ui(self) -> None:
         layout = QVBoxLayout(self)
-        c = _THEME_COLORS[self._theme]
 
         self._search = QLineEdit()
         self._search.setPlaceholderText("搜索档案...")
@@ -597,7 +570,7 @@ class _ProfileSelectDialog(QDialog):
         scroll.setWidget(self._list_container)
         layout.addWidget(scroll)
 
-        self._populate(self._profiles)
+        self._populate(self._profile_mgr.get_all())
 
     def _populate(self, profiles) -> None:
         while self._list_layout.count():
@@ -607,34 +580,162 @@ class _ProfileSelectDialog(QDialog):
 
         c = _THEME_COLORS[self._theme]
         for p in profiles:
-            label = f"{p.brand} / {p.manufacturer} / {p.model}"
-            btn = QPushButton(label)
-            btn.setStyleSheet(
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(4)
+
+            label_text = f"{p.brand} / {p.manufacturer} / {p.model}"
+            select_btn = QPushButton(label_text)
+            select_btn.setStyleSheet(
                 f"text-align: left; padding: 8px; border-radius: 4px; "
                 f"color: {c['fg']}; background: {c['card_bg']};"
             )
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            select_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             if p.notes:
-                btn.setToolTip(p.notes)
-            btn.clicked.connect(lambda checked, profile=p: self._select(profile))
-            self._list_layout.addWidget(btn)
+                select_btn.setToolTip(p.notes)
+            select_btn.clicked.connect(lambda checked, profile=p: self._select(profile))
+
+            edit_btn = QPushButton("编辑")
+            edit_btn.setFixedWidth(48)
+            edit_btn.setStyleSheet(
+                f"padding: 6px; border-radius: 4px; "
+                f"color: {c['accent']}; background: {c['card_bg']}; "
+                f"border: 1px solid {c['accent']};"
+            )
+            edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            edit_btn.clicked.connect(lambda checked, profile=p: self._edit(profile))
+
+            del_btn = QPushButton("删除")
+            del_btn.setFixedWidth(48)
+            del_btn.setStyleSheet(
+                f"padding: 6px; border-radius: 4px; "
+                f"color: {c['error']}; background: {c['card_bg']}; "
+                f"border: 1px solid {c['error']};"
+            )
+            del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            del_btn.clicked.connect(lambda checked, profile=p: self._delete(profile))
+
+            row_layout.addWidget(select_btn, stretch=1)
+            row_layout.addWidget(edit_btn)
+            row_layout.addWidget(del_btn)
+            self._list_layout.addWidget(row)
 
         self._list_layout.addStretch()
 
-    def _filter(self, text: str) -> None:
-        text = text.lower()
-        filtered = [
+    def _get_filtered_profiles(self) -> list:
+        text = self._search.text().strip().lower()
+        all_profiles = self._profile_mgr.get_all()
+        if not text:
+            return all_profiles
+        return [
             p
-            for p in self._profiles
+            for p in all_profiles
             if text in p.brand.lower()
             or text in p.manufacturer.lower()
             or text in p.model.lower()
             or text in p.notes.lower()
         ]
-        self._populate(filtered)
+
+    def _filter(self, _text: str) -> None:
+        self._populate(self._get_filtered_profiles())
 
     def _select(self, profile) -> None:
         self.selected = profile
+        self.accept()
+
+    def _edit(self, profile) -> None:
+        dlg = _ProfileEditDialog(profile, self._theme, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            new_profile = dlg.result_profile
+            try:
+                self._profile_mgr.update(profile, new_profile)
+                self._populate(self._get_filtered_profiles())
+            except ValueError as e:
+                QMessageBox.warning(self, "编辑失败", str(e))
+
+    def _delete(self, profile) -> None:
+        reply = QMessageBox.question(
+            self,
+            "确认删除",
+            f"确认删除档案 {profile.brand}/{profile.manufacturer}/{profile.model}？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                self._profile_mgr.delete(profile)
+                self._populate(self._get_filtered_profiles())
+            except ValueError as e:
+                QMessageBox.warning(self, "删除失败", str(e))
+
+
+# ======================================================================
+# 编辑档案对话框
+# ======================================================================
+
+
+class _ProfileEditDialog(QDialog):
+    """编辑设备档案对话框"""
+
+    def __init__(self, profile, theme: str, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("编辑设备档案")
+        self.setMinimumWidth(350)
+        self.result_profile = None
+        self._original = profile
+        self._init_ui(profile, theme)
+
+    def _init_ui(self, profile, theme: str) -> None:
+        layout = QVBoxLayout(self)
+        c = _THEME_COLORS[theme]
+
+        form = QFormLayout()
+
+        self._brand_input = QLineEdit(profile.brand)
+        self._mfr_input = QLineEdit(profile.manufacturer)
+        self._model_input = QLineEdit(profile.model)
+        self._notes_input = QLineEdit(profile.notes)
+
+        form.addRow("品牌:", self._brand_input)
+        form.addRow("厂商:", self._mfr_input)
+        form.addRow("型号:", self._model_input)
+        form.addRow("备注:", self._notes_input)
+
+        layout.addLayout(form)
+
+        btn_bar = QHBoxLayout()
+        btn_bar.addStretch()
+
+        cancel_btn = QPushButton("取消")
+        cancel_btn.clicked.connect(self.reject)
+
+        ok_btn = QPushButton("保存")
+        ok_btn.setStyleSheet(
+            f"background-color: {c['btn_primary_bg']}; "
+            f"color: {c['btn_primary_fg']}; font-weight: bold; "
+            f"border-radius: 6px; padding: 6px 16px;"
+        )
+        ok_btn.clicked.connect(self._on_ok)
+
+        btn_bar.addWidget(cancel_btn)
+        btn_bar.addWidget(ok_btn)
+        layout.addLayout(btn_bar)
+
+    def _on_ok(self) -> None:
+        from .models import DeviceProfile
+
+        brand = self._brand_input.text().strip()
+        mfr = self._mfr_input.text().strip()
+        model = self._model_input.text().strip()
+        notes = self._notes_input.text().strip()
+
+        if not (brand and mfr and model):
+            QMessageBox.warning(self, "编辑档案", "品牌、厂商和型号不能为空。")
+            return
+
+        self.result_profile = DeviceProfile(
+            brand=brand, manufacturer=mfr, model=model, notes=notes
+        )
         self.accept()
 
 

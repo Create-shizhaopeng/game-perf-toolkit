@@ -149,16 +149,9 @@ class _CaptureWorker(QThread):
             elif self._action == "save":
                 device_info = self._kwargs["device_info"]
                 device_dir = self._kwargs["device_dir"]
-                from .models import CaptureMode
-                mode = None
-                if self._svc.session and self._svc.session.running:
-                    mode = self._svc.session.running.mode
                 self._svc.session_save_trace(self._serial, device_dir, device_info)
                 count = len(self._svc.session.saved_traces) if self._svc.session else 0
-                if mode == CaptureMode.SNAPSHOT:
-                    self.progress.emit(f"📸 已保存第 {count} 段 trace (快照)")
-                else:
-                    self.progress.emit(f"💾 已保存第 {count} 段 trace (停止-重启)")
+                self.progress.emit(f"💾 已保存第 {count} 段 trace")
                 self.save_ok.emit(count)
 
             elif self._action == "stop":

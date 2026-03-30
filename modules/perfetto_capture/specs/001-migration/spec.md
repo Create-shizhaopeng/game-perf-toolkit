@@ -97,25 +97,27 @@ ConfigManager、EventBus 等基础设施，同时保留原有的全部业务逻�
 ### FR-002 Perfetto 抓取引擎
 
 - 生成 pbtxt TraceConfig（RING_BUFFER + linux.ftrace + process_stats + packages_list）
-- 通过 AdbManager 与设备上 `perfetto` 交互；具体启动方式由 **双模引擎** 决定（见下）
+- pbtxt 配置包含 `flush_period_ms: 5000`、`incremental_state_config`、`builtin_data_sources { primary_trace_clock: BUILTIN_CLOCK_BOOTTIME }`、`compact_sched { enabled: true }` 等时钟与效率配置
+- 通过 AdbManager 与设备上 `perfetto` 交互
 - 支持启动/停止抓取（`start_tracing` / `stop_tracing`）
-- 支持 Perfetto 能力探测（`probe_perfetto_capabilities()`：解析 `perfetto --help` 是否包含 `--detach` 与 `--clone`）
 - 设备端 trace 目录自动创建与回退
 
-**双模抓取引擎（Snapshot / Autobuffer）**：
+**抓取引擎**：
 
-| 模式 | 枚举 `CaptureMode` | 适用条件 | 启动要点 | 停止 `stop_tracing` | 中途保存 `session_save_trace` |
-|------|---------------------|----------|----------|----------------------|------------------------------|
-| **Snapshot** | `SNAPSHOT` | 设备同时支持 detach 与 clone | `perfetto --detach` + `perfetto --clone-by-name`；`RunningTrace` 记录 `detach_key` / `session_name` 等 | `perfetto --attach --stop` | `clone-by-name`（尽量不中断持续抓取） |
-| **Autobuffer** | `AUTOBUFFER` | 不支持上述能力时回退 | `perfetto --background`（`start_tracing_legacy()`）；`RunningTrace` 记录 `pid` | `kill` 设备端 perfetto PID | stop → 落盘/导出段 → 再启动（连续抓取） |
+当前固定使用 **Autobuffer** 模式（`--background` + 停止-重启保存）。Snapshot（`--detach` + `--clone`）代码保留但未启用，因部分设备 clone 产出的 trace 缺少完整 clock snapshot 导致时间戳异常。
 
-- `PerfettoCapabilities` 提供 `supports_detach`、`supports_clone`、`supports_snapshot_mode`（两者兼具才为 true）
+| 模式 | 枚举 `CaptureMode` | 状态 | 启动要点 | 停止 | 中途保存 |
+|------|---------------------|------|----------|------|----------|
+| **Autobuffer** | `AUTOBUFFER` | **当前使用** | `perfetto --background`（`start_tracing_legacy()`）；`RunningTrace` 记录 `pid` | `kill` 设备端 perfetto PID | stop → 落盘/导出段 → 再启动 |
+| **Snapshot** | `SNAPSHOT` | **保留未启用** | `perfetto --detach`；`RunningTrace` 记录 `detach_key` / `session_name` | `perfetto --attach --stop` | `clone-by-name`（不中断抓取） |
+
+- `PerfettoCapabilities` 提供 `supports_detach`、`supports_clone`、`supports_snapshot_mode` 能力探测（代码保留，运行时不再用于模式选择）
 - 每次**开始新 trace 前**调用 `cleanup_stale_sessions()`（如 `pkill -f perfetto`），减轻「Too many concurrent tracing sessions」错误
 
 ### FR-003 会话管理
 
 - 一轮会话 = 启动 → 多次保存 → 导出退出
-- 保存行为依 `CaptureMode` 分流（clone 路径 vs stop→record→restart）
+- 保存行为统一为 stop → record → restart（停止当前抓取 → 记录 trace → 重启新抓取）
 - trace 文件名: `{MODEL}_{SOC}_{YYYYMMDD}_{HHMMSS}.perfetto-trace`
 - 会话导出目录：位于 **Trace 本机输出根目录**（见 FR-001 环境感知说明）下的 `{yyyy_MM_dd-HH_mm_ss}/` 子目录
 - 断线时产生的故障段文件添加 `FAULT_` 前缀
@@ -171,13 +173,13 @@ class CaptureConfig(BaseModel):
 
 ### CaptureMode (enum)
 
-- `SNAPSHOT`：detach + clone 路径
-- `AUTOBUFFER`：`--background` 路径
+- `SNAPSHOT`：detach + clone 路径（代码保留，当前未启用）
+- `AUTOBUFFER`：`--background` 路径（当前使用）
 
 ### RunningTrace (dataclass)
 
-- `mode: CaptureMode`
-- 可选 `detach_key`、`session_name`（Snapshot）
+- `mode: CaptureMode`（当前固定为 `AUTOBUFFER`）
+- 可选 `detach_key`、`session_name`（Snapshot，当前未使用）
 - 可选 `pid`（Autobuffer）
 
 ### TraceItem (dataclass)
@@ -218,10 +220,10 @@ class CaptureSession:
 | SC-008 | 导出后 EventBus 收到 trace_ready 事件 | 功能 |
 | SC-009 | 所有迁移测试通过 | 回归 |
 | SC-010 | GUI 状态面板实时更新 | 功能 |
-| SC-011 | 双模引擎按能力选择 Snapshot 或 Autobuffer | 功能 |
+| SC-011 | 引擎固定使用 Autobuffer 模式（Snapshot 代码保留未启用） | 功能 |
 | SC-012 | 开始抓取前清理陈旧 perfetto 会话，避免并发会话数报错 | 功能 |
 
-> **说明（SC-002）**：仍要求 pbtxt **不含 `duration_ms`**（当前实现未新增该字段）。与自动 buffer 相关的默认值与 Trace 本机输出路径约定以 **002-auto-buffer** 及上文 **FR-001** 为准。
+> **说明（SC-002）**：仍要求 pbtxt **不含 `duration_ms`**（当前实现未新增该字段）。pbtxt 需使用 `BUILTIN_CLOCK_BOOTTIME`（非 `BOOTTIME`）作为主时钟域，且不含 `snapshot_ms`（部分设备 Perfetto 版本不支持）。与自动 buffer 相关的默认值与 Trace 本机输出路径约定以 **002-auto-buffer** 及上文 **FR-001** 为准。
 
 ## 非目标
 

@@ -52,11 +52,19 @@
 
 作为测试人员，我可以管理设备档案库：查看所有已保存的设备配置、通过输入联想快速选取档案、新增/编辑/删除档案记录。
 
+**交互设计说明**：
+- 输入框默认不填充数据库中的值，以置灰 placeholder 显示属性获取方式（如"通过 'ro.product.odm.brand' 属性获取"）
+- 不提供联动填充功能（选中联想建议不自动填充其他字段）
+- "选择档案"弹窗中每条记录提供"选择"、"编辑"、"删除"三个操作按钮
+
 **Acceptance Scenarios**:
 
 1. **Given** 档案库中有记录, **When** 在输入框输入部分文字, **Then** 显示匹配的联想建议
-2. **Given** 选中一个联想建议, **When** 确认选择, **Then** 三个字段（brand/manufacturer/model）自动填充
+2. **Given** 选中一个联想建议, **When** 确认选择, **Then** 仅填充当前字段，不联动其他字段
 3. **Given** 档案库中无该组合, **When** 点击保存, **Then** 弹出对话框输入备注后保存
+4. **Given** 点击"选择档案", **When** 弹窗显示所有档案, **Then** 每条记录旁有"选择"、"编辑"、"删除"按钮
+5. **Given** 在档案弹窗中点击"编辑", **When** 修改档案信息并确认, **Then** 档案更新成功，弹窗列表刷新
+6. **Given** 在档案弹窗中点击"删除", **When** 确认删除, **Then** 档案从库中移除，弹窗列表刷新
 
 ---
 
@@ -89,6 +97,12 @@
 - Q: 伪装历史记录是否持久化？ → A: 本期不实现。预留数据模型，后续迭代时添加。
 - Q: GUI 布局设计方向？ → A: 全新设计匹配主框架 VS Code 风格，作为 Tab 嵌入主窗口。
 - Q: CLI 命令格式？ → A: `device status`（查看设备状态和伪装信息）、`device disguise --brand --manufacturer --model`（执行伪装）、`device reset`（还原）、`device profile list/add/import`（档案管理）。
+
+### Session 2026-03-30
+
+- Q: 输入栏是否预填数据库中的值？ → A: 不预填。以置灰 placeholder 文字显示属性获取方式（如"通过 'ro.product.odm.brand' 属性获取"），用户需手动输入或从档案选择。
+- Q: 联动填充功能是否保留？ → A: 取消。选中联想建议时仅填充当前字段，不自动联动填充其他字段（brand/manufacturer/model）。
+- Q: 选择档案弹窗是否支持编辑和删除？ → A: 支持。弹窗中每条档案记录显示"选择"、"编辑"、"删除"三个操作按钮。编辑通过独立的 `_ProfileEditDialog` 弹窗实现，支持修改 brand、manufacturer、model、notes 字段。
 
 ## Requirements *(mandatory)*
 

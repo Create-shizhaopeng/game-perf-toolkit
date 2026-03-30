@@ -85,10 +85,10 @@ class PerfettoCaptureService:
         return save_config(self.config)
 
     # ── Buffer 自动计算 ─────────────────────────────────────────
-    # 实测校准（游戏场景）: 90 MB / 10s ≈ 9 MB/s (7 cats)
+    # 校准目标：7 atrace / 15s / sf=1.2 → ~120 MB
 
-    LIGHT_RATE_KB_PER_SEC = 9200
-    HEAVY_PER_CAT_RATE_KB = 2600
+    LIGHT_RATE_KB_PER_SEC = 6800
+    HEAVY_PER_CAT_RATE_KB = 600
     LIGHT_CAT_THRESHOLD = 7
     MIN_BUFFER_KB = 91136       # 89 MB floor
     MAX_BUFFER_KB = 512000      # 500 MB ceiling
@@ -138,6 +138,9 @@ class PerfettoCaptureService:
         - buffer 0: 主 ftrace 数据（RING_BUFFER，用户指定大小）
         - buffer 1: 进程名/包名等元数据（RING_BUFFER，固定 4MB，
           独立于主缓冲区以防被高频 ftrace 事件覆盖）
+
+        builtin_data_sources 确保 clock snapshot 正确写入，
+        解决 Perfetto UI 中各 slice 时间戳显示异常的问题。
         """
         cfg = cfg or self.config
 
@@ -162,6 +165,16 @@ class PerfettoCaptureService:
         lines.append("  fill_policy: RING_BUFFER")
         lines.append("}")
 
+        lines.append("flush_period_ms: 5000")
+
+        lines.append("incremental_state_config {")
+        lines.append("  clear_period_ms: 15000")
+        lines.append("}")
+
+        lines.append("builtin_data_sources {")
+        lines.append("  primary_trace_clock: BUILTIN_CLOCK_BOOTTIME")
+        lines.append("}")
+
         lines.append("data_sources {")
         lines.append("  config {")
         lines.append('    name: "linux.ftrace"')
@@ -173,6 +186,9 @@ class PerfettoCaptureService:
             lines.append(f"      atrace_apps: {q(app)}")
         for evt in cfg.advanced.ftrace_events:
             lines.append(f"      ftrace_events: {q(evt)}")
+        lines.append("      compact_sched {")
+        lines.append("        enabled: true")
+        lines.append("      }")
         lines.append("    }")
         lines.append("  }")
         lines.append("}")
@@ -203,12 +219,15 @@ class PerfettoCaptureService:
     def build_pbtxt_config_detach(
         self, session_name: str, cfg: CaptureConfig | None = None,
     ) -> str:
-        """生成支持 detach/clone 模式的 pbtxt 配置。"""
+        """生成支持 detach 模式的 pbtxt 配置。
+
+        write_into_file 是 --detach 模式的强制要求，确保数据持续写入输出文件。
+        """
         base = self.build_pbtxt_config(cfg)
         header = (
             f'unique_session_name: "{session_name}"\n'
             "write_into_file: true\n"
-            "file_write_period_ms: 5000\n"
+            "file_write_period_ms: 2500\n"
         )
         return header + base
 
@@ -404,28 +423,20 @@ class PerfettoCaptureService:
     def session_start_capture(self, serial: str, device_trace_dir: str) -> RunningTrace:
         """在当前会话中启动一段新的抓取。
 
-        自动探测设备 Perfetto 能力：
-        - 支持 --detach + --clone → 快照模式 (SNAPSHOT)
-        - 不支持 → 降级为传统 background 模式 (AUTOBUFFER)
+        当前固定使用 AUTOBUFFER（background 模式 + 停止-重启保存）。
+        SNAPSHOT（detach + clone）代码保留但未启用，因 clone 产出的
+        trace 在部分设备上缺少完整 clock snapshot 导致时间戳异常。
         """
         session = self._session
         if session is None:
             raise RuntimeError("无活动会话")
 
         self.cleanup_stale_sessions(serial)
-        caps = self.probe_perfetto_capabilities(serial)
         session.trace_idx += 1
         device_path = f"{device_trace_dir}/current_{session.trace_idx}.perfetto-trace"
 
-        if caps.supports_snapshot_mode:
-            running = self.start_tracing(serial, device_path)
-            logger.info("使用快照模式 (detach + clone)")
-        else:
-            running = self.start_tracing_legacy(serial, device_path)
-            logger.info(
-                "使用自动缓冲模式 (降级：设备不支持 clone，能力: %s)",
-                caps.summary(),
-            )
+        running = self.start_tracing_legacy(serial, device_path)
+        logger.info("使用自动缓冲模式 (background + 停止-重启)")
 
         session.running = running
         session.capture_state = CaptureState.CAPTURING
@@ -439,11 +450,7 @@ class PerfettoCaptureService:
         device_trace_dir: str,
         device_info: DeviceInfo,
     ) -> TraceItem:
-        """保存当前 trace 段。
-
-        - SNAPSHOT 模式：clone 快照，不中断抓取
-        - AUTOBUFFER 模式：停止当前抓取 → 记录设备文件 → 重新启动
-        """
+        """保存当前 trace 段（停止 → 拉取 → 重启）。"""
         session = self._session
         if session is None or session.running is None:
             raise RuntimeError("无活动抓取")
@@ -458,46 +465,27 @@ class PerfettoCaptureService:
         filename = build_trace_filename(device_info.model, device_info.soc, device_ts)
         host_path = choose_non_conflicting_path(session.export_session_dir / filename)
 
-        if session.running.mode == CaptureMode.SNAPSHOT:
-            session.trace_idx += 1
-            snapshot_device_path = (
-                f"{device_trace_dir}/snapshot_{session.trace_idx}.perfetto-trace"
-            )
-            self.snapshot_trace(serial, session.running, snapshot_device_path)
+        saved_device_path = session.running.device_output_path
+        self.stop_tracing(serial, session.running)
 
-            item = TraceItem(
-                kind=TraceKind.NORMAL,
-                device_path=snapshot_device_path,
-                export_filename=host_path.name,
-            )
-            session.saved_traces.append(item)
-            session.capture_state = CaptureState.CAPTURING
-            logger.info(
-                "已保存第 %d 段 trace (快照): %s",
-                len(session.saved_traces), filename,
-            )
-        else:
-            saved_device_path = session.running.device_output_path
-            self.stop_tracing(serial, session.running)
+        item = TraceItem(
+            kind=TraceKind.NORMAL,
+            device_path=saved_device_path,
+            export_filename=host_path.name,
+        )
+        session.saved_traces.append(item)
 
-            item = TraceItem(
-                kind=TraceKind.NORMAL,
-                device_path=saved_device_path,
-                export_filename=host_path.name,
-            )
-            session.saved_traces.append(item)
-
-            session.trace_idx += 1
-            new_device_path = (
-                f"{device_trace_dir}/current_{session.trace_idx}.perfetto-trace"
-            )
-            running = self.start_tracing_legacy(serial, new_device_path)
-            session.running = running
-            session.capture_state = CaptureState.CAPTURING
-            logger.info(
-                "已保存第 %d 段 trace (停止-重启): %s",
-                len(session.saved_traces), filename,
-            )
+        session.trace_idx += 1
+        new_device_path = (
+            f"{device_trace_dir}/current_{session.trace_idx}.perfetto-trace"
+        )
+        running = self.start_tracing_legacy(serial, new_device_path)
+        session.running = running
+        session.capture_state = CaptureState.CAPTURING
+        logger.info(
+            "已保存第 %d 段 trace: %s",
+            len(session.saved_traces), filename,
+        )
 
         return item
 
