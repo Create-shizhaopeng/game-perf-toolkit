@@ -127,7 +127,7 @@
 
 ### 验收阶段补充（2026-03-21）
 
-- **B1**: 插件 context 键名冲突 → 所有模块 context 键必须使用模块前缀命名空间（如 `gp_service`、`gp_adb`），详见 `scripts/doc/development-pitfalls.md` P01
+- **B1**: 插件 context 键名冲突 → 所有模块 context 键必须使用模块前缀命名空间（如 `gp_service`、`gp_adb`），详见 `doc/experience/development-pitfalls.md` P01
 - **B2**: ADB stdout/stderr 可能为 None → AdbManager 中所有 stdout/stderr 访问加 `or ""` 保护，详见 P02
 - **B3**: GUI Start 崩溃 → 根因为 B1（context 键名冲突导致跨模块服务调用），修复后正常
 - **B4**: Clear 按钮行为 → 改为「重置修改」，重载文件并保持当前游戏/模式选择，详见 P07

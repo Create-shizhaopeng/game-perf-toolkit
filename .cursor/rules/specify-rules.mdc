@@ -1,58 +1,35 @@
-﻿---
+---
 description: Project Development Guidelines
 globs: ["**/*"]
 alwaysApply: true
 ---
-# lv-game-toolkit Development Guidelines
+# lv-game-toolkit 开发速查
 
-Last updated: 2026-03-22
-
-## Active Technologies
-
-- Python 3.12+ + PyQt6, Typer, Rich, Pydantic, pluggy, lxml
-- 数据库: SQLite + JSON + 文件系统
-- 包管理: uv / pip
-- 测试: pytest + unittest.mock
-- 构建: PyInstaller (onedir)
-
-## Project Structure
-
-```text
-toolkit/          # 核心框架（禁止模块修改）
-modules/          # 功能模块（插件）
-tests/            # 主项目测试
-scripts/          # 工具脚本
-specs/            # 主 speckit 规格文档
-.specify/         # speckit 配置
-.cursor/rules/    # 开发规则
-```
-
-## Commands
+## 常用命令
 
 ```bash
-# 启动 GUI
-python -m toolkit.app
-
-# 运行全部测试
-python scripts/run_all_tests.py
-
-# 创建新模块
-python scripts/create_module.py <name>
+python -m toolkit.app              # 启动 GUI
+python scripts/run_all_tests.py    # 运行全部测试
+python scripts/create_module.py <name>  # 创建新模块
 ```
 
-## Code Style
+## 不可违反的硬规则
 
-- Python 3.12+: 类型注解覆盖所有公共方法
-- 中文注释和文档字符串
-- UTF-8 编码
-- 插件 context 键使用模块前缀（dd_, gp_, pe_ 等）
+1. 模块 MUST NOT 修改 `toolkit/` 目录
+2. `service.py` MUST NOT 包含 GUI/CLI 代码
+3. GUI 后台操作 MUST 使用 QThread + pyqtSignal
+4. 所有输出 MUST 使用 UTF-8 编码
+5. Pydantic 用于公共 API 的入参和返回值
 
-## Key Rules
+## 知识源指针（按需查阅，不要全量加载）
 
-- 模块 MUST NOT 修改 toolkit/ 目录
-- Service 层纯同步，不依赖 GUI 框架
-- GUI 后台操作使用 QThread + pyqtSignal
-- 踩坑指南: scripts/doc/development-pitfalls.md
-
-<!-- MANUAL ADDITIONS START -->
-<!-- MANUAL ADDITIONS END -->
+| 需要了解 | 查阅位置 |
+|---------|---------|
+| 架构原则与技术栈 | `.specify/memory/constitution.md` |
+| 开发流程 | `.cursor/rules/spec-workflow.mdc` |
+| 踩坑经验 | `doc/experience/development-pitfalls.md` |
+| 模块开发指南 | `doc/knowledge/module-development-guide.md` |
+| 特定模块约束 | `modules/<name>/AGENTS.md` |
+| 项目知识库 | `doc/knowledge/README.md` |
+| 跨项目通用知识 | `context/INDEX.md` |
+| 架构设计 | `doc/architecture/architecture-overview.md` |

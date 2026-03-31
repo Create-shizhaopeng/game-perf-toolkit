@@ -761,7 +761,7 @@ class DatabaseManager:
 
 ### 5.0 代码规则（总纲）
 
-以下为仓库内 **代码与协作的硬性约定**，与 [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md) 一致；细节实现另见 [module-development-guide.md](../../scripts/doc/module-development-guide.md)、[development-pitfalls.md](../../scripts/doc/development-pitfalls.md)。
+以下为仓库内 **代码与协作的硬性约定**，与 [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md) 一致；细节实现另见 [module-development-guide.md](../knowledge/module-development-guide.md)、[development-pitfalls.md](../experience/development-pitfalls.md)。
 
 | 类别 | 规则 |
 |------|------|
@@ -771,12 +771,12 @@ class DatabaseManager:
 | **分层** | 业务逻辑在 **`service.py`**（纯同步、无 GUI/CLI 依赖）；**`gui_tab.py` / `cli_commands.py`** 只做展示与参数/输出；测试优先覆盖 **Service**。 |
 | **依赖方向** | 模块 **禁止** 直接 `import` 其他模块的 `src/` 实现；跨模块通过约定接口、EventBus 等；允许依赖 **`toolkit.sdk.*`**、**`toolkit.core.hookspecs`**，**禁止**依赖 **`toolkit.core`** 内部实现模块（Constitution IV）。 |
 | **框架修改** | 普通需求 **不得** 修改 **`toolkit/core/`、`toolkit/sdk/`**；确需改动须单独评审（Constitution VI）。 |
-| **共享 context** | `plugin` 写入 `context` 的键 **必须** 带 **模块前缀**（如 `gp_service`），禁止占用通用键名（与 [P01](../../scripts/doc/development-pitfalls.md#p01--插件-context-键名冲突严重) 一致）。 |
-| **数据模型** | 跨 GUI/CLI/Agent 的结构化载荷 **Pydantic v2**；纯内部算法可用标准库/dataclass，边界选型见 [P12](../../scripts/doc/development-pitfalls.md#p12--pydantic-vs-dataclass-选型)。 |
-| **GUI 线程** | 耗时操作在 **`QThread`**（或等价）中执行，通过 **signal/slot** 回传结果；**禁止**在工作线程直接操作控件（[P05](../../scripts/doc/development-pitfalls.md#p05--qthread-信号安全gui-线程通信)）。 |
-| **子进程输出** | 读取 `AdbCmdResult` / `subprocess` 结果时 **`stdout`/`stderr` 使用 `or ""`**（[P02](../../scripts/doc/development-pitfalls.md#p02--adb-命令输出可能为-none)）。 |
+| **共享 context** | `plugin` 写入 `context` 的键 **必须** 带 **模块前缀**（如 `gp_service`），禁止占用通用键名（与 [P01](../experience/development-pitfalls.md#p01--插件-context-键名冲突严重) 一致）。 |
+| **数据模型** | 跨 GUI/CLI/Agent 的结构化载荷 **Pydantic v2**；纯内部算法可用标准库/dataclass，边界选型见 [P12](../experience/development-pitfalls.md#p12--pydantic-vs-dataclass-选型)。 |
+| **GUI 线程** | 耗时操作在 **`QThread`**（或等价）中执行，通过 **signal/slot** 回传结果；**禁止**在工作线程直接操作控件（[P05](../experience/development-pitfalls.md#p05--qthread-信号安全gui-线程通信)）。 |
+| **子进程输出** | 读取 `AdbCmdResult` / `subprocess` 结果时 **`stdout`/`stderr` 使用 `or ""`**（[P02](../experience/development-pitfalls.md#p02--adb-命令输出可能为-none)）。 |
 | **合并前** | 相关 **`pytest`** 通过；可运行 [`scripts/run_all_tests.py`](../../scripts/doc/run_all_tests.md) 做全量回归。 |
-| **打包注意** | 发布构建见 [build.md](../../scripts/doc/build.md)；frozen 模式与资源路径遵守 [P13/P14](../../scripts/doc/development-pitfalls.md)。 |
+| **打包注意** | 发布构建见 [build.md](../../scripts/doc/build.md)；frozen 模式与资源路径遵守 [P13/P14](../experience/development-pitfalls.md)。 |
 
 ### 5.1 标准目录结构
 

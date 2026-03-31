@@ -127,8 +127,8 @@ specify → clarify → UE/UI design → plan → tasks → analysis → impleme
 |------|------|
 | [架构设计文档](doc/architecture/architecture-overview.md) | 项目完整架构设计（11 章） |
 | [技术决策记录](doc/architecture/technical-decisions.md) | 12 项 ADR 决策记录 |
-| [模块开发指导手册](scripts/doc/module-development-guide.md) | 端到端开发流程、代码模板、命令速查 |
-| [常见踩坑指南](scripts/doc/development-pitfalls.md) | 14 项常见问题及解决方案 |
+| [模块开发指导手册](doc/knowledge/module-development-guide.md) | 端到端开发流程、代码模板、命令速查 |
+| [常见踩坑指南](doc/experience/development-pitfalls.md) | 25 项常见问题及解决方案 |
 | [构建脚本文档](scripts/doc/build.md) | PyInstaller 构建流程与产物说明 |
 | [Constitution](.specify/memory/constitution.md) | 项目最高治理文档 |
 | [脚手架说明](scripts/doc/create_module.md) | create_module.py 使用说明 |

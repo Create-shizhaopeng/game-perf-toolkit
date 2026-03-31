@@ -18,7 +18,7 @@
 5. 使用 `perfetto --attach=<key> --stop` 停止原始会话；
 6. 清理设备上的临时 pb/trace 文件。
 
-用于开发阶段确认 **detach / clone** 与产品 TraceConfig（尤其 `write_into_file`）是否匹配。相关踩坑见 `scripts/doc/development-pitfalls.md` 中 Perfetto 条目。
+用于开发阶段确认 **detach / clone** 与产品 TraceConfig（尤其 `write_into_file`）是否匹配。相关踩坑见 `doc/experience/development-pitfalls.md` 中 Perfetto 条目。
 
 ## 参数说明
 
