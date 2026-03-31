@@ -28,6 +28,93 @@
 - [P23 — GLM API 400 错误：对话历史格式不合规](#p23--glm-api-400-错误对话历史格式不合规)
 - [P24 — LLM Tool Schema 中 Callable 参数导致 API 拒绝](#p24--llm-tool-schema-中-callable-参数导致-api-拒绝)
 - [P25 — Python 3.14 from \_\_future\_\_ import annotations 与 get\_type\_hints 冲突](#p25--python-314-from-__future__-import-annotations-与-get_type_hints-冲突)
+- [按子系统快速索引](#按子系统快速索引)
+  - [插件框架](#插件框架)
+  - [GUI / PyQt6](#gui--pyqt6)
+  - [ADB / 设备](#adb--设备)
+  - [Perfetto](#perfetto)
+  - [构建 / PyInstaller](#构建--pyinstaller)
+  - [LLM / Agent](#llm--agent)
+  - [工具链 / 环境](#工具链--环境)
+- [按生命周期分类](#按生命周期分类)
+
+---
+
+## 按子系统快速索引
+
+开发时根据当前工作的子系统快速定位相关踩坑经验，无需通读全部 25 项。
+
+### 插件框架
+
+| 编号 | 标题 | 严重度 | 关键词 |
+|------|------|--------|--------|
+| P01 | 插件 context 键名冲突 | 严重 | context 前缀、键名覆盖 |
+| P03 | 插件类必须继承 BasePlugin | 中等 | pluggy、hookimpl |
+| P04 | pytest 跨模块测试文件名冲突 | 中等 | conftest、import-mode |
+| P12 | Pydantic vs dataclass 选型 | 低 | 公共 API、JSON Schema |
+
+### GUI / PyQt6
+
+| 编号 | 标题 | 严重度 | 关键词 |
+|------|------|--------|--------|
+| P05 | QThread 信号安全 | 严重 | pyqtSignal、线程通信 |
+| P07 | GUI 状态重置需保留用户上下文 | 中等 | 刷新、状态丢失 |
+| P11 | PyQt6 无边框窗口事件处理 | 低 | frameless、WA_TranslucentBackground |
+| P18 | 设备监控与间歇性 COM 错误 | 严重 | COM、0x8001010d、QTimer |
+| P19 | QComboBox 自定义 Popup 崩溃 | 严重 | Windows、Popup、showPopup |
+| P20 | SQLite 跨线程连接访问 | 严重 | check_same_thread、QThread |
+| P21 | QTableWidget 操作按钮刷新竞态 | 中等 | blockSignals、cellWidget |
+
+### ADB / 设备
+
+| 编号 | 标题 | 严重度 | 关键词 |
+|------|------|--------|--------|
+| P02 | ADB 命令输出可能为 None | 中等 | stdout、`or ""`保护 |
+| P09 | ADB remount 首次需重启 | 低 | remount、reboot |
+
+### Perfetto
+
+| 编号 | 标题 | 严重度 | 关键词 |
+|------|------|--------|--------|
+| P15 | Perfetto detach 须配合 write_into_file | 严重 | detach、文件输出 |
+| P16 | 同 UID 并发会话上限与残留进程 | 中等 | UID、并发、cleanup |
+| P17 | Ring buffer clone 覆盖的时间范围 | 中等 | ring_buffer、clone、时间窗口 |
+
+### 构建 / PyInstaller
+
+| 编号 | 标题 | 严重度 | 关键词 |
+|------|------|--------|--------|
+| P13 | noconsole 模式 sys.stdout/stderr 为 None | 严重 | PyInstaller、noconsole、NoneType |
+| P14 | 资源文件路径解析 | 中等 | _MEIPASS、sys._MEIPASS |
+
+### LLM / Agent
+
+| 编号 | 标题 | 严重度 | 关键词 |
+|------|------|--------|--------|
+| P23 | GLM API 400 错误：对话历史格式 | 中等 | GLM、message role、sanitize |
+| P24 | Tool Schema 中 Callable 参数 | 严重 | Callable、JSON Schema、序列化 |
+| P25 | Python 3.14 annotations 与 get_type_hints 冲突 | 低 | `__future__`、ForwardRef |
+
+### 工具链 / 环境
+
+| 编号 | 标题 | 严重度 | 关键词 |
+|------|------|--------|--------|
+| P06 | Windows 控制台中文编码 | 中等 | encoding、chcp、UTF-8 |
+| P08 | Typer CLI 帮助命令退出码 | 低 | SystemExit、exit code |
+| P10 | PowerShell heredoc 语法不兼容 | 低 | heredoc、`@"`...`"@` |
+| P22 | core.autocrlf 与 .editorconfig 行尾符冲突 | 低 | CRLF、LF、幽灵修改 |
+
+## 按生命周期分类
+
+| 阶段 | 相关 Pitfalls |
+|------|---------------|
+| 设计时 | P01, P03, P04, P12 |
+| 编码时（GUI） | P05, P07, P11, P18, P19, P20, P21 |
+| 编码时（ADB/设备） | P02, P09 |
+| 编码时（Perfetto） | P15, P16, P17 |
+| 编码时（Agent/LLM） | P23, P24, P25 |
+| 构建时 | P13, P14, P22 |
+| 环境/工具 | P06, P08, P10 |
 
 ---
 

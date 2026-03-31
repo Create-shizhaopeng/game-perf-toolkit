@@ -5,56 +5,41 @@ alwaysApply: true
 ---
 # Spec-Driven Agent 工作流规范
 
-本规则定义 Agent 在 spec-driven 开发中的必须遵循的闭环流程。
-详见 `.specify/memory/constitution.md` § Spec-Driven 标准开发流程。
+完整流程和验收工作流详见 `.specify/memory/constitution.md`。本规则仅列出 Agent 必须遵循的核心约束。
 
-## 标准开发流程（主 spec / 子 spec 均适用）
+## 开发流程速查
 
-| 步骤 | 动作 | 说明 |
-|------|------|------|
-| Step 1 | specify | 创建功能规格文档 |
-| Step 2 | clarify | 需求澄清，与用户交互定好不清晰的需求 |
-| Step 3 | UE/UI 设计 | 涉及界面时设计 2-3 种方案供用户选择，子模块风格与主模块一致 |
-| Step 4 | plan | 制定实现计划 |
-| Step 5 | tasks | 生成任务清单 |
-| Step 6 | analysis | 需求/计划/任务一致性，FAIL 清零后方可实现 |
-| Step 7 | implement | 执行实现 |
-| Step 8 | analysis | 实现后验证，FAIL 清零 |
+specify → clarify → [UE/UI] → plan → tasks → analysis → implement → analysis
 
-Step 3 仅在涉及 GUI/界面时必须执行。
+- Step 3 (UE/UI) 仅在涉及 GUI 时执行
+- 每次 analysis MUST FAIL 项清零方可进入下一阶段
+- 所有 clarify 决策 MUST 回写 `spec.md` Clarifications 章节
 
-## 用户验收 — 简单 Bug
+## Bug 修复
 
-不涉及功能变更、需求补充的简单修复：
-1. spec task + Bug 描述 → 修复任务
-2. spec implement → 修复
-3. spec analysis → 确认一致性
+- 简单 Bug：task → implement → analysis
+- 需求变更：clarify → [UE/UI] → plan → task → analysis → implement → analysis
+- MUST 先分析根因再修复，MUST NOT 盲目尝试
+- 涉及流程/逻辑变更时 MUST 同步更新 spec 文档
 
-## 用户验收 — 需求变更或设计调整
+## Speckit 路由
 
-涉及需求补充、功能变更、设计调整：
-1. spec clarify → 需求澄清
-2. 涉及 UI 时 → 更新 UE/UI 设计
-3. spec plan → 修复计划
-4. spec task → 具体任务
-5. spec analysis → clarify 与 task 一致性
-6. spec implement → 执行修复
-7. spec analysis（最终）→ 代码对齐 spec + constitution
+执行任何 speckit 命令前 MUST 先确定目标（详见 `context/team/speckit-multi-module.md`）：
 
-## Bug 修复方法论
+| 目标 | Speckit 路径 | Spec 输出目录 |
+|------|-------------|-------------|
+| toolkit 框架 | `.specify/` | `specs/` |
+| perfetto_analysis | `modules/perfetto_analysis/.specify/` | `modules/perfetto_analysis/specs/` |
+| agent_chat | `modules/agent_chat/.specify/` | `modules/agent_chat/specs/` |
+| device_disguise | `modules/device_disguise/.specify/` | `modules/device_disguise/specs/` |
+| game_perf | `modules/game_perf/.specify/` | `modules/game_perf/specs/` |
+| perfetto_capture | `modules/perfetto_capture/.specify/` | `modules/perfetto_capture/specs/` |
+| perfdog_insights | `modules/perfdog_insights/.specify/` | `modules/perfdog_insights/specs/` |
 
-修复任何 Bug 时 MUST 遵循：
-1. **分析根因**：通过日志、命令输出、代码追踪定位根本原因
-2. **记录诊断**：在进度回调/日志中输出关键返回值和状态信息
-3. **基于根因修复**：针对确认的根因编写修复代码，MUST NOT 盲目尝试
-4. **验证修复**：通过测试和手动验证确认问题已解决
-5. **更新文档**：涉及流程/逻辑变更时同步更新 spec 文档
+## 硬约束
 
-## 通用约束
-
-- 每次 analysis 必须 FAIL 项清零方可进入下一阶段
-- 所有 clarify 决策必须回写到 spec.md 的 Clarifications 章节
-- Constitution 是最高治理文档，实现不得违反其原则
-- 新模块开发前 MUST 阅读 `scripts/doc/development-pitfalls.md` 避免重复踩坑
-- 插件 context 键名 MUST 使用模块前缀命名空间（如 `dd_service`、`gp_adb`）
-- GUI 后台线程 MUST 通过 `pyqtSignal` 通信，MUST NOT 直接操作 UI 控件
+- Constitution（`.specify/memory/constitution.md`）是最高治理文档
+- 新模块开发前 MUST 阅读 `doc/experience/development-pitfalls.md`
+- 当前模块相关的 `AGENTS.md` MUST 在实现前阅读
+- context 键名 MUST 使用模块前缀（如 `dd_service`、`gp_adb`）
+- GUI 后台线程 MUST 通过 `pyqtSignal` 通信

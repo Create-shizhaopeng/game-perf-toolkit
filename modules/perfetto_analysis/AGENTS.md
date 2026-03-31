@@ -22,7 +22,7 @@ Perfetto trace 丢帧解析与多维度卡顿归因分析模块。基于 Android
 > - 中文注释和文档字符串
 > - CLI 输出 SHOULD 支持 JSON 格式（渐进落地）
 > - 插件 context 键名使用 `pa_` 前缀（如 `pa_service`、`pa_adb`、`pa_data_dir`）。`pa_` 取自 **p**erfetto **a**nalysis 缩写，不可使用 `pe_`（已被 perfetto_capture 占用，详见 P01 踩坑记录）
-> - 开发前 MUST 阅读 `scripts/doc/development-pitfalls.md`
+> - 开发前 MUST 阅读 `doc/experience/development-pitfalls.md`
 
 ## 模块边界约束
 

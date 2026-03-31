@@ -94,7 +94,7 @@ lv-game-toolkit/
 在开始开发前，请务必阅读以下文档：
 
 1. **`.specify/memory/constitution.md`** — 项目最高治理文档，所有原则和约束
-2. **`scripts/doc/development-pitfalls.md`** — 踩坑指南（12 项常见问题）
+2. **`doc/experience/development-pitfalls.md`** — 踩坑指南（25 项常见问题）
 3. **`.cursor/rules/spec-workflow.mdc`** — Spec-Driven 工作流规范
 4. **已有模块源码** — `modules/game_perf/` 是最完整的参考实现
 
@@ -407,7 +407,7 @@ fix(game_perf): 修复推送时 stdout 为 None 导致的拼接错误
 
 ## 常见错误与避坑指南
 
-完整清单见 `scripts/doc/development-pitfalls.md`，以下为最高频问题：
+完整清单见 `doc/experience/development-pitfalls.md`，以下为最高频问题：
 
 ### 1. Context 键名冲突（严重度：致命）
 

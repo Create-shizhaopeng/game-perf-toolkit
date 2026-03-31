@@ -21,7 +21,7 @@
 - ❌ 禁止导入：`toolkit.core` 内部实现（plugin_manager、db_manager 等）、其他模块的 `src/`
 - 插件 context 键名 MUST 使用 `pa_` 前缀（如 `pa_service`、`pa_adb`、`pa_data_dir`）
   - `pa_` 取自 **p**erfetto **a**nalysis 的缩写
-  - 不可使用 `pe_`（已被 `perfetto_capture` 模块占用），否则会导致 context 键覆盖冲突（详见 `scripts/doc/development-pitfalls.md` P01）
+  - 不可使用 `pe_`（已被 `perfetto_capture` 模块占用），否则会导致 context 键覆盖冲突（详见 `doc/experience/development-pitfalls.md` P01）
   - 每个模块 MUST 使用全局唯一的 2~3 字母前缀作为命名空间
 
 ## 技术约束
@@ -36,7 +36,7 @@
 
 ## 开发规范
 
-- 遵循项目根 `scripts/doc/development-pitfalls.md` 中列出的踩坑指南
+- 遵循项目根 `doc/experience/development-pitfalls.md` 中列出的踩坑指南
 - 后台耗时操作 MUST 使用 `QThread` + `pyqtSignal` 与 GUI 线程通信
 - service 层纯同步，MUST NOT 包含 PyQt6 代码
 - GUI 刷新历史表 MUST 使用 `QTimer.singleShot()` 延迟执行，避免 use-after-free 竞态

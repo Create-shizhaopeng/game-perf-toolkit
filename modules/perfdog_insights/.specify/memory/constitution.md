@@ -29,7 +29,7 @@
 
 ## 开发规范
 
-- 遵循项目根 `scripts/doc/development-pitfalls.md`（context 前缀、QThread、ADB 输出等）
+- 遵循项目根 `doc/experience/development-pitfalls.md`（context 前缀、QThread、ADB 输出等）
 - 功能规格、计划与任务清单的**权威源**为仓库根 `specs/004-perfdog-import-insights/`；本模块下 `specs/004-perfdog-import-insights/` 为**入口索引**（链接到根目录），避免双份正文漂移
 - 合并前：`pytest modules/perfdog_insights/tests/`，并执行 `ruff check`（若环境已安装）
 

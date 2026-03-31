@@ -422,7 +422,7 @@
 ### 8.2 文档更新
 
 - [ ] **T049**: [P] 更新 `scripts/doc/architecture-overview.md` — 新增 agent_chat 模块说明
-- [ ] **T050**: [P] 更新 `scripts/doc/development-pitfalls.md` — 记录开发中遇到的陷阱
+- [ ] **T050**: [P] 更新 `doc/experience/development-pitfalls.md` — 记录开发中遇到的陷阱
 - [ ] **T051**: [P] 更新 `scripts/build.py` — 打包配置（可选依赖处理）
   - zhipuai / anthropic 作为可选依赖的打包策略
   - SOP 文件和 assets 的打包包含

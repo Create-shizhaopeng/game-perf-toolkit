@@ -21,7 +21,7 @@
 - ❌ 禁止导入：其他模块的 `src/` 实现代码
 - 插件 context 键名 MUST 使用 `ac_` 前缀（如 `ac_service`、`ac_config`）
   - `ac_` 取自 **a**gent **c**hat 的缩写
-  - 参见 `scripts/doc/development-pitfalls.md` P01
+  - 参见 `doc/experience/development-pitfalls.md` P01
 
 ## 技术约束
 
@@ -36,7 +36,7 @@
 
 ## 开发规范
 
-- 遵循项目根 `scripts/doc/development-pitfalls.md` 中列出的踩坑指南
+- 遵循项目根 `doc/experience/development-pitfalls.md` 中列出的踩坑指南
 - service 层纯同步，MUST NOT 包含 PyQt6 代码
 - LLM Provider 实现 MUST 处理网络超时、API 错误等异常，返回结构化错误信息
 - 工具执行器 MUST 捕获所有异常，将错误信息作为 ToolResult 返回给 LLM，MUST NOT 让异常中断对话循环

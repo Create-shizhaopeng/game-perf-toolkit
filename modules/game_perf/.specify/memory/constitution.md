@@ -30,7 +30,7 @@
 
 ## 开发规范
 
-- 遵循项目根 `scripts/doc/development-pitfalls.md` 中列出的踩坑指南
+- 遵循项目根 `doc/experience/development-pitfalls.md` 中列出的踩坑指南
 - 后台 ADB/推送操作 MUST 使用 `QThread` + `pyqtSignal` 与 GUI 线程通信
 - service 层纯同步，MUST NOT 包含 PyQt6 代码
 - GUI Tab 页使用上下分栏布局，风格与主模块一致
