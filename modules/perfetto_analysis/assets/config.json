@@ -8,5 +8,8 @@
   "sched_latency_threshold_ms": 1.0,
   "auto_analyze_on_capture": false,
   "default_process": "",
-  "dimensions": []
+  "dimensions": [],
+  "analysis_mode": "mcp_preferred",
+  "dimension_overrides": {},
+  "mcp_timeout_ms": 10000
 }

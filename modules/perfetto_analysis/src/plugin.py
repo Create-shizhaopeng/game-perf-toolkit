@@ -13,6 +13,63 @@ class PerfettoAnalysisPlugin(BasePlugin):
 
     _service: Any = None
 
+    def _pa_trace_overview(
+        self,
+        trace_path: str,
+        process_name: str | None = None,
+    ) -> Any:
+        return self._service.get_trace_overview(trace_path, process_name)
+
+    def _pa_detect_jank(
+        self,
+        trace_path: str,
+        process_name: str = "",
+        time_range: dict | None = None,
+    ) -> Any:
+        return self._service.detect_jank_frames(
+            trace_path, process_name, time_range,
+        )
+
+    def _pa_analyze_dimension(
+        self,
+        trace_path: str,
+        dimension: str,
+        process_name: str = "",
+        time_range: dict | None = None,
+    ) -> Any:
+        return self._service.analyze_dimension(
+            trace_path, process_name, dimension, time_range,
+        )
+
+    def _pa_cpu_overview(self, trace_path: str, process_name: str = "") -> Any:
+        return self._service.get_cpu_overview(trace_path, process_name)
+
+    def _pa_find_slices(
+        self,
+        trace_path: str,
+        pattern: str,
+        process_name: str | None = None,
+    ) -> Any:
+        return self._service.find_slices_tool(
+            trace_path, pattern, process_name,
+        )
+
+    def _pa_compress_results(self, trace_path: str) -> dict[str, Any]:
+        return {
+            "placeholder": True,
+            "message": (
+                "描述性注册：实际压缩需传入 trace_overview 与 dimension_results，"
+                "请调用 PerfettoAnalysisService.compress_results。"
+            ),
+            "trace_path": trace_path,
+        }
+
+    def _pa_analyze_anr(self, trace_path: str, process_name: str = "") -> dict:
+        return self._service.analyze_anr(trace_path, process_name)
+
+    def _pa_analyze_memory(self, trace_path: str, process_name: str = "") -> dict:
+        return self._service.analyze_memory(trace_path, process_name)
+
     @hookimpl
     def get_plugin_info(self) -> dict:
         return {
@@ -64,6 +121,147 @@ class PerfettoAnalysisPlugin(BasePlugin):
                     "required": ["trace_path"],
                 },
                 "method": self._service.parse_only,
+            },
+            {
+                "name": "pa_trace_overview",
+                "description": "获取 Perfetto trace 元数据概览。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "Perfetto trace 文件路径"},
+                        "process_name": {"type": "string", "description": "目标进程名（可选）"},
+                    },
+                    "required": ["trace_path"],
+                },
+                "method": self._pa_trace_overview,
+            },
+            {
+                "name": "pa_detect_jank",
+                "description": "检测卡顿帧，可选时间范围过滤。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "Perfetto trace 文件路径"},
+                        "process_name": {"type": "string", "description": "目标进程名（可选）"},
+                        "time_range": {
+                            "type": "object",
+                            "properties": {
+                                "start_ms": {"type": "number"},
+                                "end_ms": {"type": "number"},
+                            },
+                            "description": "可选时间范围（毫秒）",
+                        },
+                    },
+                    "required": ["trace_path"],
+                },
+                "method": self._pa_detect_jank,
+            },
+            {
+                "name": "pa_analyze_dimension",
+                "description": "单维度分析（MCP/引擎路由）。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "Perfetto trace 文件路径"},
+                        "process_name": {"type": "string", "description": "目标进程名（可选）"},
+                        "dimension": {
+                            "type": "string",
+                            "enum": [
+                                "cpu", "thread", "binder", "hotspot", "io",
+                                "gc", "gpu", "sf", "input", "lock", "summary",
+                            ],
+                            "description": "分析维度",
+                        },
+                        "time_range": {
+                            "type": "object",
+                            "properties": {
+                                "start_ms": {"type": "number"},
+                                "end_ms": {"type": "number"},
+                            },
+                            "description": "可选时间范围（毫秒）",
+                        },
+                    },
+                    "required": ["trace_path", "dimension"],
+                },
+                "method": self._pa_analyze_dimension,
+            },
+            {
+                "name": "pa_cpu_overview",
+                "description": "获取全 trace CPU 全局概览。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "Perfetto trace 文件路径"},
+                        "process_name": {"type": "string", "description": "目标进程名（可选）"},
+                    },
+                    "required": ["trace_path"],
+                },
+                "method": self._pa_cpu_overview,
+            },
+            {
+                "name": "pa_find_slices",
+                "description": "按名称模式搜索 slice。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "Perfetto trace 文件路径"},
+                        "pattern": {"type": "string", "description": "名称匹配模式"},
+                        "process_name": {"type": "string", "description": "目标进程名（可选）"},
+                    },
+                    "required": ["trace_path", "pattern"],
+                },
+                "method": self._pa_find_slices,
+            },
+            {
+                "name": "pa_execute_sql",
+                "description": "对 trace 执行任意 Perfetto SQL 查询。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "Perfetto trace 文件路径"},
+                        "sql": {"type": "string", "description": "SQL 语句"},
+                    },
+                    "required": ["trace_path", "sql"],
+                },
+                "method": self._service.execute_sql_tool,
+            },
+            {
+                "name": "pa_compress_results",
+                "description": "将分析结果压缩为结构化摘要。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "占位：trace 路径"},
+                    },
+                    "required": ["trace_path"],
+                },
+                "method": self._pa_compress_results,
+            },
+            {
+                "name": "pa_analyze_anr",
+                "description": "检测 Perfetto trace 中的 ANR 事件并分析根因。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "Perfetto trace 文件路径"},
+                        "process_name": {"type": "string", "description": "目标进程名"},
+                    },
+                    "required": ["trace_path"],
+                },
+                "method": self._pa_analyze_anr,
+            },
+            {
+                "name": "pa_analyze_memory",
+                "description": "检测 Perfetto trace 中的内存泄漏并分析堆支配树。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "Perfetto trace 文件路径"},
+                        "process_name": {"type": "string", "description": "目标进程名"},
+                    },
+                    "required": ["trace_path"],
+                },
+                "method": self._pa_analyze_memory,
             },
             {
                 "name": "pa_analyze_dims",

@@ -14,7 +14,11 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
-from .models import AnalysisConfig, AnalysisResult, AnalysisTask, load_config, save_config
+from .models import (
+    AnalysisConfig, AnalysisResult, AnalysisTask,
+    CompressedSummary, DimensionResult, TraceOverview,
+    load_config, save_config,
+)
 
 ProgressCallback = Callable[[str], None] | None
 
@@ -809,3 +813,136 @@ class PerfettoAnalysisService:
             return runs
         except Exception:
             return []
+
+    # ------------------------------------------------------------------
+    # 原子工具集 API（AnalysisToolkit 委托）
+    # ------------------------------------------------------------------
+
+    def _get_toolkit(self):
+        """惰性创建 AnalysisToolkit 实例。"""
+        if not hasattr(self, "_toolkit"):
+            from .analysis_toolkit import AnalysisToolkit
+            from .mcp_client import McpAnalysisClient
+            from .analysis_mode import FeatureFlagManager
+
+            self._toolkit = AnalysisToolkit(
+                config=self._cfg,
+                mcp_client=McpAnalysisClient(
+                    timeout_ms=self._cfg.mcp_timeout_ms,
+                ),
+                flag_manager=FeatureFlagManager(self._cfg),
+            )
+        return self._toolkit
+
+    def get_trace_overview(
+        self,
+        trace_path: str,
+        process: str | None = None,
+    ) -> TraceOverview:
+        """获取 trace 元数据概览。"""
+        return self._get_toolkit().get_trace_overview(trace_path, process)
+
+    def detect_jank_frames(
+        self,
+        trace_path: str,
+        process: str = "",
+        time_range: dict | None = None,
+    ) -> list[dict[str, Any]]:
+        """检测卡顿帧，可选 time_range 过滤。"""
+        process = process or self._cfg.default_process
+        return self._get_toolkit().detect_jank_frames(
+            trace_path, process, time_range,
+        )
+
+    def analyze_dimension(
+        self,
+        trace_path: str,
+        process: str = "",
+        dimension: str = "cpu",
+        time_range: dict | None = None,
+    ) -> DimensionResult:
+        """对指定维度执行分析（MCP/引擎路由）。"""
+        process = process or self._cfg.default_process
+        return self._get_toolkit().analyze_dimension(
+            trace_path, process, dimension, time_range,
+        )
+
+    def get_cpu_overview(
+        self,
+        trace_path: str,
+        process: str = "",
+    ) -> dict[str, Any] | None:
+        """获取全 trace CPU 概览（MCP）。"""
+        process = process or self._cfg.default_process
+        return self._get_toolkit().get_cpu_overview(trace_path, process)
+
+    def find_slices_tool(
+        self,
+        trace_path: str,
+        pattern: str,
+        process: str | None = None,
+    ) -> dict[str, Any] | None:
+        """按名称模式搜索 slice（MCP）。"""
+        return self._get_toolkit().find_slices(trace_path, pattern, process)
+
+    def execute_sql_tool(
+        self,
+        trace_path: str,
+        sql: str,
+    ) -> dict[str, Any] | None:
+        """执行任意 Perfetto SQL 查询（MCP）。"""
+        return self._get_toolkit().execute_sql(trace_path, sql)
+
+    def analyze_anr(
+        self,
+        trace_path: str,
+        process: str = "",
+    ) -> dict[str, Any]:
+        """ANR 检测与根因分析。"""
+        process = process or self._cfg.default_process
+        return self._get_toolkit().analyze_anr(trace_path, process)
+
+    def analyze_memory(
+        self,
+        trace_path: str,
+        process: str = "",
+    ) -> dict[str, Any]:
+        """内存泄漏检测与堆分析。"""
+        process = process or self._cfg.default_process
+        return self._get_toolkit().analyze_memory(trace_path, process)
+
+    def compress_results(
+        self,
+        trace_overview: TraceOverview,
+        dimension_results: list[DimensionResult],
+        jank_frames: list[dict[str, Any]] | None = None,
+    ) -> CompressedSummary:
+        """将分析结果压缩为 CompressedSummary。"""
+        from .result_compressor import ResultCompressor
+
+        compressor = ResultCompressor()
+        return compressor.compress(trace_overview, dimension_results, jank_frames)
+
+    def set_analysis_mode(
+        self,
+        mode: str,
+        dimension_overrides: dict[str, str] | None = None,
+    ) -> None:
+        """设置分析模式并持久化到 config.json。"""
+        from .models import AnalysisMode
+        if mode not in [m.value for m in AnalysisMode]:
+            raise ValueError(f"无效的分析模式: {mode}，可选: {[m.value for m in AnalysisMode]}")
+        self._cfg.analysis_mode = mode
+        if dimension_overrides is not None:
+            self._cfg.dimension_overrides = dimension_overrides
+        save_config(self._cfg)
+        if hasattr(self, "_toolkit"):
+            del self._toolkit
+
+    def get_analysis_mode(self) -> dict[str, Any]:
+        """获取当前分析模式和维度覆盖设置。"""
+        return {
+            "analysis_mode": self._cfg.analysis_mode,
+            "dimension_overrides": self._cfg.dimension_overrides,
+            "mcp_timeout_ms": self._cfg.mcp_timeout_ms,
+        }
