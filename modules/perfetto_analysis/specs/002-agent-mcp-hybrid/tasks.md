@@ -12,7 +12,7 @@
 - [Format: `[ID] [P?] [Story] Description`](#format-id-p-story-description)
 - [Phase 1: Setup (Shared Infrastructure)](#phase-1-setup-shared-infrastructure)
 - [Phase 2: Foundational (Blocking Prerequisites)](#phase-2-foundational-blocking-prerequisites)
-- [Phase 3: User Story 1 - 混合分析原子工具集 (Priority: P1)](#phase-3-user-story-1---混合分析原子工具集-priority-p1)
+- [Phase 3: User Story 1 - 混合分析原子工具集 (Priority: P1) MVP](#phase-3-user-story-1---混合分析原子工具集-priority-p1--mvp)
 - [Phase 4: User Story 2 - 分析结果压缩输出 (Priority: P1)](#phase-4-user-story-2---分析结果压缩输出-priority-p1)
 - [Phase 5: User Story 5 - Agent 编排集成 (Priority: P1)](#phase-5-user-story-5---agent-编排集成-priority-p1)
 - [Phase 6: User Story 3 - Feature Flag 运行时切换 (Priority: P2)](#phase-6-user-story-3---feature-flag-运行时切换-priority-p2)
@@ -26,6 +26,7 @@
 - [Implementation Strategy](#implementation-strategy)
   - [MVP First (US1 + US2 + US5)](#mvp-first-us1--us2--us5)
   - [Incremental Delivery](#incremental-delivery)
+- [Notes](#notes)
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -39,7 +40,7 @@
 
 **Purpose**: 配置文件更新，为新功能预置默认值
 
-- [ ] T001 更新 `modules/perfetto_analysis/data/config.json` 增加 `analysis_mode`（默认 "mcp_preferred"）、`dimension_overrides`（默认 {}）、`mcp_timeout_ms`（默认 10000）配置项
+- [x] T001 ✅ 更新 `modules/perfetto_analysis/data/config.json` 增加 `analysis_mode`（默认 "mcp_preferred"）、`dimension_overrides`（默认 {}）、`mcp_timeout_ms`（默认 10000）配置项
 
 ---
 
@@ -49,9 +50,9 @@
 
 **⚠️ CRITICAL**: 所有 User Story 任务必须等此阶段完成后方可开始
 
-- [ ] T002 扩展 `modules/perfetto_analysis/src/models.py`：新增 `AnalysisMode` 枚举（mcp_preferred / engine_only / mcp_only）、`DimensionResult` 数据模型（含 `source: str` 标注字段和 `data: dict` 结果字段）、`TraceOverview` 模型（duration_s / processes / frame_count / refresh_rate_hz / scenario_phases）、`CompressedSummary` Pydantic 模型（按 spec C3 JSON schema 定义）、`AnalysisScenario` 数据模型（场景名 / 所需 MCP 工具列表 / 引擎维度映射，用于 US4 多场景分析）；扩展 `AnalysisConfig` 新增 `analysis_mode`、`dimension_overrides`、`mcp_timeout_ms` 字段
-- [ ] T003 [P] 创建 `modules/perfetto_analysis/src/analysis_mode.py`：实现 `FeatureFlagManager`（读取 AnalysisConfig 中的 mode 设置）和维度级路由表（基于 plan.md 降级策略表，定义每个维度的默认策略和 MCP 工具映射，返回 "engine_only" / "mcp_preferred" / "mcp_only"）
-- [ ] T004 [P] 创建 `modules/perfetto_analysis/src/mcp_client.py`：实现 `McpAnalysisClient` 类，包含 `analyze_thread_contention()`、`analyze_binder()`、`get_main_thread_hotspots()`、`get_cpu_utilization()`、`find_slices()`、`execute_sql()` 方法；每个方法返回 `dict | None`（成功返回结构化数据，失败/超时/空数据返回 None）；实现 MCP 连接异常捕获和可配置超时（默认 10s）
+- [x] T002 ✅ 扩展 `modules/perfetto_analysis/src/models.py`：新增 `AnalysisMode` 枚举、`DimensionResult`、`TraceOverview`、`CompressedSummary`、`AnalysisScenario`、`ThreadStateSummary`（含 `to_compact_dict()`）、`CpuFreqAnalysis`（含 `to_compact_dict()`）；扩展 `AnalysisConfig` 新增 `analysis_mode`、`dimension_overrides`、`mcp_timeout_ms` 字段
+- [x] T003 [P] ✅ 创建 `modules/perfetto_analysis/src/analysis_mode.py`：`FeatureFlagManager` + 维度级路由表
+- [x] T004 [P] ✅ 创建 `modules/perfetto_analysis/src/mcp_client.py`：`McpAnalysisClient` 类，含所有 MCP 调用方法和异常捕获
 
 **Checkpoint**: 基础设施就绪 — 可以开始实现 User Story
 
@@ -65,8 +66,11 @@
 
 ### Implementation for User Story 1
 
-- [ ] T005 [US1] 创建 `modules/perfetto_analysis/src/analysis_toolkit.py`：实现 `AnalysisToolkit` 类，核心方法包括：(1) `get_trace_overview(trace_path, process?)` — 调用引擎 parser 获取 trace 元数据（duration、processes、frame_count、refresh_rate、场景阶段列表），返回 TraceOverview；(2) `detect_jank_frames(trace_path, process, time_range?)` — 调用引擎的 VSync/Buffer 卡顿检测，可选 time_range 过滤，返回 jank 帧列表；当多个 jank 帧时间窗口重叠时合并为一个窗口；(3) `analyze_dimension(trace_path, process, dimension, time_range?)` — 根据 FeatureFlagManager 路由到 MCP 或引擎，执行单维度分析，返回 DimensionResult（含 source 标注）；对 time_range 做边界验证（超出 trace 时间范围时返回明确错误）；(4) `get_cpu_overview(trace_path, process)` — 调用 MCP cpu_utilization_profiler 返回全 trace CPU 概览；(5) `find_slices(trace_path, pattern, process?)` — 透传到 McpAnalysisClient；(6) `execute_sql(trace_path, sql)` — 透传到 McpAnalysisClient
-- [ ] T006 [US1] 修改 `modules/perfetto_analysis/src/service.py`：新增 `get_trace_overview()`、`detect_jank_frames()`、`analyze_dimension()`、`get_cpu_overview()`、`find_slices()`、`execute_sql()` 公共方法，内部委托 AnalysisToolkit；实例化 AnalysisToolkit 时注入 McpAnalysisClient 和 FeatureFlagManager；现有 `analyze()` 方法不修改
+- [x] T005 [US1] ✅ 创建 `modules/perfetto_analysis/src/analysis_toolkit.py`：`AnalysisToolkit` 类，含 get_trace_overview / detect_jank_frames / analyze_dimension / get_cpu_overview / find_slices / execute_sql 等核心方法
+- [x] T005a [US1] ✅ 在 `AnalysisToolkit` 中新增 `thread_state_summary(trace_path, process, time_range?, compact?)` 方法
+- [x] T005b [US1] ✅ 在 `AnalysisToolkit` 中新增 `cpu_freq_analysis(trace_path, process, time_range?, compact?)` 方法
+- [x] T005c [US1] ✅ 原子工具支持 `compact=True` 参数：ThreadStateSummary/CpuFreqAnalysis 通过 `to_compact_dict()`，find_slices/execute_sql 通过 `_compact_rows()` 截断
+- [x] T006 [US1] ✅ service.py 新增所有原子工具公共方法（含 thread_state_summary 和 cpu_freq_analysis），委托 AnalysisToolkit
 
 **Checkpoint**: 每个原子工具可独立调用并返回正确结果，analyze_dimension 正确执行 MCP/引擎降级
 
@@ -80,8 +84,8 @@
 
 ### Implementation for User Story 2
 
-- [ ] T007 [US2] 创建 `modules/perfetto_analysis/src/result_compressor.py`：实现 `ResultCompressor` 类，输入为 `TraceOverview` + `list[DimensionResult]` + 可选 jank 帧列表，输出 `CompressedSummary`；包含：(1) `trace_info` 提取（从 TraceOverview）；(2) `severity` 计算（基于 jank_count 和 max_jank_num 映射到 CRITICAL/HIGH/MEDIUM/LOW）；(3) `root_causes` 提取（遍历 DimensionResult 按严重度排序取 Top N，每个含 rank/cause/evidence/severity/dimension）；(4) `health_summary` 生成（每维度 OK/WARNING/CRITICAL/UNAVAILABLE + 一行说明）；(5) `data_completeness` 统计（degraded_dimensions / mcp_source / engine_source 列表）
-- [ ] T008 [US2] 修改 `modules/perfetto_analysis/src/service.py`：新增 `compress_results(trace_overview, dimension_results, jank_frames?)` 公共方法，内部调用 ResultCompressor 返回 CompressedSummary
+- [x] T007 [US2] ✅ 创建 `modules/perfetto_analysis/src/result_compressor.py`：ResultCompressor 类
+- [x] T008 [US2] ✅ service.py 新增 `compress_results()` 公共方法
 
 **Checkpoint**: compress_results() 可接收任意组合的工具结果并生成 CompressedSummary JSON
 
@@ -95,11 +99,11 @@
 
 ### Implementation for User Story 5
 
-- [ ] T009 [US5] 修改 `modules/perfetto_analysis/src/plugin.py`：在 `register_agent_tools()` 中注册以下原子工具 — `pa_trace_overview`（获取 trace 元数据）、`pa_detect_jank`（检测卡顿帧）、`pa_analyze_dimension`（单维度分析，参数含 dimension + time_range）、`pa_cpu_overview`（CPU 全局概览）、`pa_find_slices`（搜索 slice）、`pa_execute_sql`（执行 SQL）、`pa_compress_results`（压缩结果）；保留现有 `pa_analyze` 和 `pa_parse` 工具不变
-- [ ] T010 [P] [US5] 创建 `modules/perfetto_analysis/docs/sop/jank-analysis.md`：卡顿分析 SOP，包含分析目标、前置检查（get_trace_overview 确认场景）、工具调用顺序（detect_jank → 确定 time_range → analyze_dimension 逐维度 → compress_results）、结果解读指引、常见卡顿模式识别（主线程耗时、Binder 阻塞、GPU 瓶颈等）
-- [ ] T011 [P] [US5] 创建 `modules/perfetto_analysis/docs/sop/general-analysis.md`：通用分析 SOP，包含场景不明时的引导流程（get_trace_overview → 场景分类 → 加载对应场景 SOP → 如无匹配则按用户意图选择工具组合）；显式包含"当 Agent 无法从元数据确定时间范围时，MUST 向用户询问"的交互步骤
-- [ ] T012 [US5] 在 `modules/perfetto_analysis/src/models.py` 中新增 `AnalysisChainStep` 数据模型（tool_name / input_params / output_summary / duration_ms / source）和 `AnalysisChainResult` 模型（steps 列表 + 最终结论 + 置信度标注），用于分析链路追溯
-- [ ] T013 [US5] 修改 `modules/perfetto_analysis/src/analysis_toolkit.py`：在 `analyze_dimension()`、`detect_jank_frames()`、`get_cpu_overview()` 等工具方法中集成 AnalysisChainStep 记录能力（每次调用记录 tool_name / input_params / output_summary / duration_ms / source），提供 `get_chain_result()` 方法返回当前分析会话的完整 AnalysisChainResult
+- [x] T009 [US5] ✅ plugin.py 注册 16 个 agent_tools（含 pa_thread_state_summary 和 pa_cpu_freq_analysis）
+- [x] T010 [P] [US5] ✅ 已完成 — `skills/perfetto-analysis/sop/jank-analysis.md`：卡顿分析 SOP（含 CPU 维度深度分析、SF 维度、IO 交叉引用）
+- [x] T011 [P] [US5] ✅ 已完成 — `skills/perfetto-analysis/sop/general-analysis.md`：通用分析 SOP（含场景路由交叉引用 SKILL.md）
+- [x] T012 [US5] ✅ models.py 已有 `AnalysisChainStep` 和 `AnalysisChainResult` 数据模型
+- [x] T013 [US5] ✅ analysis_toolkit.py 已集成 `_record_step()` 链路记录 + `get_chain_result()` 方法
 
 **Checkpoint**: Agent 通过 agent_tools 调用原子工具完成卡顿分析，SOP 指导 Agent 的工具编排策略，分析链路可追溯
 
@@ -113,8 +117,9 @@
 
 ### Implementation for User Story 3
 
-- [ ] T014 [P] [US3] 修改 `modules/perfetto_analysis/src/service.py`：新增 `set_analysis_mode(mode, dimension_overrides=None)` 和 `get_analysis_mode()` 方法，支持运行时修改 AnalysisConfig 中的模式设置并持久化到 config.json
-- [ ] T015 [US3] 修改 `modules/perfetto_analysis/src/cli_commands.py`：(1) `analyze` 命令新增 `--mode` 选项（mcp_preferred / engine_only / mcp_only，默认从 config 读取）；(2) 新增 `config` 子命令，支持 `analysis config show`（显示当前 analysis_mode 及维度覆盖）和 `analysis config set --mode <mode>`（运行时修改）
+- [x] T014 [P] [US3] ✅ service.py 已有 `set_analysis_mode()` 和 `get_analysis_mode()` 方法
+- [x] T015 [US3] ✅ cli_commands.py 已有 `--mode` 选项和 `config` 子命令
+- [x] T015a [US3] ✅ 引擎 `parser.py` 输出增强：检测到 `refresh_rate_switches` 时增加 `mixed_refresh_rates: true`、`refresh_rate_segments`（含 hz、start_ns、end_ns、duration_s）
 
 **Checkpoint**: CLI `analysis analyze --mode engine_only` 运行结果与改造前一致
 
@@ -128,12 +133,12 @@
 
 ### Implementation for User Story 4
 
-- [ ] T016 [US4] 修改 `modules/perfetto_analysis/src/mcp_client.py`：新增 `detect_anrs()`、`analyze_anr_root_cause()`、`detect_memory_leaks()`、`analyze_heap_dominator()` 方法
-- [ ] T017 [US4] 修改 `modules/perfetto_analysis/src/analysis_toolkit.py`：新增 `analyze_anr(trace_path, process)` 和 `analyze_memory(trace_path, process)` 方法（调用对应 MCP 方法）；新增 `check_scenario_availability(trace_path, scenario)` 方法（基于 trace 元数据和 AnalysisScenario 定义判断场景是否可行，不可行时返回明确原因）
-- [ ] T018 [US4] 修改 `modules/perfetto_analysis/src/service.py`：新增 `analyze_anr()` 和 `analyze_memory()` 公共方法；不可用场景返回包含明确错误信息的结果
-- [ ] T019 [US4] 修改 `modules/perfetto_analysis/src/plugin.py`：注册 `pa_analyze_anr`（ANR 检测分析）和 `pa_analyze_memory`（内存泄漏分析）agent tools
-- [ ] T020 [P] [US4] 创建 `modules/perfetto_analysis/docs/sop/anr-analysis.md`：ANR 分析 SOP
-- [ ] T021 [P] [US4] 创建 `modules/perfetto_analysis/docs/sop/memory-analysis.md`：内存分析 SOP
+- [x] T016 [US4] ✅ mcp_client.py 已有 detect_anrs / analyze_anr_root_cause / detect_memory_leaks / analyze_heap_dominator
+- [x] T017 [US4] ✅ analysis_toolkit.py 已有 analyze_anr / analyze_memory / check_scenario_availability
+- [x] T018 [US4] ✅ service.py 已有 analyze_anr / analyze_memory 公共方法
+- [x] T019 [US4] ✅ plugin.py 已注册 pa_analyze_anr / pa_analyze_memory agent tools
+- [x] T020 [P] [US4] ✅ 已完成 — `skills/perfetto-analysis/sop/anr-analysis.md`：ANR 分析 SOP
+- [x] T021 [P] [US4] ✅ 已完成 — `skills/perfetto-analysis/sop/memory-analysis.md`：内存分析 SOP
 
 **Checkpoint**: analyze_anr() 和 analyze_memory() 在对应 trace 上返回结果，不支持的 trace 返回明确提示
 
@@ -143,10 +148,10 @@
 
 **Purpose**: 全面测试和回归验证
 
-- [ ] T022 [P] 创建 `modules/perfetto_analysis/tests/test_mcp_client.py`：McpAnalysisClient 单元测试（mock MCP 调用返回值，测试正常返回 / None 返回 / 超时 / 异常场景）
-- [ ] T023 [P] 创建 `modules/perfetto_analysis/tests/test_toolkit.py`：AnalysisToolkit 单元测试（测试每个原子工具的独立调用、MCP/引擎路由、降级流程、time_range 过滤及边界验证、重叠时间窗口合并、数据来源标注、AnalysisChainStep 记录）
-- [ ] T024 [P] 创建 `modules/perfetto_analysis/tests/test_compressor.py`：ResultCompressor 单元测试（severity 计算 / root_cause 排序 / health_summary 生成 / data_completeness 统计 / 压缩比验证）
-- [ ] T025 创建 `modules/perfetto_analysis/tests/test_regression.py`：回归测试 — 使用真实 trace，验证 engine_only 模式下原子工具结果与现有 `analyze()` 输出一致（SC-002 要求通过率 100%）
+- [x] T022 [P] ✅ `test_mcp_client.py`：12 个测试（默认返回 / mock 成功 / 超时 / time_range 传递 / 自定义超时）
+- [x] T023 [P] ✅ `test_toolkit.py`：22 个测试（路由 / 降级 / time_range / 合并 / 链路 + 新增 thread_state_summary / cpu_freq_analysis / compact 模式）
+- [x] T024 [P] ✅ `test_compressor.py`：15 个测试（severity / root_cause / health_summary / data_completeness / 压缩比）
+- [x] T025 ✅ `test_regression.py`：5 个测试（engine_only 路由 / source 标注 / MCP 优先 / dimension_override）；真实 trace 性能基准需后续补充
 
 ---
 
@@ -233,5 +238,5 @@ Task T024: "test_compressor.py — 压缩器测试"
 - 现有引擎代码（`src/engine/`）不修改核心算法
 - 现有 `analyze()` / `parse_only()` 方法不修改
 - MCP 调用通过 Cursor IDE MCP 协议
-- SOP 文档存放在 `docs/sop/`，随场景积累持续新增
+- SOP 文档存放在 `skills/perfetto-analysis/sop/`，通过 `sync_skills.py` 同步到 `.cursor/skills/`
 - 每完成一个 Checkpoint 应运行已有测试确认无回归

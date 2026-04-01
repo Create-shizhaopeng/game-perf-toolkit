@@ -15,6 +15,9 @@
   - [SQL 纠错学习](#sql-纠错学习)
   - [工具结果分层展示](#工具结果分层展示)
 - [优先级评估](#优先级评估)
+- [独立产物知识管理架构（待实现）](#独立产物知识管理架构待实现)
+  - [知识资产双重用途](#知识资产双重用途)
+  - [待实现工作](#待实现工作)
 - [与现有架构的兼容性](#与现有架构的兼容性)
 
 ## 背景
@@ -115,6 +118,31 @@ SmartPerfetto 是一个独立的 AI Agent 产品（Perfetto UI 插件），使�
 | DimensionResult 分层 | 中 | 中 | P2 — 需要修改数据模型 |
 | SQL 常见错误收集 | 低 | 低 | P3 — 依赖 MCP 实际接入 |
 | 独立模型审查 | 中 | 高 | P3 — 需要额外 LLM 调用 |
+
+## 独立产物知识管理架构（待实现）
+
+编译为独立产物后，Cursor IDE 的 Skill 触发、AGENTS.md 注入、MCP 协议均不可用。
+需要 `agent_chat` 模块替代 Cursor LLM 的编排角色。
+
+### 知识资产双重用途
+
+| 资产 | Cursor IDE 中 | 独立产物中 |
+|------|--------------|-----------|
+| `tool-catalog.md` | Agent 阅读理解工具能力 | 转换为 function calling schema |
+| `sop/*.md` | Skill 引导分析流程 | agent_chat 系统提示 / RAG |
+| `patterns/*.md` | Agent 查阅已知根因 | RAG 检索 / few-shot |
+| `cases/*.md` | Agent 参考历史案例 | RAG 参考资料 |
+| 引擎能力 | 通过 `pa_*` CLI 调用 | 直接 Python API 调用 |
+| MCP 工具 | 通过 Cursor MCP 协议 | 不可用，降级到引擎 |
+
+### 待实现工作
+
+1. `tool-catalog.md` → OpenAI/Anthropic function calling schema 转换脚本
+2. `agent_chat` 模块集成 SOP/patterns 的知识加载器
+3. 引擎 Python API 直接调用接口（绕过 CLI）
+4. MCP 不可用时的完全引擎降级路径
+5. 引擎 CLI 输出改进：当检测到 `refresh_rate_switches` 时，在 JSON 输出中增加混合刷新率提示（如 `"mixed_refresh_rates": true, "segments": [{"hz": 120, "duration_s": 1.0}, {"hz": 30, "duration_s": 3.3}]`），避免单一 `inferred_refresh_rate_hz` 造成误解
+6. Agent 辅助数据准备脚本：封装 Skill 分析中的重复性数据计算（线程状态分布汇总、CPU 频率数据查询与格式化、时间戳转换、VSync 间隔分布统计），减少 LLM 内联计算错误风险。注意：**决策逻辑不脚本化**，Skill 中的决策树保持为 LLM 推理指南，脚本只提供格式化好的数据输入
 
 ## 与现有架构的兼容性
 

@@ -7,6 +7,7 @@
 - [GUI 开发要点](#gui-开发要点)
 - [数据库要点](#数据库要点)
 - [相关踩坑](#相关踩坑)
+- [工具与 SOP](#工具与-sop)
 - [设计文档](#设计文档)
 - [规格文档](#规格文档)
 
@@ -49,6 +50,17 @@ Perfetto trace 丢帧解析与多维度卡顿归因分析。支持 9 个分析�
 | P19 | QComboBox 自定义 Popup 崩溃 | 维度选择控件 |
 | P20 | SQLite 跨线程连接访问 | 数据库操作 |
 | P21 | QTableWidget 刷新竞态 | 历史表刷新 |
+
+## 工具、SOP 与分析经验
+
+所有 Agent 分析相关知识资产统一管理在 `../skills/perfetto-analysis/` 下：
+
+- [Agent 工具目录](../skills/perfetto-analysis/tool-catalog.md) — 全部 pa_* 工具、MCP 工具、CLI 命令
+- [Cursor Skill 入口](../skills/perfetto-analysis/SKILL.md) — 全场景分析技能
+- SOP 文档：`../skills/perfetto-analysis/sop/`（卡顿/通用/ANR/内存）
+- 根因模式库：`../skills/perfetto-analysis/patterns/`
+- 案例库：`../skills/perfetto-analysis/cases/`
+- 团队原始 SOP：`sop-raw/`（未加工输入）
 
 ## 设计文档
 
