@@ -1,0 +1,35 @@
+---
+description: 创建 Skill 时必须遵循的标准规范
+globs:
+  - "**/skills/**/SKILL.md"
+  - "**/skills/**"
+alwaysApply: false
+---
+
+# Skill 创建规范
+
+创建或修改 Skill 时 MUST 遵循以下规范：
+
+## 强制要求
+
+1. 创建新 Skill 前 MUST 读取并遵循 `skill-creator` Skill 标准（用户级 Skill：`%USERPROFILE%\.cursor\skills\skill-creator\SKILL.md`）
+2. 如果 `skill-creator` 不可用，MUST 遵循 `create-skill` 内置标准（`%USERPROFILE%\.cursor\skills-cursor\create-skill\SKILL.md`）
+
+## YAML Frontmatter
+
+- `name`: 小写字母+连字符，最大 64 字符
+- `description`: 第三人称英文，包含 WHAT（做什么）+ WHEN（何时触发），含触发关键词，最大 1024 字符
+- 不使用非标准字段（如 `globs`、`compatibility` 等）
+
+## 文件结构
+
+- SKILL.md 主文件控制在 500 行以内
+- 详细内容通过渐进式披露放入 `reference.md`、`templates.md`、`examples.md` 等子文件
+- 子文件引用保持一级深度（SKILL.md → 子文件，不嵌套引用）
+
+## 质量检查
+
+- [ ] description 包含具体触发词
+- [ ] 术语一致（同一概念不混用多个名称）
+- [ ] 示例具体而非抽象
+- [ ] 无时间敏感信息
