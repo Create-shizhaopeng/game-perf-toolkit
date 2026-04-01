@@ -64,6 +64,28 @@ class PerfettoAnalysisPlugin(BasePlugin):
             "trace_path": trace_path,
         }
 
+    def _pa_thread_state_summary(
+        self,
+        trace_path: str,
+        process_name: str = "",
+        time_range: dict | None = None,
+        compact: bool = False,
+    ) -> Any:
+        return self._service.thread_state_summary(
+            trace_path, process_name, time_range, compact,
+        )
+
+    def _pa_cpu_freq_analysis(
+        self,
+        trace_path: str,
+        process_name: str = "",
+        time_range: dict | None = None,
+        compact: bool = False,
+    ) -> Any:
+        return self._service.cpu_freq_analysis(
+            trace_path, process_name, time_range, compact,
+        )
+
     def _pa_analyze_anr(self, trace_path: str, process_name: str = "") -> dict:
         return self._service.analyze_anr(trace_path, process_name)
 
@@ -236,6 +258,50 @@ class PerfettoAnalysisPlugin(BasePlugin):
                     "required": ["trace_path"],
                 },
                 "method": self._pa_compress_results,
+            },
+            {
+                "name": "pa_thread_state_summary",
+                "description": "查询主线程各状态（Running/Sleeping/Runnable/D-State）的耗时和占比。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "Perfetto trace 文件路径"},
+                        "process_name": {"type": "string", "description": "目标进程名"},
+                        "time_range": {
+                            "type": "object",
+                            "properties": {
+                                "start_ms": {"type": "number"},
+                                "end_ms": {"type": "number"},
+                            },
+                            "description": "可选时间范围（毫秒）",
+                        },
+                        "compact": {"type": "boolean", "description": "compact 模式仅返回摘要", "default": False},
+                    },
+                    "required": ["trace_path"],
+                },
+                "method": self._pa_thread_state_summary,
+            },
+            {
+                "name": "pa_cpu_freq_analysis",
+                "description": "查询主线程运行的 CPU 核心分布和各核心频率统计（min/max/avg）。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "Perfetto trace 文件路径"},
+                        "process_name": {"type": "string", "description": "目标进程名"},
+                        "time_range": {
+                            "type": "object",
+                            "properties": {
+                                "start_ms": {"type": "number"},
+                                "end_ms": {"type": "number"},
+                            },
+                            "description": "可选时间范围（毫秒）",
+                        },
+                        "compact": {"type": "boolean", "description": "compact 模式仅返回摘要", "default": False},
+                    },
+                    "required": ["trace_path"],
+                },
+                "method": self._pa_cpu_freq_analysis,
             },
             {
                 "name": "pa_analyze_anr",

@@ -881,17 +881,47 @@ class PerfettoAnalysisService:
         trace_path: str,
         pattern: str,
         process: str | None = None,
+        compact: bool = False,
     ) -> dict[str, Any] | None:
         """按名称模式搜索 slice（MCP）。"""
-        return self._get_toolkit().find_slices(trace_path, pattern, process)
+        return self._get_toolkit().find_slices(
+            trace_path, pattern, process, compact,
+        )
 
     def execute_sql_tool(
         self,
         trace_path: str,
         sql: str,
+        compact: bool = False,
     ) -> dict[str, Any] | None:
         """执行任意 Perfetto SQL 查询（MCP）。"""
-        return self._get_toolkit().execute_sql(trace_path, sql)
+        return self._get_toolkit().execute_sql(trace_path, sql, compact)
+
+    def thread_state_summary(
+        self,
+        trace_path: str,
+        process: str = "",
+        time_range: dict[str, float] | None = None,
+        compact: bool = False,
+    ) -> Any:
+        """查询主线程各状态（Running/S/R/D/R+）的耗时和占比。"""
+        process = process or self._cfg.default_process
+        return self._get_toolkit().thread_state_summary(
+            trace_path, process, time_range, compact,
+        )
+
+    def cpu_freq_analysis(
+        self,
+        trace_path: str,
+        process: str = "",
+        time_range: dict[str, float] | None = None,
+        compact: bool = False,
+    ) -> Any:
+        """查询主线程运行的 CPU 核心分布和各核心频率统计。"""
+        process = process or self._cfg.default_process
+        return self._get_toolkit().cpu_freq_analysis(
+            trace_path, process, time_range, compact,
+        )
 
     def analyze_anr(
         self,

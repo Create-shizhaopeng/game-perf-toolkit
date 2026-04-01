@@ -296,6 +296,79 @@ class CompressedSummary(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Agent 辅助数据准备工具模型
+# ---------------------------------------------------------------------------
+
+
+class ThreadStateEntry(BaseModel):
+    """单个线程状态条目。"""
+
+    state: str
+    duration_ms: float = 0.0
+    percentage: float = 0.0
+    count: int = 0
+
+
+class ThreadStateSummary(BaseModel):
+    """主线程状态分布。"""
+
+    process: str = ""
+    total_duration_ms: float = 0.0
+    states: list[ThreadStateEntry] = Field(default_factory=list)
+    dominant_state: str = ""
+    time_range: dict[str, float] | None = None
+
+    def to_compact_dict(self) -> dict[str, Any]:
+        """compact 模式：仅返回关键指标。"""
+        return {
+            "process": self.process,
+            "total_duration_ms": round(self.total_duration_ms, 2),
+            "dominant_state": self.dominant_state,
+            "states": {
+                s.state: f"{s.percentage:.1f}%"
+                for s in self.states
+            },
+            "row_count": len(self.states),
+        }
+
+
+class CpuCoreEntry(BaseModel):
+    """单个 CPU 核心的频率统计。"""
+
+    cpu_id: int
+    running_ms: float = 0.0
+    running_percentage: float = 0.0
+    freq_min_khz: int = 0
+    freq_max_khz: int = 0
+    freq_avg_khz: int = 0
+    segment_count: int = 0
+
+
+class CpuFreqAnalysis(BaseModel):
+    """CPU 核心分布与频率统计。"""
+
+    process: str = ""
+    total_running_ms: float = 0.0
+    cores: list[CpuCoreEntry] = Field(default_factory=list)
+    primary_core: int = -1
+    time_range: dict[str, float] | None = None
+
+    def to_compact_dict(self) -> dict[str, Any]:
+        """compact 模式：仅返回关键指标。"""
+        return {
+            "process": self.process,
+            "total_running_ms": round(self.total_running_ms, 2),
+            "primary_core": self.primary_core,
+            "core_count": len(self.cores),
+            "cores": {
+                c.cpu_id: f"{c.running_percentage:.1f}% @ {c.freq_avg_khz}kHz"
+                for c in self.cores[:5]
+            },
+            "sample_count": min(5, len(self.cores)),
+        }
+
+
+# ---------------------------------------------------------------------------
 # 分析链路追溯模型
 # ---------------------------------------------------------------------------
 

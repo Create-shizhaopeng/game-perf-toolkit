@@ -236,6 +236,8 @@ def parse_trace_with_tp(
         "stand_vsync_ms": _get_stand_vsync_ms(refresh_rate_preset),
         "inferred_refresh_rate_hz": None,
         "refresh_rate_switches": [],
+        "mixed_refresh_rates": False,
+        "refresh_rate_segments": [],
         "trace_start_ns": None,
         "trace_end_ns": None,
         "realtime_offset_ns": 0,
@@ -393,6 +395,19 @@ def parse_trace_with_tp(
                 vt_list, segments
             )
             result["refresh_rate_switches"] = switches
+            result["mixed_refresh_rates"] = len(switches) > 0
+            result["refresh_rate_segments"] = [
+                {
+                    "hz": hz,
+                    "start_ns": vt_list[start],
+                    "end_ns": vt_list[min(end, len(vt_list) - 1)],
+                    "duration_s": round(
+                        (vt_list[min(end, len(vt_list) - 1)] - vt_list[start]) / 1e9,
+                        3,
+                    ),
+                }
+                for start, end, hz in segments
+            ]
             result["stand_vsync_ms"] = VSYNC_MS.get(
                 result["inferred_refresh_rate_hz"], 1000 / 60
             )
@@ -447,10 +462,11 @@ def parse_trace_with_tp(
                 }
                 result["vsync_cycles"].append(cycle)
 
+                # 首周期守卫：第一个周期缺乏前置上下文，跳过 jank 判定
+                skip_jank = prev_cycle_ns == 0
                 # 双周期校验（通用前置守卫）：
                 # 当前周期+上一周期 < 2×stand_vsync 则跳过所有丢帧判定
-                skip_jank = False
-                if prev_cycle_ns > 0:
+                if not skip_jank and prev_cycle_ns > 0:
                     two_cycle_ns = pre_vsync_ns + prev_cycle_ns
                     if two_cycle_ns < 2 * stand_ms * 1e6:
                         skip_jank = True
@@ -458,13 +474,14 @@ def parse_trace_with_tp(
                 if skip_jank:
                     jank_1 = jank_2 = jank_3 = False
                 else:
-                    # 丢帧判定 1: vt - bt2 > stand_vsync
-                    jank_1 = (vt - bt2) / 1e6 > stand_ms if bt2 else False
+                    # 丢帧判定 1: vt - bt2 > 1.5× stand_vsync
+                    jank_1 = (vt - bt2) / 1e6 > stand_ms * 1.5 if bt2 else False
                     # 丢帧判定 2: buffer 数量 = 0
                     jank_2 = buffer_count_at_vt == 0
-                    # 丢帧判定 3: [pre_vt, pre_vt+1ms] 内 buffer>0 且无减少事件
+                    # 丢帧判定 3: [pre_vt, pre_vt + 0.5×VSync] 内 buffer>0 且无减少事件
+                    sf_window_ns = int(stand_ms * 0.5 * 1e6)
                     lo_3 = bisect.bisect_left(buffer_ev_ts, pre_vt)
-                    hi_3 = bisect.bisect_right(buffer_ev_ts, pre_vt + 1_000_000)
+                    hi_3 = bisect.bisect_right(buffer_ev_ts, pre_vt + sf_window_ns)
                     has_decrease = any(
                         buffer_events[i]["delta"] < 0 for i in range(lo_3, hi_3)
                     )

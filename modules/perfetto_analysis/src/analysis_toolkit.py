@@ -18,7 +18,11 @@ from .models import (
     AnalysisChainStep,
     AnalysisConfig,
     AnalysisMode,
+    CpuCoreEntry,
+    CpuFreqAnalysis,
     DimensionResult,
+    ThreadStateEntry,
+    ThreadStateSummary,
     TraceOverview,
 )
 
@@ -282,6 +286,174 @@ class AnalysisToolkit:
         return result
 
     # ------------------------------------------------------------------
+    # 原子工具：主线程状态分布
+    # ------------------------------------------------------------------
+
+    def thread_state_summary(
+        self,
+        trace_path: str | Path,
+        process: str,
+        time_range: dict[str, float] | None = None,
+        compact: bool = False,
+    ) -> ThreadStateSummary | dict[str, Any]:
+        """查询主线程各状态（Running/S/R/D/R+）的耗时和占比。"""
+        t0 = time.perf_counter()
+        trace_path_str = str(Path(trace_path).resolve())
+
+        time_filter = ""
+        if time_range:
+            start_ns = int(time_range["start_ms"] * _MS_TO_NS)
+            end_ns = int(time_range["end_ms"] * _MS_TO_NS)
+            time_filter = f"AND ts.ts >= {start_ns} AND ts.ts + ts.dur <= {end_ns}"
+
+        sql = f"""
+        SELECT
+          ts.state,
+          SUM(ts.dur) as total_dur,
+          COUNT(*) as cnt
+        FROM thread_state ts
+        JOIN thread t ON ts.utid = t.utid
+        JOIN process p ON t.upid = p.upid
+        WHERE p.name LIKE '%{process}%' AND t.is_main_thread = 1
+          AND ts.dur > 0
+          {time_filter}
+        GROUP BY ts.state
+        ORDER BY total_dur DESC
+        """
+
+        result = self._mcp.execute_sql(trace_path_str, sql)
+        states: list[ThreadStateEntry] = []
+        total_ns = 0
+
+        if result and result.get("rows"):
+            for row in result["rows"]:
+                dur_ns = row.get("total_dur", 0)
+                total_ns += dur_ns
+                states.append(ThreadStateEntry(
+                    state=row.get("state", ""),
+                    duration_ms=round(dur_ns / _MS_TO_NS, 3),
+                    count=row.get("cnt", 0),
+                ))
+
+        if total_ns > 0:
+            for s in states:
+                s.percentage = round(s.duration_ms / (total_ns / _MS_TO_NS) * 100, 1)
+
+        dominant = states[0].state if states else ""
+        summary = ThreadStateSummary(
+            process=process,
+            total_duration_ms=round(total_ns / _MS_TO_NS, 3),
+            states=states,
+            dominant_state=dominant,
+            time_range=time_range,
+        )
+
+        self._record_step(
+            "thread_state_summary",
+            {"trace_path": trace_path_str, "process": process, "time_range": time_range},
+            f"states={len(states)}, dominant={dominant}",
+            _elapsed_ms(t0),
+            source="mcp",
+        )
+        return summary.to_compact_dict() if compact else summary
+
+    # ------------------------------------------------------------------
+    # 原子工具：CPU 核心与频率分析
+    # ------------------------------------------------------------------
+
+    def cpu_freq_analysis(
+        self,
+        trace_path: str | Path,
+        process: str,
+        time_range: dict[str, float] | None = None,
+        compact: bool = False,
+    ) -> CpuFreqAnalysis | dict[str, Any]:
+        """查询主线程运行的 CPU 核心分布和各核心频率统计。"""
+        t0 = time.perf_counter()
+        trace_path_str = str(Path(trace_path).resolve())
+
+        time_filter = ""
+        if time_range:
+            start_ns = int(time_range["start_ms"] * _MS_TO_NS)
+            end_ns = int(time_range["end_ms"] * _MS_TO_NS)
+            time_filter = f"AND ts.ts >= {start_ns} AND ts.ts + ts.dur <= {end_ns}"
+
+        core_sql = f"""
+        SELECT
+          ts.cpu,
+          COUNT(*) as running_segments,
+          SUM(ts.dur) as total_running_ns
+        FROM thread_state ts
+        JOIN thread t ON ts.utid = t.utid
+        JOIN process p ON t.upid = p.upid
+        WHERE p.name LIKE '%{process}%' AND t.is_main_thread = 1
+          AND ts.state = 'Running'
+          {time_filter}
+        GROUP BY ts.cpu
+        ORDER BY total_running_ns DESC
+        """
+
+        core_result = self._mcp.execute_sql(trace_path_str, core_sql)
+        cores: list[CpuCoreEntry] = []
+        total_running_ns = 0
+
+        if core_result and core_result.get("rows"):
+            for row in core_result["rows"]:
+                running_ns = row.get("total_running_ns", 0)
+                total_running_ns += running_ns
+                cores.append(CpuCoreEntry(
+                    cpu_id=row.get("cpu", -1),
+                    running_ms=round(running_ns / _MS_TO_NS, 3),
+                    segment_count=row.get("running_segments", 0),
+                ))
+
+        if total_running_ns > 0:
+            for c in cores:
+                c.running_percentage = round(
+                    c.running_ms / (total_running_ns / _MS_TO_NS) * 100, 1,
+                )
+
+        for core in cores:
+            freq_sql = f"""
+            SELECT
+              MIN(c.value) as freq_min,
+              MAX(c.value) as freq_max,
+              CAST(AVG(c.value) AS INT) as freq_avg
+            FROM counter c
+            JOIN cpu_counter_track ct ON c.track_id = ct.id
+            WHERE ct.name = 'cpufreq' AND ct.cpu = {core.cpu_id}
+            """
+            if time_range:
+                start_ns = int(time_range["start_ms"] * _MS_TO_NS)
+                end_ns = int(time_range["end_ms"] * _MS_TO_NS)
+                freq_sql += f" AND c.ts >= {start_ns} AND c.ts <= {end_ns}"
+
+            freq_result = self._mcp.execute_sql(trace_path_str, freq_sql)
+            if freq_result and freq_result.get("rows"):
+                row = freq_result["rows"][0]
+                core.freq_min_khz = row.get("freq_min", 0) or 0
+                core.freq_max_khz = row.get("freq_max", 0) or 0
+                core.freq_avg_khz = row.get("freq_avg", 0) or 0
+
+        primary = cores[0].cpu_id if cores else -1
+        analysis = CpuFreqAnalysis(
+            process=process,
+            total_running_ms=round(total_running_ns / _MS_TO_NS, 3),
+            cores=cores,
+            primary_core=primary,
+            time_range=time_range,
+        )
+
+        self._record_step(
+            "cpu_freq_analysis",
+            {"trace_path": trace_path_str, "process": process, "time_range": time_range},
+            f"cores={len(cores)}, primary=cpu{primary}",
+            _elapsed_ms(t0),
+            source="mcp",
+        )
+        return analysis.to_compact_dict() if compact else analysis
+
+    # ------------------------------------------------------------------
     # 原子工具：灵活查询（MCP 透传）
     # ------------------------------------------------------------------
 
@@ -290,21 +462,29 @@ class AnalysisToolkit:
         trace_path: str | Path,
         pattern: str,
         process: str | None = None,
+        compact: bool = False,
     ) -> dict[str, Any] | None:
         """按名称模式搜索 slice。"""
-        return self._mcp.find_slices(
+        result = self._mcp.find_slices(
             str(Path(trace_path).resolve()), pattern, process,
         )
+        if compact and result and "rows" in result:
+            return _compact_rows(result)
+        return result
 
     def execute_sql(
         self,
         trace_path: str | Path,
         sql: str,
+        compact: bool = False,
     ) -> dict[str, Any] | None:
         """执行任意 Perfetto SQL 查询。"""
-        return self._mcp.execute_sql(
+        result = self._mcp.execute_sql(
             str(Path(trace_path).resolve()), sql,
         )
+        if compact and result and "rows" in result:
+            return _compact_rows(result)
+        return result
 
     # ------------------------------------------------------------------
     # 原子工具：多场景分析
@@ -635,3 +815,17 @@ class AnalysisToolkit:
 
 def _elapsed_ms(t0: float) -> float:
     return round((time.perf_counter() - t0) * 1000, 2)
+
+
+_COMPACT_SAMPLE_SIZE = 5
+
+
+def _compact_rows(result: dict[str, Any]) -> dict[str, Any]:
+    """将含 rows 的 MCP 结果压缩为 total_rows + 前 N 条样本。"""
+    rows = result.get("rows", [])
+    return {
+        "total_rows": len(rows),
+        "sample_count": min(_COMPACT_SAMPLE_SIZE, len(rows)),
+        "sample": rows[:_COMPACT_SAMPLE_SIZE],
+        "columns": result.get("columns", []),
+    }
