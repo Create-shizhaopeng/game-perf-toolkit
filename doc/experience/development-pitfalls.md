@@ -28,6 +28,8 @@
 - [P23 — GLM API 400 错误：对话历史格式不合规](#p23--glm-api-400-错误对话历史格式不合规)
 - [P24 — LLM Tool Schema 中 Callable 参数导致 API 拒绝](#p24--llm-tool-schema-中-callable-参数导致-api-拒绝)
 - [P25 — Python 3.14 from \_\_future\_\_ import annotations 与 get\_type\_hints 冲突](#p25--python-314-from-__future__-import-annotations-与-get_type_hints-冲突)
+- [P26 — Perfetto 引擎 Jank 检测误判（阈值与首周期）](#p26--perfetto-引擎-jank-检测误判阈值与首周期)
+- [P27 — Speckit Skills 通用模板需项目适配](#p27--speckit-skills-通用模板需项目适配)
 - [按子系统快速索引](#按子系统快速索引)
   - [插件框架](#插件框架)
   - [GUI / PyQt6](#gui--pyqt6)
@@ -42,7 +44,7 @@
 
 ## 按子系统快速索引
 
-开发时根据当前工作的子系统快速定位相关踩坑经验，无需通读全部 25 项。
+开发时根据当前工作的子系统快速定位相关踩坑经验，无需通读全部 27 项。
 
 ### 插件框架
 
@@ -79,6 +81,7 @@
 | P15 | Perfetto detach 须配合 write_into_file | 严重 | detach、文件输出 |
 | P16 | 同 UID 并发会话上限与残留进程 | 中等 | UID、并发、cleanup |
 | P17 | Ring buffer clone 覆盖的时间范围 | 中等 | ring_buffer、clone、时间窗口 |
+| P26 | Jank 检测误判（阈值与首周期） | 中等 | jank_1、jank_3、VSync、首周期 |
 
 ### 构建 / PyInstaller
 
@@ -103,6 +106,7 @@
 | P08 | Typer CLI 帮助命令退出码 | 低 | SystemExit、exit code |
 | P10 | PowerShell heredoc 语法不兼容 | 低 | heredoc、`@"`...`"@` |
 | P22 | core.autocrlf 与 .editorconfig 行尾符冲突 | 低 | CRLF、LF、幽灵修改 |
+| P27 | Speckit Skills 通用模板需项目适配 | 低 | speckit、模板裁剪、技术工具 |
 
 ## 按生命周期分类
 
@@ -111,10 +115,10 @@
 | 设计时 | P01, P03, P04, P12 |
 | 编码时（GUI） | P05, P07, P11, P18, P19, P20, P21 |
 | 编码时（ADB/设备） | P02, P09 |
-| 编码时（Perfetto） | P15, P16, P17 |
+| 编码时（Perfetto） | P15, P16, P17, P26 |
 | 编码时（Agent/LLM） | P23, P24, P25 |
 | 构建时 | P13, P14, P22 |
-| 环境/工具 | P06, P08, P10 |
+| 环境/工具 | P06, P08, P10, P27 |
 
 ---
 
@@ -942,3 +946,79 @@ my_tool = ns["my_tool"]
 
 - 在测试中定义需要 `get_type_hints()` 处理的函数时，MUST 确保类型注解在函数的 `__globals__` 中可解析
 - 优先使用 `collections.abc.Callable` 而非 `typing.Callable`（前者不受 annotations future 影响）
+
+---
+
+## P26 — Perfetto 引擎 Jank 检测误判（阈值与首周期）
+
+**严重程度**：中等（影响分析准确度）
+
+### 现象
+
+引擎对无卡顿的游戏 trace（`com.tencent.lolm`，60Hz）报告 5 次丢帧，但人工在 Perfetto UI 中逐帧确认无实际丢帧，MCP 工具也报告 0 jank。
+
+### 根因（三个并发问题）
+
+1. **jank_1 阈值过严**：App Deadline Missed 判定条件为 `(vt - bt2) > 1× VSync 周期`（60Hz 下 16.67ms），导致 17ms 完成的正常帧被标为丢帧。实际用户标准为 1.5× VSync（25ms）
+2. **jank_3 观测窗口不合理**：SF Composition Missed 使用固定 1ms 窗口检查 SF 是否消费了 buffer，该窗口过窄且与刷新率无关。SF 的正常消费延迟在不同刷新率下差异显著
+3. **首周期无守卫**：trace 第一个 VSync 周期中 `prev_cycle_ns == 0` 导致双周期校验被跳过，`bt2` 初始化为 `pre_vt`（非真实消费时间戳），buffer 状态尚未稳态，jank_3 触发初始化伪影
+
+### 修复方案
+
+```python
+# 1. 首周期守卫：第一个周期缺乏前置上下文，跳过 jank 判定
+skip_jank = prev_cycle_ns == 0
+
+# 2. jank_1: 阈值从 1× 放宽到 1.5× VSync
+jank_1 = (vt - bt2) / 1e6 > stand_ms * 1.5 if bt2 else False
+
+# 3. jank_3: 自适应窗口，按刷新率缩放
+sf_window_ns = int(stand_ms * 0.5 * 1e6)  # 0.5× VSync
+hi_3 = bisect.bisect_right(buffer_ev_ts, pre_vt + sf_window_ns)
+```
+
+### 阈值设计依据
+
+| 判定 | 含义 | 旧阈值 | 新阈值 | 理由 |
+|------|------|--------|--------|------|
+| jank_1 | App 交付帧超时 | 1× VSync | 1.5× VSync | 与 SurfaceFlinger FrameTimeline 的 Jank 判定对齐 |
+| jank_3 | SF 有 buffer 但未消费 | 固定 1ms | 0.5× VSync | 给 SF 合理响应时间，同时自适应不同刷新率 |
+| 首周期 | trace 开头首个 VSync 周期 | 无守卫 | 跳过判定 | 缺乏前周期上下文和稳态 buffer 状态 |
+
+### 验证结果
+
+| Trace | 修复前 | 修复后 | 人工判定 |
+|-------|--------|--------|----------|
+| lolm 游戏（60Hz，无卡顿） | 5 次丢帧 | 0 次 | 0 次 |
+| Launcher 慢划（120Hz，有卡顿） | 5 次丢帧 | 3 次 | 有丢帧 |
+
+### 预防措施
+
+- Jank 检测阈值 MUST 有明确的理论依据（如对齐 Android FrameTimeline 标准），MUST NOT 使用未经验证的固定值
+- 与刷新率相关的参数 MUST 按 `stand_ms` 自适应缩放，MUST NOT 使用固定毫秒/纳秒常量
+- Trace 边界（首/末周期）的 jank 判定需额外守卫，因为 VSync/BufferTX 状态机尚未/已经退出稳态
+- 新增或修改 jank 判定逻辑后，MUST 同时用已知有卡顿和无卡顿的 trace 交叉验证
+
+---
+
+## P27 — Speckit Skills 通用模板需项目适配
+
+| 属性 | 值 |
+|------|------|
+| 严重度 | 低 |
+| 影响 | spec 质量 |
+| 触发条件 | 使用 speckit skills 模板初始化或执行 spec 流程 |
+
+### 现象
+
+Speckit 的通用 skills（specify、implement、constitution 等）基于广泛假设设计，直接使用时部分规则不适合本项目：
+
+1. `speckit-implement` 的 ignore-file matrix 包含大量非 Python 技术栈配置（如 Rust、Go、Java 相关），对纯 Python 项目无意义
+2. `speckit-specify` 要求 spec "不涉及技术实现"，但本项目的模块（Perfetto 引擎、ADB 工具）本身是技术工具，spec 中需合理包含技术约束
+3. `speckit-constitution` 的模板初始化适用于新项目，对已有成熟 constitution 的项目应做增量修订而非重建
+
+### 应对
+
+- 使用 speckit skills 时，根据本项目技术栈（Python 3.12+ / PyQt6 / Pydantic）裁剪不适用的配置
+- 技术工具类模块的 spec 可在 Functional Requirements 中包含技术约束（如 CLI 参数格式、数据模型定义），不必严格遵循"不涉及技术实现"
+- 对已有 constitution 执行增量修订（添加新原则/更新技术栈），而非从模板重建
