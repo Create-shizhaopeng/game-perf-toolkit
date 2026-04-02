@@ -256,6 +256,121 @@ class StreamChunk:
 
 
 # ---------------------------------------------------------------------------
+# MCP 管理
+# ---------------------------------------------------------------------------
+
+class MCPServerConfig(BaseModel):
+    """MCP 服务器配置。"""
+
+    name: str
+    command: str
+    args: list[str] = []
+    env: dict[str, str] = {}
+    transport: str = Field(default="stdio", description="stdio | sse")
+    timeout: int = 30
+    enabled: bool = True
+
+
+class MCPConnectionStatus(str, Enum):
+    CONNECTING = "connecting"
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+    ERROR = "error"
+
+
+@dataclass
+class MCPConnection:
+    """MCP 服务器连接状态。"""
+
+    server_name: str = ""
+    status: MCPConnectionStatus = MCPConnectionStatus.DISCONNECTED
+    available_tools: list[str] = field(default_factory=list)
+    last_error: str | None = None
+    connected_at: datetime | None = None
+
+
+# ---------------------------------------------------------------------------
+# Sub-agent 编排
+# ---------------------------------------------------------------------------
+
+
+class SubAgentConfig(BaseModel):
+    """Sub-agent 创建配置。"""
+
+    task_description: str
+    skill_names: list[str] = []
+    tool_filter: list[str] = []
+    provider: str = ""  # 空 = 继承主 Agent
+    model: str = ""
+    max_turns: int = 15
+    timeout: int = 120
+
+
+class SubAgentStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    RETRYING = "retrying"
+
+
+@dataclass
+class SubAgentResult:
+    """Sub-agent 执行结果。"""
+
+    task_id: str = ""
+    status: SubAgentStatus = SubAgentStatus.PENDING
+    summary: str = ""
+    tool_calls_count: int = 0
+    error: str | None = None
+    retries: int = 0
+    elapsed_seconds: float = 0.0
+    raw_response: str = ""
+
+
+class ProviderCapabilities(BaseModel):
+    """LLM Provider 能力边界定义。"""
+
+    name: str
+    max_context_tokens: int = 128_000
+    supports_tools: bool = True
+    supports_vision: bool = False
+    max_output_tokens: int = 4096
+    cost_per_1k_input: float = 0.0
+    cost_per_1k_output: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Skill 管理
+# ---------------------------------------------------------------------------
+
+
+class SkillMetadata(BaseModel):
+    """Skill YAML frontmatter 元数据。"""
+
+    name: str
+    version: str = "1.0.0"
+    description: str = ""
+    author: str = ""
+    tags: list[str] = []
+    triggers: list[str] = []
+    tools: list[str] = []
+    priority: int = 0
+    enabled: bool = True
+
+
+@dataclass
+class SkillContext:
+    """Skill 的运行时上下文。"""
+
+    metadata: SkillMetadata | None = None
+    skill_path: Path = field(default_factory=Path)
+    loaded_content: str = ""
+    loaded_resources: dict[str, str] = field(default_factory=dict)
+    load_level: int = 0  # 0=metadata, 1=SKILL.md, 2=sub-resources
+
+
+# ---------------------------------------------------------------------------
 # SOP 文档
 # ---------------------------------------------------------------------------
 

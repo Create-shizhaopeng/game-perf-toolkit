@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, Iterator
+from typing import Any, AsyncIterator
 
 from ..models import (
     StreamChunk,
@@ -59,7 +59,7 @@ class GLMProvider(LLMProvider):
 
         self._api_key = api_key
         self._model = model
-        self._client = httpx.Client(timeout=_REQUEST_TIMEOUT)
+        self._async_client = httpx.AsyncClient(timeout=_REQUEST_TIMEOUT)
         self._token: str = ""
         self._token_exp: float = 0
 
@@ -77,12 +77,12 @@ class GLMProvider(LLMProvider):
     def get_available_models(self) -> list[str]:
         return list(_PRESET_MODELS)
 
-    def stream_chat(
+    async def stream_chat(
         self,
         messages: list[dict],
         tools: list[ToolDefinition] | None = None,
         system_prompt: str = "",
-    ) -> Iterator[StreamChunk]:
+    ) -> AsyncIterator[StreamChunk]:
         body: dict[str, Any] = {
             "model": self._model,
             "stream": False,
@@ -115,7 +115,7 @@ class GLMProvider(LLMProvider):
         try:
             token = self._get_token()
             logger.debug("[DIAG] GLM: 发送请求...")
-            resp = self._client.post(
+            resp = await self._async_client.post(
                 _API_BASE,
                 json=body,
                 headers={
@@ -136,7 +136,8 @@ class GLMProvider(LLMProvider):
             return
 
         logger.debug("[DIAG] GLM: 开始 _parse_json_response")
-        yield from _parse_json_response(data)
+        for chunk in _parse_json_response(data):
+            yield chunk
         logger.debug("[DIAG] GLM: _parse_json_response 完成")
 
 

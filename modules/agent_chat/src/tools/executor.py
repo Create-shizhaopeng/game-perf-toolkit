@@ -2,6 +2,8 @@
 """工具执行器 — 安全调用工具并序列化结果。"""
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
 import logging
 import time
@@ -25,13 +27,10 @@ class ToolExecutor:
         self._registry = registry
         self._max_length = max_result_length
 
-    def execute(self, tool_call: ToolCall) -> ToolResult:
+    async def execute(self, tool_call: ToolCall) -> ToolResult:
         """执行单个工具调用。
 
-        - 按 name 查找工具方法
-        - try/except 全捕获
-        - 结果序列化 + 截断
-        - 提取 report_paths
+        异步工具直接 await，同步工具通过 asyncio.to_thread() 桥接。
         """
         tool_def = self._registry.get_tool(tool_call.name)
         if not tool_def:
@@ -52,7 +51,12 @@ class ToolExecutor:
         start = time.time()
 
         try:
-            raw_result = tool_def.method(**tool_call.arguments)
+            if inspect.iscoroutinefunction(tool_def.method):
+                raw_result = await tool_def.method(**tool_call.arguments)
+            else:
+                raw_result = await asyncio.to_thread(
+                    tool_def.method, **tool_call.arguments
+                )
         except Exception as exc:
             logger.error(
                 "工具 '%s' 执行异常: %s", tool_call.name, exc, exc_info=True

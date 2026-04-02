@@ -419,7 +419,10 @@ class _WorkflowDepositCard(QFrame):
 
 
 class _AgentWorker(QThread):
-    """后台执行 AgentService.chat() 的线程。"""
+    """后台执行 AgentService.chat() 的线程。
+
+    在 QThread 内部启动 asyncio event loop 来运行异步 chat()。
+    """
 
     text_chunk = pyqtSignal(str)
     tool_start = pyqtSignal(dict)
@@ -443,19 +446,27 @@ class _AgentWorker(QThread):
         self._conv_id = conversation_id
 
     def run(self) -> None:
+        import asyncio
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self._run_async())
+        finally:
+            loop.close()
+
+    async def _run_async(self) -> None:
         from .models import StreamChunkType
 
         try:
-            logger.debug("[DIAG] AgentWorker.run: 调用 chat()")
-            response = self._service.chat(
+            logger.debug("[DIAG] AgentWorker._run_async: 调用 chat()")
+            response = await self._service.chat(
                 user_message=self._message,
                 conversation_id=self._conv_id,
                 on_chunk=self._on_chunk,
             )
-            logger.debug("[DIAG] AgentWorker.run: chat() 返回, text_len=%d", len(response.text))
-            logger.debug("[DIAG] AgentWorker.run: 准备 emit finished_ok")
+            logger.debug("[DIAG] AgentWorker._run_async: chat() 返回, text_len=%d", len(response.text))
             self.finished_ok.emit(response.text, self._conv_id or "")
-            logger.debug("[DIAG] AgentWorker.run: finished_ok 已 emit, run() 即将返回")
         except Exception as exc:
             logger.error("AgentWorker 异常: %s", exc, exc_info=True)
             try:
@@ -560,7 +571,7 @@ class _ChatInput(QTextEdit):
 
 
 class _SettingsDialog(QDialog):
-    """Agent 设置弹窗（模型配置 + SOP 管理 + 高级设置）。"""
+    """Agent 设置弹窗（模型配置 + SOP 管理 + MCP 管理 + 高级设置）。"""
 
     config_changed = pyqtSignal(object)  # AgentConfig
 
@@ -568,13 +579,15 @@ class _SettingsDialog(QDialog):
         self,
         config: Any,
         sop_manager: Any | None = None,
+        mcp_manager: Any | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Agent 设置")
-        self.setMinimumSize(520, 420)
+        self.setMinimumSize(560, 460)
         self._config = config
         self._sop_manager = sop_manager
+        self._mcp_manager = mcp_manager
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -583,6 +596,7 @@ class _SettingsDialog(QDialog):
 
         tabs.addTab(self._build_model_tab(), "模型配置")
         tabs.addTab(self._build_sop_tab(), "SOP 管理")
+        tabs.addTab(self._build_mcp_tab(), "MCP 管理")
         tabs.addTab(self._build_advanced_tab(), "高级设置")
 
         layout.addWidget(tabs)
@@ -696,6 +710,104 @@ class _SettingsDialog(QDialog):
         btn_row.addStretch()
         layout.addLayout(btn_row)
         return w
+
+    def _build_mcp_tab(self) -> QWidget:
+        w = QWidget()
+        layout = QVBoxLayout(w)
+
+        desc = QLabel("管理 MCP 服务器连接，已连接的服务器工具会自动注入 Agent。")
+        desc.setWordWrap(True)
+        desc.setStyleSheet(f"color: {_DARK['fg_dim']}; font-size: 11px; padding: 4px;")
+        layout.addWidget(desc)
+
+        self._mcp_tree = QTreeWidget()
+        self._mcp_tree.setHeaderLabels(["服务器", "状态", "工具数"])
+        self._mcp_tree.setColumnWidth(0, 200)
+        self._mcp_tree.setColumnWidth(1, 80)
+        self._refresh_mcp_tree()
+        layout.addWidget(self._mcp_tree, 1)
+
+        btn_row = QHBoxLayout()
+        btn_add = QPushButton("➕ 添加")
+        btn_add.clicked.connect(self._on_add_mcp_server)
+        btn_remove = QPushButton("🗑 移除")
+        btn_remove.clicked.connect(self._on_remove_mcp_server)
+        btn_toggle = QPushButton("⏯ 启用/禁用")
+        btn_toggle.clicked.connect(self._on_toggle_mcp_server)
+        for btn in (btn_add, btn_remove, btn_toggle):
+            btn.setFixedHeight(24)
+            btn.setStyleSheet(
+                f"color: {_DARK['fg_dim']}; border: 1px solid {_DARK['border']}; "
+                "border-radius: 4px; font-size: 11px; padding: 2px 8px;"
+            )
+        btn_row.addWidget(btn_add)
+        btn_row.addWidget(btn_remove)
+        btn_row.addWidget(btn_toggle)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+        return w
+
+    def _refresh_mcp_tree(self) -> None:
+        self._mcp_tree.clear()
+        if not self._mcp_manager:
+            item = QTreeWidgetItem(self._mcp_tree, ["MCP SDK 未安装", "--", "0"])
+            return
+
+        servers = self._mcp_manager.get_servers()
+        connections = self._mcp_manager.get_connections()
+        conn_map = {c.server_name: c for c in connections}
+
+        for name, cfg in servers.items():
+            conn = conn_map.get(name)
+            if conn:
+                status_text = conn.status.value
+                tools_count = str(len(conn.available_tools))
+            else:
+                status_text = "未连接" if cfg.enabled else "已禁用"
+                tools_count = "0"
+            item = QTreeWidgetItem(self._mcp_tree, [name, status_text, tools_count])
+            if conn and conn.available_tools:
+                for t in conn.available_tools:
+                    QTreeWidgetItem(item, [f"  🔧 {t}", "", ""])
+
+    def _on_add_mcp_server(self) -> None:
+        if not self._mcp_manager:
+            QMessageBox.warning(self, "MCP", "MCP SDK 未安装")
+            return
+        name, ok = QInputDialog.getText(self, "添加 MCP 服务器", "服务器名称:")
+        if not ok or not name.strip():
+            return
+        cmd, ok = QInputDialog.getText(self, "添加 MCP 服务器", "启动命令 (如 npx):")
+        if not ok or not cmd.strip():
+            return
+        args_str, _ = QInputDialog.getText(self, "添加 MCP 服务器", "参数 (空格分隔):")
+        args = args_str.strip().split() if args_str.strip() else []
+
+        from .models import MCPServerConfig
+        config = MCPServerConfig(name=name.strip(), command=cmd.strip(), args=args)
+        self._mcp_manager.add_server(config)
+        self._refresh_mcp_tree()
+
+    def _on_remove_mcp_server(self) -> None:
+        if not self._mcp_manager:
+            return
+        item = self._mcp_tree.currentItem()
+        if item and item.parent() is None:
+            name = item.text(0)
+            self._mcp_manager.remove_server(name)
+            self._refresh_mcp_tree()
+
+    def _on_toggle_mcp_server(self) -> None:
+        if not self._mcp_manager:
+            return
+        item = self._mcp_tree.currentItem()
+        if item and item.parent() is None:
+            name = item.text(0)
+            servers = self._mcp_manager.get_servers()
+            if name in servers:
+                current = servers[name].enabled
+                self._mcp_manager.update_server(name, enabled=not current)
+                self._refresh_mcp_tree()
 
     def _build_advanced_tab(self) -> QWidget:
         w = QWidget()
@@ -832,6 +944,8 @@ class AgentTab(BaseTab):
         self._service: Any = None
         self._store: Any = None
         self._sop_manager: Any = None
+        self._skills_manager: Any = None
+        self._mcp_manager: Any = None
         self._config: Any = None
         self._worker: _AgentWorker | None = None
         self._current_conv_id: str | None = None
@@ -903,51 +1017,40 @@ class AgentTab(BaseTab):
         self._conv_list.customContextMenuRequested.connect(self._on_conv_context_menu)
         layout.addWidget(self._conv_list, 1)
 
-        # T022: SOP 管理
+        # 知识管理（Skills）
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
         sep.setStyleSheet(f"color: {_DARK['border']};")
         layout.addWidget(sep)
 
-        sop_header = QHBoxLayout()
-        sop_label = QLabel("SOP 管理")
-        sop_label.setStyleSheet("font-weight: bold; font-size: 12px;")
-        sop_header.addWidget(sop_label)
-        sop_header.addStretch()
-        layout.addLayout(sop_header)
+        skill_header = QHBoxLayout()
+        skill_label = QLabel("知识管理")
+        skill_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        skill_header.addWidget(skill_label)
+        skill_header.addStretch()
+        layout.addLayout(skill_header)
 
-        self._sop_tree = QTreeWidget()
-        self._sop_tree.setHeaderHidden(True)
-        self._sop_tree.setStyleSheet(
+        self._skill_tree = QTreeWidget()
+        self._skill_tree.setHeaderHidden(True)
+        self._skill_tree.setStyleSheet(
             f"QTreeWidget {{ background-color: transparent; border: none; }}"
             f"QTreeWidget::item {{ padding: 3px 4px; }}"
             f"QTreeWidget::item:hover {{ background-color: {_DARK['border']}; }}"
         )
-        self._sop_tree.setMaximumHeight(180)
-        self._sop_tree.itemDoubleClicked.connect(self._on_sop_double_click)
-        self._sop_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._sop_tree.customContextMenuRequested.connect(self._on_sop_context_menu)
-        layout.addWidget(self._sop_tree)
+        self._skill_tree.setMaximumHeight(180)
+        layout.addWidget(self._skill_tree)
 
-        sop_btn_row = QHBoxLayout()
-        btn_import = QPushButton("📥 导入")
-        btn_import.setFixedHeight(22)
-        btn_import.setStyleSheet(
-            f"color: {_DARK['fg_dim']}; border: 1px solid {_DARK['border']}; "
-            "border-radius: 4px; font-size: 11px; padding: 2px 6px;"
-        )
-        btn_import.clicked.connect(self._on_import_sop)
-        btn_manage = QPushButton("📋 管理")
+        skill_btn_row = QHBoxLayout()
+        btn_manage = QPushButton("⚙ 管理")
         btn_manage.setFixedHeight(22)
         btn_manage.setStyleSheet(
             f"color: {_DARK['fg_dim']}; border: 1px solid {_DARK['border']}; "
             "border-radius: 4px; font-size: 11px; padding: 2px 6px;"
         )
         btn_manage.clicked.connect(self._on_open_settings)
-        sop_btn_row.addWidget(btn_import)
-        sop_btn_row.addWidget(btn_manage)
-        sop_btn_row.addStretch()
-        layout.addLayout(sop_btn_row)
+        skill_btn_row.addWidget(btn_manage)
+        skill_btn_row.addStretch()
+        layout.addLayout(skill_btn_row)
 
         return panel
 
@@ -1100,7 +1203,7 @@ class AgentTab(BaseTab):
                 )
         self._ensure_service()
         self._refresh_conv_list()
-        self._refresh_sop_tree()
+        self._refresh_skill_tree()
 
         has_key = False
         if self._config:
@@ -1124,6 +1227,7 @@ class AgentTab(BaseTab):
 
         from .memory.conversation import ConversationStore
         from .service import AgentService
+        from .skills.manager import SkillsManager
         from .sop.manager import SOPManager
         from .tools.registry import ToolRegistry
 
@@ -1139,16 +1243,29 @@ class AgentTab(BaseTab):
         )
         self._sop_manager.load_all()
 
+        # Skills 管理器（搜索本模块 + perfetto_analysis 的 skills 目录）
+        skill_search_paths = [
+            module_dir / "skills",
+            module_dir.parent / "perfetto_analysis" / "skills",
+        ]
+        self._skills_manager = SkillsManager(skill_search_paths)
+        self._skills_manager.scan()
+
         tool_registry = ToolRegistry()
         pm = self.context.get("plugin_manager") if self.context else None
         if pm:
             tool_registry.collect_from_plugins(pm)
+
+        # 注册 Skill Agent 工具
+        skill_tools = self._skills_manager.create_agent_tools()
+        tool_registry.register_many(skill_tools)
 
         self._service = AgentService(
             config=self._config,
             conversation_store=self._store,
             tool_registry=tool_registry,
             sop_manager=self._sop_manager,
+            skills_manager=self._skills_manager,
         )
 
     def _reinit_service(self) -> None:
@@ -1158,6 +1275,7 @@ class AgentTab(BaseTab):
         self._service = None
         self._store = None
         self._sop_manager = None
+        self._skills_manager = None
         self._ensure_service()
 
     # ── 首次使用引导 ──────────────────────────────────────────────────────
@@ -1319,93 +1437,43 @@ class AgentTab(BaseTab):
 
         self._scroll_to_bottom()
 
-    # ── SOP 管理 (T022) ──────────────────────────────────────────────────
+    # ── 知识管理 (Skills) ──────────────────────────────────────────────
 
-    def _refresh_sop_tree(self) -> None:
-        self._sop_tree.clear()
-        if not self._sop_manager:
+    def _refresh_skill_tree(self) -> None:
+        self._skill_tree.clear()
+        if not self._skills_manager:
             return
 
-        from .models import SOPSource
-
-        sops = self._sop_manager.load_all()
-        builtin_items = [s for s in sops if s.source == SOPSource.BUILTIN]
-        custom_items = [s for s in sops if s.source == SOPSource.CUSTOM]
-
-        if builtin_items:
-            root_b = QTreeWidgetItem(self._sop_tree, [f"📁 内置 ({len(builtin_items)})"])
-            for doc in builtin_items:
-                item = QTreeWidgetItem(root_b, [f"📄 {doc.title}"])
-                item.setData(0, Qt.ItemDataRole.UserRole, doc)
-            root_b.setExpanded(True)
-
-        if custom_items:
-            root_c = QTreeWidgetItem(self._sop_tree, [f"📁 自定义 ({len(custom_items)})"])
-            for doc in custom_items:
-                item = QTreeWidgetItem(root_c, [f"📄 {doc.title}"])
-                item.setData(0, Qt.ItemDataRole.UserRole, doc)
-            root_c.setExpanded(True)
-
-    def _on_sop_double_click(self, item: QTreeWidgetItem, column: int) -> None:
-        doc = item.data(0, Qt.ItemDataRole.UserRole)
-        if not doc:
-            return
-        _open_path(str(doc.path))
-
-    def _on_sop_context_menu(self, pos) -> None:
-        item = self._sop_tree.itemAt(pos)
-        if not item:
-            return
-        doc = item.data(0, Qt.ItemDataRole.UserRole)
-        if not doc:
+        all_meta = self._skills_manager.get_all_metadata()
+        if not all_meta:
+            QTreeWidgetItem(self._skill_tree, ["暂无 Skill"])
             return
 
-        from .models import SOPSource
+        for meta in all_meta:
+            root = QTreeWidgetItem(self._skill_tree, [f"📦 {meta.name}"])
+            root.setData(0, Qt.ItemDataRole.UserRole, meta.name)
+            desc_item = QTreeWidgetItem(root, [f"  {meta.description[:40]}"])
+            desc_item.setDisabled(True)
 
-        menu = QMenu(self)
-        if doc.source == SOPSource.CUSTOM:
-            action_edit = menu.addAction("编辑")
-            action_delete = menu.addAction("删除")
-            action_export = menu.addAction("导出")
-        else:
-            action_edit = menu.addAction("查看")
-            action_delete = None
-            action_export = menu.addAction("导出")
+            resources = self._skills_manager.list_resources(meta.name)
+            for category, files in resources.items():
+                cat_item = QTreeWidgetItem(root, [f"  📁 {category} ({len(files)})"])
+                for f in files:
+                    QTreeWidgetItem(cat_item, [f"    📄 {f}"])
 
-        action = menu.exec(self._sop_tree.mapToGlobal(pos))
-        if action == action_edit:
-            _open_path(str(doc.path))
-        elif action_delete and action == action_delete:
-            reply = QMessageBox.question(
-                self, "删除 SOP", f"确认删除 SOP「{doc.title}」？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-            if reply == QMessageBox.StandardButton.Yes and self._sop_manager:
-                self._sop_manager.delete_sop(doc.title)
-                self._refresh_sop_tree()
-        elif action == action_export:
-            target, _ = QFileDialog.getSaveFileName(
-                self, "导出 SOP", doc.title + ".md", "Markdown (*.md)"
-            )
-            if target and self._sop_manager:
-                self._sop_manager.export_sop(doc.title, Path(target))
-
-    def _on_import_sop(self) -> None:
-        if not self._sop_manager:
-            return
-        path, _ = QFileDialog.getOpenFileName(
-            self, "导入 SOP", "", "Markdown (*.md);;所有文件 (*)"
-        )
-        if path:
-            self._sop_manager.import_sop(Path(path))
-            self._refresh_sop_tree()
+            root.setExpanded(True)
 
     # ── 设置 (T023) ──────────────────────────────────────────────────────
 
     def _on_open_settings(self) -> None:
         if not self._config:
             return
-        dlg = _SettingsDialog(self._config, self._sop_manager, self)
+        dlg = _SettingsDialog(
+            self._config,
+            sop_manager=self._sop_manager,
+            mcp_manager=self._mcp_manager,
+            parent=self,
+        )
         dlg.config_changed.connect(self._on_config_changed)
         dlg.exec()
 
@@ -1417,7 +1485,7 @@ class AgentTab(BaseTab):
             f"模型: {new_config.model_name} ({new_config.provider.upper()})"
         )
         self._reinit_service()
-        self._refresh_sop_tree()
+        self._refresh_skill_tree()
 
     # ── 消息发送与接收 (T020) ─────────────────────────────────────────────
 
@@ -1599,8 +1667,9 @@ class AgentTab(BaseTab):
         save_dir = module_dir / "data" / "sops"
         saved_path = save_sop(content, save_dir)
 
-        self._sop_manager.load_all()
-        self._refresh_sop_tree()
+        if self._sop_manager:
+            self._sop_manager.load_all()
+        self._refresh_skill_tree()
 
         reply = QMessageBox.question(
             self,

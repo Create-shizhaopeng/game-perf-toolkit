@@ -2,7 +2,7 @@
 """agent_chat 模块 — CLI 命令测试。"""
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -84,7 +84,7 @@ class TestAskCommand:
         from modules.agent_chat.src.models import LLMResponse
         mock_svc = MagicMock()
         mock_svc.is_ready = True
-        mock_svc.chat.return_value = LLMResponse(text="ok")
+        mock_svc.chat = AsyncMock(return_value=LLMResponse(text="ok"))
         return mock_svc
 
     @patch("modules.agent_chat.src.cli_commands._create_service")

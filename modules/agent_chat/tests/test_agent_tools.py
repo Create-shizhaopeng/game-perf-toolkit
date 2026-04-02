@@ -161,7 +161,8 @@ class TestToolExecutor:
         reg.register(ToolDefinition(name=name, description="desc", method=method))
         return reg
 
-    def test_execute_success(self):
+    @pytest.mark.asyncio
+    async def test_execute_success(self):
         def echo(message: str) -> str:
             return f"echo: {message}"
 
@@ -169,23 +170,25 @@ class TestToolExecutor:
         executor = ToolExecutor(reg)
 
         tc = ToolCall(id="c1", name="echo", arguments={"message": "hello"})
-        result = executor.execute(tc)
+        result = await executor.execute(tc)
 
         assert not result.is_error
         assert "echo: hello" in result.content
         assert tc.status == ToolCallStatus.COMPLETE
         assert tc.elapsed_ms > 0
 
-    def test_execute_unknown_tool(self):
+    @pytest.mark.asyncio
+    async def test_execute_unknown_tool(self):
         reg = ToolRegistry()
         executor = ToolExecutor(reg)
 
         tc = ToolCall(id="c1", name="unknown", arguments={})
-        result = executor.execute(tc)
+        result = await executor.execute(tc)
         assert result.is_error
         assert "未知工具" in result.content
 
-    def test_execute_exception(self):
+    @pytest.mark.asyncio
+    async def test_execute_exception(self):
         def failing():
             raise ValueError("测试错误")
 
@@ -193,12 +196,13 @@ class TestToolExecutor:
         executor = ToolExecutor(reg)
 
         tc = ToolCall(id="c1", name="fail", arguments={})
-        result = executor.execute(tc)
+        result = await executor.execute(tc)
         assert result.is_error
         assert "ValueError" in result.content
         assert tc.status == ToolCallStatus.FAILED
 
-    def test_result_truncation(self):
+    @pytest.mark.asyncio
+    async def test_result_truncation(self):
         def big_output() -> str:
             return "X" * 5000
 
@@ -206,11 +210,12 @@ class TestToolExecutor:
         executor = ToolExecutor(reg, max_result_length=100)
 
         tc = ToolCall(id="c1", name="big", arguments={})
-        result = executor.execute(tc)
+        result = await executor.execute(tc)
         assert len(result.content) < 200
         assert "截断" in result.content
 
-    def test_dict_result(self):
+    @pytest.mark.asyncio
+    async def test_dict_result(self):
         def dict_tool() -> dict:
             return {"fps": 60, "jank": 3}
 
@@ -218,11 +223,12 @@ class TestToolExecutor:
         executor = ToolExecutor(reg)
 
         tc = ToolCall(id="c1", name="dict_t", arguments={})
-        result = executor.execute(tc)
+        result = await executor.execute(tc)
         parsed = json.loads(result.content)
         assert parsed["fps"] == 60
 
-    def test_none_result(self):
+    @pytest.mark.asyncio
+    async def test_none_result(self):
         def void_tool() -> None:
             pass
 
@@ -230,11 +236,12 @@ class TestToolExecutor:
         executor = ToolExecutor(reg)
 
         tc = ToolCall(id="c1", name="void", arguments={})
-        result = executor.execute(tc)
+        result = await executor.execute(tc)
         assert not result.is_error
         assert "无返回值" in result.content
 
-    def test_report_paths_extraction(self):
+    @pytest.mark.asyncio
+    async def test_report_paths_extraction(self):
         def report_tool() -> dict:
             return {"report_path": "/out/report.md", "data": "ok"}
 
@@ -242,8 +249,22 @@ class TestToolExecutor:
         executor = ToolExecutor(reg)
 
         tc = ToolCall(id="c1", name="report", arguments={})
-        result = executor.execute(tc)
+        result = await executor.execute(tc)
         assert "/out/report.md" in result.report_paths
+
+    @pytest.mark.asyncio
+    async def test_execute_async_tool(self):
+        """验证 async 工具可以直接 await 而不走 to_thread。"""
+        async def async_echo(message: str) -> str:
+            return f"async: {message}"
+
+        reg = self._make_registry_with_tool("async_echo", async_echo)
+        executor = ToolExecutor(reg)
+
+        tc = ToolCall(id="c1", name="async_echo", arguments={"message": "hi"})
+        result = await executor.execute(tc)
+        assert not result.is_error
+        assert "async: hi" in result.content
 
 
 # ---------------------------------------------------------------------------

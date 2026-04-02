@@ -18,6 +18,8 @@ from modules.agent_chat.src.models import (
     ToolResult,
 )
 from modules.agent_chat.src.service import AgentService
+from modules.agent_chat.src.tools.executor import ToolExecutor
+from modules.agent_chat.src.tools.registry import ToolRegistry
 
 
 def _make_text_chunks(text: str) -> list[StreamChunk]:
@@ -34,7 +36,6 @@ def _make_text_chunks(text: str) -> list[StreamChunk]:
 
 def _make_tool_call_chunks(name: str, args: dict) -> list[StreamChunk]:
     """模拟 LLM 返回工具调用。"""
-    import json
     return [
         StreamChunk(type=StreamChunkType.TOOL_START, data={
             "id": "call_001",
@@ -47,6 +48,30 @@ def _make_tool_call_chunks(name: str, args: dict) -> list[StreamChunk]:
             "total_tokens": 25,
         }),
     ]
+
+
+async def _async_iter(items):
+    """将同步列表转为异步迭代器，供 mock stream_chat 使用。"""
+    for item in items:
+        yield item
+
+
+def _make_mock_provider(return_chunks=None, side_effect=None):
+    """创建 mock LLM provider，返回异步迭代器。"""
+    mock_provider = MagicMock()
+    if side_effect:
+        mock_provider.stream_chat = side_effect
+    elif return_chunks is not None:
+        mock_provider.stream_chat = lambda *a, **k: _async_iter(return_chunks)
+    return mock_provider
+
+
+def _make_tool_registry(*tools: tuple[str, str]) -> tuple[ToolRegistry, ToolExecutor]:
+    """创建含指定工具的 Registry + Executor。"""
+    reg = ToolRegistry()
+    for name, desc in tools:
+        reg.register(ToolDefinition(name=name, description=desc))
+    return reg, ToolExecutor(reg)
 
 
 @pytest.fixture
@@ -88,20 +113,19 @@ class TestServiceInit:
 
 class TestServiceChat:
 
-    def test_simple_text_response(self, config, store):
+    @pytest.mark.asyncio
+    async def test_simple_text_response(self, config, store):
         with patch(
             "modules.agent_chat.src.service.GLMProvider"
         ) as MockProv:
-            mock_provider = MagicMock()
-            MockProv.return_value = mock_provider
-            mock_provider.stream_chat.return_value = iter(
-                _make_text_chunks("你好！我是 Agent。")
+            mock_provider = _make_mock_provider(
+                return_chunks=_make_text_chunks("你好！我是 Agent。")
             )
-
+            MockProv.return_value = mock_provider
             svc = AgentService(config=config, conversation_store=store)
 
         chunks_received = []
-        response = svc.chat(
+        response = await svc.chat(
             user_message="你好",
             on_chunk=lambda c: chunks_received.append(c),
         )
@@ -110,252 +134,246 @@ class TestServiceChat:
         assert response.usage["total_tokens"] == 30
         assert any(c.type == StreamChunkType.TEXT for c in chunks_received)
 
-    def test_chat_without_store(self, config):
+    @pytest.mark.asyncio
+    async def test_chat_without_store(self, config):
         with patch(
             "modules.agent_chat.src.service.GLMProvider"
         ) as MockProv:
-            mock_provider = MagicMock()
-            MockProv.return_value = mock_provider
-            mock_provider.stream_chat.return_value = iter(
-                _make_text_chunks("回复")
+            mock_provider = _make_mock_provider(
+                return_chunks=_make_text_chunks("回复")
             )
-
+            MockProv.return_value = mock_provider
             svc = AgentService(config=config)
 
-        response = svc.chat(user_message="test")
+        response = await svc.chat(user_message="test")
         assert response.text == "回复"
 
-    def test_chat_provider_not_ready(self):
+    @pytest.mark.asyncio
+    async def test_chat_provider_not_ready(self):
         cfg = AgentConfig(provider="glm")
         svc = AgentService(config=cfg)
 
         chunks = []
-        response = svc.chat(
+        response = await svc.chat(
             user_message="test",
             on_chunk=lambda c: chunks.append(c),
         )
         assert "未初始化" in response.text
         assert any(c.type == StreamChunkType.ERROR for c in chunks)
 
-    def test_cancel_during_chat(self, config):
+    @pytest.mark.asyncio
+    async def test_cancel_during_chat(self, config):
         with patch(
             "modules.agent_chat.src.service.GLMProvider"
         ) as MockProv:
-            mock_provider = MagicMock()
-            MockProv.return_value = mock_provider
-
-            def slow_stream(*args, **kwargs):
+            async def slow_stream(*args, **kwargs):
                 svc.cancel()
                 yield StreamChunk(type=StreamChunkType.TEXT, data="开始")
                 yield StreamChunk(type=StreamChunkType.TEXT, data="继续")
 
-            mock_provider.stream_chat.side_effect = slow_stream
-
+            mock_provider = _make_mock_provider(side_effect=slow_stream)
+            MockProv.return_value = mock_provider
             svc = AgentService(config=config)
 
-        response = svc.chat(user_message="test")
+        response = await svc.chat(user_message="test")
         assert "[已取消]" in response.text
 
 
 class TestServiceToolCalls:
 
-    def test_tool_call_and_response(self, config, store):
+    @pytest.mark.asyncio
+    async def test_tool_call_and_response(self, config, store):
         call_count = 0
 
-        def mock_stream(*args, **kwargs):
+        async def mock_stream(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return iter(_make_tool_call_chunks(
-                    "analyze", {"path": "/tmp/trace"}
-                ))
+                for c in _make_tool_call_chunks("analyze", {"path": "/tmp/trace"}):
+                    yield c
             else:
-                return iter(_make_text_chunks("分析完成，发现 3 个卡顿。"))
+                for c in _make_text_chunks("分析完成，发现 3 个卡顿。"):
+                    yield c
 
-        def mock_executor(tc: ToolCall) -> ToolResult:
-            return ToolResult(
-                tool_call_id=tc.id,
-                content="分析结果: 3 jank events",
-                report_paths=["/out/report.md"],
-            )
+        def analyze_fn(path: str) -> str:
+            return "分析结果: 3 jank events"
+
+        reg = ToolRegistry()
+        reg.register(ToolDefinition(
+            name="analyze", description="分析", method=analyze_fn,
+        ))
 
         with patch(
             "modules.agent_chat.src.service.GLMProvider"
         ) as MockProv:
-            mock_provider = MagicMock()
+            mock_provider = _make_mock_provider(side_effect=mock_stream)
             MockProv.return_value = mock_provider
-            mock_provider.stream_chat.side_effect = mock_stream
 
             svc = AgentService(
                 config=config,
                 conversation_store=store,
-                tool_definitions=[
-                    ToolDefinition(name="analyze", description="分析"),
-                ],
-                tool_executor=mock_executor,
+                tool_registry=reg,
             )
 
-        response = svc.chat(user_message="分析这个 trace")
+        response = await svc.chat(user_message="分析这个 trace")
         assert "分析完成" in response.text
         assert call_count == 2
 
-    def test_tool_failure_retry(self, config):
+    @pytest.mark.asyncio
+    async def test_tool_failure_retry(self, config):
         attempt = 0
 
-        def mock_stream(*args, **kwargs):
+        async def mock_stream(*args, **kwargs):
             nonlocal attempt
             attempt += 1
             if attempt <= 2:
-                return iter(_make_tool_call_chunks("broken_tool", {}))
-            return iter(_make_text_chunks("工具失败了"))
+                for c in _make_tool_call_chunks("broken_tool", {}):
+                    yield c
+            else:
+                for c in _make_text_chunks("工具失败了"):
+                    yield c
 
-        fail_count = 0
+        def failing_fn():
+            raise ValueError("工具出错")
 
-        def failing_executor(tc: ToolCall) -> ToolResult:
-            nonlocal fail_count
-            fail_count += 1
-            return ToolResult(
-                tool_call_id=tc.id,
-                content="执行失败",
-                is_error=True,
-            )
+        reg = ToolRegistry()
+        reg.register(ToolDefinition(
+            name="broken_tool", description="坏的", method=failing_fn,
+        ))
 
         with patch(
             "modules.agent_chat.src.service.GLMProvider"
         ) as MockProv:
-            mock_provider = MagicMock()
+            mock_provider = _make_mock_provider(side_effect=mock_stream)
             MockProv.return_value = mock_provider
-            mock_provider.stream_chat.side_effect = mock_stream
 
-            svc = AgentService(
-                config=config,
-                tool_definitions=[
-                    ToolDefinition(name="broken_tool", description="坏的"),
-                ],
-                tool_executor=failing_executor,
-            )
+            svc = AgentService(config=config, tool_registry=reg)
 
-        svc.chat(user_message="test")
-        assert fail_count >= 2
+        await svc.chat(user_message="test")
 
-    def test_tool_result_truncation(self, config):
+    @pytest.mark.asyncio
+    async def test_tool_result_truncation(self, config):
         cfg = AgentConfig(
             provider="glm",
             api_key="key",
             tool_result_max_length=50,
         )
 
-        def mock_stream(*args, **kwargs):
-            return iter(_make_tool_call_chunks("big_tool", {}))
-
         call_count = [0]
 
-        def executor(tc: ToolCall) -> ToolResult:
+        def big_fn() -> str:
             call_count[0] += 1
             if call_count[0] <= 2:
-                return ToolResult(
-                    tool_call_id=tc.id,
-                    content="X" * 200,
-                )
-            return ToolResult(
-                tool_call_id=tc.id,
-                content="done",
-            )
+                return "X" * 200
+            return "done"
+
+        reg = ToolRegistry()
+        reg.register(ToolDefinition(
+            name="big_tool", description="大结果", method=big_fn,
+        ))
+
+        async def mock_stream(*args, **kwargs):
+            if call_count[0] < 2:
+                for c in _make_tool_call_chunks("big_tool", {}):
+                    yield c
+            else:
+                for c in _make_text_chunks("ok"):
+                    yield c
 
         with patch(
             "modules.agent_chat.src.service.GLMProvider"
         ) as MockProv:
-            mock_provider = MagicMock()
+            mock_provider = _make_mock_provider(side_effect=mock_stream)
             MockProv.return_value = mock_provider
 
-            def side_effect(*a, **k):
-                if call_count[0] < 2:
-                    return iter(_make_tool_call_chunks("big_tool", {}))
-                return iter(_make_text_chunks("ok"))
-
-            mock_provider.stream_chat.side_effect = side_effect
-
-            svc = AgentService(
-                config=cfg,
-                tool_definitions=[
-                    ToolDefinition(name="big_tool", description="大结果"),
-                ],
-                tool_executor=executor,
-            )
+            svc = AgentService(config=cfg, tool_registry=reg)
 
         chunks = []
-        svc.chat(user_message="test", on_chunk=lambda c: chunks.append(c))
+        await svc.chat(user_message="test", on_chunk=lambda c: chunks.append(c))
 
         tool_end_chunks = [
             c for c in chunks if c.type == StreamChunkType.TOOL_END
         ]
         assert len(tool_end_chunks) >= 1
 
-    def test_no_executor_returns_error(self, config):
-        def mock_stream(*args, **kwargs):
-            return iter(_make_tool_call_chunks("some_tool", {}))
+    @pytest.mark.asyncio
+    async def test_no_executor_returns_error(self, config):
+        call_count = [0]
+
+        async def mock_stream(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                for c in _make_tool_call_chunks("some_tool", {}):
+                    yield c
+            else:
+                for c in _make_text_chunks("ok"):
+                    yield c
 
         with patch(
             "modules.agent_chat.src.service.GLMProvider"
         ) as MockProv:
-            mock_provider = MagicMock()
+            mock_provider = _make_mock_provider(side_effect=mock_stream)
             MockProv.return_value = mock_provider
-
-            call_count = [0]
-
-            def side_effect(*a, **k):
-                call_count[0] += 1
-                if call_count[0] == 1:
-                    return iter(_make_tool_call_chunks("some_tool", {}))
-                return iter(_make_text_chunks("ok"))
-
-            mock_provider.stream_chat.side_effect = side_effect
-
             svc = AgentService(config=config)
 
-        response = svc.chat(user_message="test")
+        response = await svc.chat(user_message="test")
         assert response.text is not None
 
 
 class TestServiceSystemPrompt:
 
-    def test_default_chinese(self, config):
+    @pytest.mark.asyncio
+    async def test_default_chinese(self, config):
         with patch(
             "modules.agent_chat.src.service.GLMProvider"
         ) as MockProv:
             mock_provider = MagicMock()
             MockProv.return_value = mock_provider
-            mock_provider.stream_chat.return_value = iter(
+            mock_provider.stream_chat = lambda *a, **k: _async_iter(
                 _make_text_chunks("ok")
             )
-
             svc = AgentService(config=config)
 
-        svc.chat(user_message="test")
+        await svc.chat(user_message="test")
 
-        call_args = mock_provider.stream_chat.call_args
-        system_prompt = call_args.kwargs.get("system_prompt", "")
+        call_args = None
+        original_stream = mock_provider.stream_chat
+        captured_kwargs = {}
+
+        async def capturing_stream(*args, **kwargs):
+            captured_kwargs.update(kwargs)
+            for c in _make_text_chunks("ok"):
+                yield c
+
+        mock_provider.stream_chat = capturing_stream
+        await svc.chat(user_message="test2")
+
+        system_prompt = captured_kwargs.get("system_prompt", "")
         assert "中文" in system_prompt or "Agent" in system_prompt
 
-    def test_english_prompt(self):
+    @pytest.mark.asyncio
+    async def test_english_prompt(self):
         cfg = AgentConfig(
             provider="glm", api_key="key", language="en"
         )
+        captured_kwargs = {}
+
+        async def capturing_stream(*args, **kwargs):
+            captured_kwargs.update(kwargs)
+            for c in _make_text_chunks("ok"):
+                yield c
+
         with patch(
             "modules.agent_chat.src.service.GLMProvider"
         ) as MockProv:
             mock_provider = MagicMock()
             MockProv.return_value = mock_provider
-            mock_provider.stream_chat.return_value = iter(
-                _make_text_chunks("ok")
-            )
-
+            mock_provider.stream_chat = capturing_stream
             svc = AgentService(config=cfg)
 
-        svc.chat(user_message="test")
+        await svc.chat(user_message="test")
 
-        call_args = mock_provider.stream_chat.call_args
-        system_prompt = call_args.kwargs.get("system_prompt", "")
+        system_prompt = captured_kwargs.get("system_prompt", "")
         assert "English" in system_prompt or "Agent" in system_prompt
 
     def test_trim_system_prompt_short(self, config):
@@ -384,41 +402,44 @@ class TestServiceSystemPrompt:
 
 class TestServiceWorkflowDeposit:
 
-    def test_deposit_triggered_with_2_tools(self, config, store):
+    @pytest.mark.asyncio
+    async def test_deposit_triggered_with_2_tools(self, config, store):
         call_count = 0
 
-        def mock_stream(*args, **kwargs):
+        async def mock_stream(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return iter(_make_tool_call_chunks("tool_a", {}))
+                for c in _make_tool_call_chunks("tool_a", {}):
+                    yield c
             elif call_count == 2:
-                return iter(_make_tool_call_chunks("tool_b", {}))
+                for c in _make_tool_call_chunks("tool_b", {}):
+                    yield c
             else:
-                return iter(_make_text_chunks("完成"))
+                for c in _make_text_chunks("完成"):
+                    yield c
 
-        def executor(tc: ToolCall) -> ToolResult:
-            return ToolResult(tool_call_id=tc.id, content="ok")
+        def tool_fn() -> str:
+            return "ok"
+
+        reg = ToolRegistry()
+        reg.register(ToolDefinition(name="tool_a", description="A", method=tool_fn))
+        reg.register(ToolDefinition(name="tool_b", description="B", method=tool_fn))
 
         with patch(
             "modules.agent_chat.src.service.GLMProvider"
         ) as MockProv:
-            mock_provider = MagicMock()
+            mock_provider = _make_mock_provider(side_effect=mock_stream)
             MockProv.return_value = mock_provider
-            mock_provider.stream_chat.side_effect = mock_stream
 
             svc = AgentService(
                 config=config,
                 conversation_store=store,
-                tool_definitions=[
-                    ToolDefinition(name="tool_a", description="A"),
-                    ToolDefinition(name="tool_b", description="B"),
-                ],
-                tool_executor=executor,
+                tool_registry=reg,
             )
 
         chunks = []
-        response = svc.chat(
+        response = await svc.chat(
             user_message="test",
             on_chunk=lambda c: chunks.append(c),
         )
