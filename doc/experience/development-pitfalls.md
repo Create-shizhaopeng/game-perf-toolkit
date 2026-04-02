@@ -30,6 +30,10 @@
 - [P25 — Python 3.14 from \_\_future\_\_ import annotations 与 get\_type\_hints 冲突](#p25--python-314-from-__future__-import-annotations-与-get_type_hints-冲突)
 - [P26 — Perfetto 引擎 Jank 检测误判（阈值与首周期）](#p26--perfetto-引擎-jank-检测误判阈值与首周期)
 - [P27 — Speckit Skills 通用模板需项目适配](#p27--speckit-skills-通用模板需项目适配)
+- [P28 — SurfaceView 游戏帧数据采集需 SurfaceFlinger fallback](#p28--surfaceview-游戏帧数据采集需-surfaceflinger-fallback)
+- [P29 — Python 短路求值传 None 给 Qt setEnabled()](#p29--python-短路求值传-none-给-qt-setenabled)
+- [P30 — QWidget 子类 CSS 背景不渲染](#p30--qwidget-子类-css-背景不渲染)
+- [P31 — 函数早返回跳过资源清理逻辑](#p31--函数早返回跳过资源清理逻辑)
 - [按子系统快速索引](#按子系统快速索引)
   - [插件框架](#插件框架)
   - [GUI / PyQt6](#gui--pyqt6)
@@ -44,7 +48,7 @@
 
 ## 按子系统快速索引
 
-开发时根据当前工作的子系统快速定位相关踩坑经验，无需通读全部 27 项。
+开发时根据当前工作的子系统快速定位相关踩坑经验，无需通读全部 31 项。
 
 ### 插件框架
 
@@ -66,6 +70,9 @@
 | P19 | QComboBox 自定义 Popup 崩溃 | 严重 | Windows、Popup、showPopup |
 | P20 | SQLite 跨线程连接访问 | 严重 | check_same_thread、QThread |
 | P21 | QTableWidget 操作按钮刷新竞态 | 中等 | blockSignals、cellWidget |
+| P29 | Python 短路求值传 None 给 Qt setEnabled() | 中等 | setEnabled、短路求值、bool |
+| P30 | QWidget 子类 CSS 背景不渲染 | 中等 | paintEvent、QStyleOption、透明 |
+| P31 | 函数早返回跳过资源清理逻辑 | 严重 | 早返回、cleanup、线程停止 |
 
 ### ADB / 设备
 
@@ -82,6 +89,7 @@
 | P16 | 同 UID 并发会话上限与残留进程 | 中等 | UID、并发、cleanup |
 | P17 | Ring buffer clone 覆盖的时间范围 | 中等 | ring_buffer、clone、时间窗口 |
 | P26 | Jank 检测误判（阈值与首周期） | 中等 | jank_1、jank_3、VSync、首周期 |
+| P28 | SurfaceView 游戏帧数据采集需 SF fallback | 严重 | SurfaceView、gfxinfo、SurfaceFlinger |
 
 ### 构建 / PyInstaller
 
@@ -113,9 +121,9 @@
 | 阶段 | 相关 Pitfalls |
 |------|---------------|
 | 设计时 | P01, P03, P04, P12 |
-| 编码时（GUI） | P05, P07, P11, P18, P19, P20, P21 |
+| 编码时（GUI） | P05, P07, P11, P18, P19, P20, P21, P29, P30, P31 |
 | 编码时（ADB/设备） | P02, P09 |
-| 编码时（Perfetto） | P15, P16, P17, P26 |
+| 编码时（Perfetto） | P15, P16, P17, P26, P28 |
 | 编码时（Agent/LLM） | P23, P24, P25 |
 | 构建时 | P13, P14, P22 |
 | 环境/工具 | P06, P08, P10, P27 |
@@ -1022,3 +1030,184 @@ Speckit 的通用 skills（specify、implement、constitution 等）基于广泛
 - 使用 speckit skills 时，根据本项目技术栈（Python 3.12+ / PyQt6 / Pydantic）裁剪不适用的配置
 - 技术工具类模块的 spec 可在 Functional Requirements 中包含技术约束（如 CLI 参数格式、数据模型定义），不必严格遵循"不涉及技术实现"
 - 对已有 constitution 执行增量修订（添加新原则/更新技术栈），而非从模板重建
+
+---
+
+## P28 — SurfaceView 游戏帧数据采集需 SurfaceFlinger fallback
+
+| 属性 | 值 |
+|------|------|
+| 严重度 | 严重 |
+| 影响 | 帧率监控完全失效 |
+| 触发条件 | 对 SurfaceView 渲染的游戏使用 `dumpsys gfxinfo framestats` |
+
+### 现象
+
+使用 `dumpsys gfxinfo <pkg> framestats` 采集帧数据时，大多数游戏（Unity/Unreal/自研引擎）返回的 `---PROFILEDATA---` 段为空。日志显示 `解析帧数据为空`，FPS 曲线完全无数据。
+
+### 根因
+
+游戏通常使用 `SurfaceView` 渲染（OpenGL ES / Vulkan），不经过 Android HWUI 渲染管线。`gfxinfo framestats` 只统计 HWUI 管线的帧数据，对 SurfaceView 渲染无效。
+
+### 解决方案
+
+使用 `dumpsys SurfaceFlinger --latency <layer_name>` 作为 fallback：
+
+1. **自动检测帧数据源**：先尝试 `gfxinfo framestats`，如果 `---PROFILEDATA---` 为空则切换到 SF latency
+2. **SurfaceFlinger 图层名匹配**：通过 `dumpsys SurfaceFlinger --list` 列出所有图层，使用正则匹配包名 + `SurfaceView` + `(BLAST)` 后缀
+3. **图层名必须精确**：`dumpsys SurfaceFlinger --latency` 要求完整图层名（含 hash 前缀和 `(BLAST)` 后缀），否则返回空数据
+
+```python
+# 图层名格式示例
+# 正确：SurfaceView[com.game.pkg/Activity](BLAST)#12
+# 错误：SurfaceView[com.game.pkg/Activity]  （缺少 BLAST 后缀）
+pattern = re.compile(
+    rf"SurfaceView\[{re.escape(package)}[^\]]*\].*?\(BLAST\)",
+    re.IGNORECASE,
+)
+```
+
+### 预防措施
+
+- 帧率采集逻辑 MUST 先检测帧数据源，MUST NOT 硬编码 gfxinfo 为唯一来源
+- 使用 `SurfaceFlinger --latency` 时 MUST 通过 `--list` 动态获取完整图层名
+- 图层名匹配 SHOULD 优先选择 `(BLAST)` 图层（表示活跃渲染）
+
+---
+
+## P29 — Python 短路求值传 None 给 Qt setEnabled()
+
+| 属性 | 值 |
+|------|------|
+| 严重度 | 中等 |
+| 影响 | UI 初始化崩溃 |
+| 触发条件 | `and` 表达式左侧为 `None` 的结果传给 `setEnabled()` |
+
+### 现象
+
+```
+TypeError: setEnabled(self, a0: bool): argument 1 has unexpected type 'NoneType'
+```
+
+历史面板初始化时崩溃，因为 `_update_action_buttons_state(None)` 调用时计算的 `is_trace` 值为 `None`。
+
+### 根因
+
+Python 的 `and` 短路求值不返回 `bool`，而是返回第一个假值或最后一个值：
+
+```python
+item_data = None
+is_trace = item_data and item_data.get("type") == "trace"
+# is_trace = None，不是 False！
+
+# 后续调用
+btn.setEnabled(is_trace and btn.isEnabled())  # None 传给 setEnabled → TypeError
+```
+
+PyQt6 的 `setEnabled()` 严格要求 `bool` 类型，不接受 `None`。
+
+### 解决方案
+
+用 `bool()` 包装短路求值结果：
+
+```python
+is_trace = bool(item_data and item_data.get("type") == "trace")
+```
+
+### 预防措施
+
+- 传给 Qt API 的布尔参数 MUST 确保为 `bool` 类型，SHOULD 使用 `bool()` 包装含 `and`/`or` 的表达式
+- `None and X` 结果是 `None`，`None or X` 结果是 `X` — 与 `False` 的行为不同
+
+---
+
+## P30 — QWidget 子类 CSS 背景不渲染
+
+| 属性 | 值 |
+|------|------|
+| 严重度 | 中等 |
+| 影响 | 自定义面板透明，内容不可见 |
+| 触发条件 | 自定义 QWidget 子类设置 CSS background 但不覆写 paintEvent |
+
+### 现象
+
+`HistoryPanel(QWidget)` 通过 CSS 设置了深色背景 `background: #313244`，但实际渲染时面板透明，内容与底层 UI 混叠难以阅读。
+
+### 根因
+
+Qt 的 QWidget 基类默认不处理 CSS 样式表中的背景绘制。只有 Qt 内置控件（QPushButton、QLabel 等）或显式覆写了 `paintEvent` 的自定义 QWidget 才能正确渲染 CSS 背景。
+
+### 解决方案
+
+覆写 `paintEvent` 并使用 `QStyleOption`：
+
+```python
+class HistoryPanel(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAutoFillBackground(True)
+
+    def paintEvent(self, event):
+        from PyQt6.QtWidgets import QStyleOption, QStyle
+        from PyQt6.QtGui import QPainter
+        opt = QStyleOption()
+        opt.initFrom(self)
+        p = QPainter(self)
+        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, opt, p, self)
+        p.end()
+```
+
+### 预防措施
+
+- 自定义 QWidget 子类使用 CSS background 时 MUST 覆写 `paintEvent` 或 `setAutoFillBackground(True)` + `QPalette`
+- 此规则适用于所有直接继承 QWidget 的容器面板
+
+---
+
+## P31 — 函数早返回跳过资源清理逻辑
+
+| 属性 | 值 |
+|------|------|
+| 严重度 | 严重 |
+| 影响 | 后台线程泄漏，功能无法停止 |
+| 触发条件 | 停止函数开头的前置条件检查导致清理代码被跳过 |
+
+### 现象
+
+用户点击"停止"按钮后，Perfetto 抓取停止了，但 Jank 监控线程继续运行（FPS 曲线持续刷新）。
+
+### 根因
+
+```python
+def _on_stop(self) -> None:
+    if not self._service or not self._serial:
+        return  # 设备断连时 serial=None，直接返回
+    # ... Jank 停止逻辑在这之后，被跳过了
+    if self._jank_worker:
+        self._stop_jank_monitor()
+```
+
+当设备短暂断连（`self._serial` 被置为 `None`）后，用户点击停止时，前置条件检查让函数提前返回，Jank 工作线程的清理逻辑被完全跳过。
+
+### 解决方案
+
+将资源清理逻辑放在前置条件检查之前：
+
+```python
+def _on_stop(self) -> None:
+    self._set_capturing(False)
+    self._timer.stop()
+
+    if self._jank_worker:
+        self._stop_jank_monitor()  # 无论设备状态如何，先清理线程
+
+    if not self._service or not self._serial:
+        return
+    # ... 后续 Perfetto 停止逻辑
+```
+
+### 预防措施
+
+- 包含资源清理的函数，清理逻辑 MUST 放在前置条件检查之前，确保任何退出路径都不会跳过清理
+- 对于 QThread 等后台资源，停止/释放操作 SHOULD 无条件执行，即使关联的外部状态已变化
+- 函数中的早返回（guard clause）MUST 审查是否会跳过后续的清理/释放/断开连接等副作用操作
