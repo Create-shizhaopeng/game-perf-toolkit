@@ -86,5 +86,17 @@ class ConfigManager:
     def set_adb_path(self, path: str) -> None:
         self.set("adb_path", path)
 
+    def get_llm_config(self) -> dict[str, Any]:
+        """获取 LLM 配置（不含内部标记字段）。"""
+        raw = self.get("llm", {}) or {}
+        return {k: v for k, v in raw.items() if not k.startswith("_")}
+
+    def set_llm_config(self, config: dict[str, Any]) -> None:
+        """设置 LLM 配置并持久化。"""
+        existing = self.get("llm", {}) or {}
+        internal = {k: v for k, v in existing.items() if k.startswith("_")}
+        merged = {**config, **internal}
+        self.set("llm", merged)
+
     def to_dict(self) -> dict:
         return dict(self._config)

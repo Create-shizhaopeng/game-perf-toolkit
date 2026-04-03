@@ -12,8 +12,19 @@ from toolkit.sdk.exceptions import (
     ToolkitError,
     WorkflowError,
 )
-from toolkit.sdk.models import AnalysisResult, CLIResponse, DeviceInfo, PluginInfo
-from toolkit.sdk.protocols import AnalyzableService, ComparableService, ServiceProtocol
+from toolkit.sdk.models import (
+    AnalysisResult,
+    CLIResponse,
+    DeviceInfo,
+    LLMConfig,
+    PluginInfo,
+)
+from toolkit.sdk.protocols import (
+    AnalyzableService,
+    ComparableService,
+    LLMProviderProtocol,
+    ServiceProtocol,
+)
 from toolkit.sdk.utils import ensure_dir, read_json, write_json
 
 __all__ = [
@@ -26,6 +37,8 @@ __all__ = [
     "CLIResponse",
     "ComparableService",
     "ConfigError",
+    "LLMConfig",
+    "LLMProviderProtocol",
     "DatabaseError",
     "DeviceInfo",
     "DeviceNotFoundError",
