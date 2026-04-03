@@ -1,4 +1,4 @@
-# UI Design: 游戏性能配置模块
+![1775183561279](image/ui-design/1775183561279.png)![1775183577611](image/ui-design/1775183577611.png)# UI Design: 游戏性能配置模块
 
 ## 目录
 

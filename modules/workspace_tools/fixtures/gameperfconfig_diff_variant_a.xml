@@ -1,0 +1,54 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<GameOptPolicy version="6">
+  <PreEnv>
+    <CPU>
+      <cluster name="Gold">310000 403200 518400 614400 710400 806400 902400 998400 1094400 1209600 1305600 1401600 1497600 1612800 1708800 1804800</cluster>
+      <cluster name="Prime">300000 403200 499200 576000 672000 787200 883200 979200 1075200 1171200 1267200 1363200 1459200 1555200 1651200 1747200 1843200 1920000 2016000</cluster>
+    </CPU>
+    <GPU>
+      <cluster name="Gpu">315000 450000 580000 720000 810000 900000</cluster>
+    </GPU>
+  </PreEnv>
+  <BaseInfo>
+    <Game name="com.tencent.tmgp.sgame">
+      <SceneList>
+        <scene>1001</scene>
+        <scene>1002</scene>
+        <scene>1003</scene>
+      </SceneList>
+    </Game>
+  </BaseInfo>
+  <GamePolicy>
+    <Game name="com.tencent.tmgp.sgame">
+      <ThermalSceneCode>4010</ThermalSceneCode>
+      <Mode name="Normal">
+        <ThermalSceneCode>4100</ThermalSceneCode>
+        <PerfHint>
+          <opcode id="0x12345678" time="101">1234 5678</opcode>
+        </PerfHint>
+        <Policy>
+          <TempLevel level="0" temp="36">
+            <item name="Gold">2_9</item>
+            <item name="Prime">2_10</item>
+            <item name="Gpu">1_4</item>
+          </TempLevel>
+          <TempLevel level="1" temp="39">
+            <item name="Gold">2_6</item>
+            <item name="Prime">2_8</item>
+            <item name="Gpu">1_3</item>
+          </TempLevel>
+        </Policy>
+      </Mode>
+      <Mode name="HighPerf">
+        <ThermalSceneCode>5100</ThermalSceneCode>
+        <Policy>
+          <TempLevel level="0" temp="38">
+            <item name="Gold">3_10</item>
+            <item name="Prime">3_12</item>
+            <item name="Gpu">2_5</item>
+          </TempLevel>
+        </Policy>
+      </Mode>
+    </Game>
+  </GamePolicy>
+</GameOptPolicy>

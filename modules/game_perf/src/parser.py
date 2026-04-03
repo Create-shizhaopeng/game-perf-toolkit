@@ -44,6 +44,15 @@ class GamePerfParser:
 
         self._parse()
 
+    def get_game_opt_policy_version(self) -> str:
+        """返回根节点 ``<GameOptPolicy version=\"…\">`` 的 version 属性；缺省返回空串。"""
+        if self._root is None:
+            return ""
+        if self._root.tag != "GameOptPolicy":
+            return ""
+        v = self._root.get("version")
+        return str(v).strip() if v is not None else ""
+
     # ------------------------------------------------------------------
     # 解析
     # ------------------------------------------------------------------
@@ -351,6 +360,59 @@ class GamePerfParser:
                 elif col_name == "PerfHint":
                     r.perf_hint = value
 
+    @staticmethod
+    def _indent_after_leading_newline(s: str | None) -> str | None:
+        """若字符串以换行开头且余下仅为空白，返回该空白段（子行缩进），否则 None。"""
+        if not isinstance(s, str) or not s.startswith("\n"):
+            return None
+        rest = s[1:]
+        if not rest or not rest.strip():
+            return rest
+        return None
+
+    @staticmethod
+    def _infer_bindcore_child_indent(
+        bind_root: etree._Element, children: list[etree._Element]
+    ) -> str:
+        """推断 BindCore 内子元素行的缩进（不含前导换行）。"""
+        inner = GamePerfParser._indent_after_leading_newline(bind_root.text)
+        if inner is not None:
+            return inner
+        if len(children) >= 2:
+            inner = GamePerfParser._indent_after_leading_newline(children[-2].tail)
+            if inner is not None:
+                return inner
+        inner = GamePerfParser._indent_after_leading_newline(children[0].tail)
+        if inner is not None:
+            return inner
+        return "    "
+
+    @staticmethod
+    def _infer_bindcore_closing_indent(
+        children: list[etree._Element], inner: str
+    ) -> str:
+        """推断 </BindCore> 所在行的缩进（不含前导换行）。"""
+        last = children[-1]
+        closing = GamePerfParser._indent_after_leading_newline(last.tail)
+        if closing is not None:
+            return closing
+        if len(inner) >= 2:
+            return inner[:-2]
+        return "  "
+
+    @staticmethod
+    def _normalize_bindcore_whitespace(bind_root: etree._Element) -> None:
+        """整理 BindCore 内 text/tail，避免 </tid></BindCore> 粘在同一行。"""
+        children = list(bind_root)
+        if not children:
+            return
+        inner = GamePerfParser._infer_bindcore_child_indent(bind_root, children)
+        closing = GamePerfParser._infer_bindcore_closing_indent(children, inner)
+        bind_root.text = "\n" + inner
+        n = len(children)
+        for i, ch in enumerate(children):
+            ch.tail = "\n" + inner if i < n - 1 else "\n" + closing
+
     def add_bindcore_row(self, bind_root: etree._Element) -> bool:
         if bind_root is None or bind_root.tag != "BindCore":
             return False
@@ -361,6 +423,7 @@ class GamePerfParser:
         el = etree.SubElement(bind_root, child_tag)
         el.set("name", "")
         el.text = "0"
+        self._normalize_bindcore_whitespace(bind_root)
         self._refresh_game_policy()
         return True
 
@@ -380,6 +443,7 @@ class GamePerfParser:
         if parent is None or parent.tag != "BindCore":
             return False
         parent.remove(child_el)
+        self._normalize_bindcore_whitespace(parent)
         self._refresh_game_policy()
         return True
 

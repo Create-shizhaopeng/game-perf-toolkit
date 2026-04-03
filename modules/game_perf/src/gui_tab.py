@@ -172,7 +172,14 @@ class GamePerfTab(BaseTab):
         self._save_as_btn.setEnabled(False)
         row.addWidget(self._save_as_btn)
 
-        row.addStretch()
+        row.addStretch(1)
+
+        self._policy_version_lbl = QLabel("")
+        self._policy_version_lbl.setProperty("class", "fieldLabel")
+        self._policy_version_lbl.setStyleSheet("font-size: 13px;")
+        self._policy_version_lbl.setMinimumWidth(140)
+        self._policy_version_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(self._policy_version_lbl)
         parent_layout.addLayout(row)
 
     def _create_table_widget(self):
@@ -338,6 +345,7 @@ class GamePerfTab(BaseTab):
             return
 
         if not self.parser.freq_rows:
+            self._update_policy_version_label()
             QMessageBox.warning(self.window(), "解析失败", "未解析到有效配置数据！")
             return
 
@@ -351,11 +359,23 @@ class GamePerfTab(BaseTab):
         self._game_cbx.blockSignals(False)
 
         self._save_as_btn.setEnabled(True)
+        self._update_policy_version_label()
         self._on_game_changed()
 
     # ------------------------------------------------------------------
     # 过滤与刷新
     # ------------------------------------------------------------------
+
+    def _update_policy_version_label(self) -> None:
+        """显示当前已载入 XML 根节点 GameOptPolicy 的 version 属性（另存为按钮右侧）。"""
+        if not self.parser:
+            self._policy_version_lbl.setText("")
+            return
+        v = self.parser.get_game_opt_policy_version()
+        if v:
+            self._policy_version_lbl.setText(f"策略版本: {v}")
+        else:
+            self._policy_version_lbl.setText("策略版本: —")
 
     def _on_game_changed(self):
         if not self.parser:
@@ -965,6 +985,7 @@ class GamePerfTab(BaseTab):
             self._document_origin = GamePerfDocumentOrigin.NONE
             self._document_dirty = False
             self._update_origin_label()
+            self._update_policy_version_label()
 
     def _on_reset(self):
         if not self.require_device():

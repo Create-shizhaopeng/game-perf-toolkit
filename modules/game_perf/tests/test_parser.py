@@ -57,6 +57,9 @@ def parser_with_bindcore(tmp_path):
 
 
 class TestPreEnvParsing:
+    def test_game_opt_policy_version(self, parser):
+        assert parser.get_game_opt_policy_version() == "5"
+
     def test_cpu_clusters_parsed(self, parser):
         assert "Gold" in parser.cpu_clusters
         assert "Prime" in parser.cpu_clusters
@@ -231,3 +234,22 @@ class TestBindCoreRemove:
         tsc = mode.find("ThermalSceneCode")
         assert tsc is not None
         assert not p.remove_bindcore_child(tsc)
+
+
+class TestBindCoreAddFormatting:
+    """新增 BindCore 子项后 XML 换行/缩进与既有 tid 一致（避免 </tid></BindCore> 同行）。"""
+
+    def test_add_bindcore_row_closing_tag_not_on_same_line_as_last_tid(
+        self, parser_with_bindcore, tmp_path
+    ):
+        p = parser_with_bindcore
+        bc = p._root.find(".//BindCore")
+        assert bc is not None
+        assert p.add_bindcore_row(bc)
+        out = tmp_path / "after_add.xml"
+        assert p.save_as(str(out))
+        text = out.read_text(encoding="utf-8")
+        assert "</tid></BindCore>" not in text
+        for line in text.splitlines():
+            if "</BindCore>" in line:
+                assert "</tid>" not in line, f"闭合 BindCore 不应与 tid 末标签同行: {line!r}"
