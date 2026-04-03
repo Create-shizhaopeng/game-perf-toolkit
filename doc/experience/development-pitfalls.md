@@ -34,6 +34,9 @@
 - [P29 — Python 短路求值传 None 给 Qt setEnabled()](#p29--python-短路求值传-none-给-qt-setenabled)
 - [P30 — QWidget 子类 CSS 背景不渲染](#p30--qwidget-子类-css-背景不渲染)
 - [P31 — 函数早返回跳过资源清理逻辑](#p31--函数早返回跳过资源清理逻辑)
+- [P32 — Bug 修复中用瞬时值替代稳定基准值导致级联回归](#p32--bug-修复中用瞬时值替代稳定基准值导致级联回归)
+- [P33 — 技术选型阶段重复造轮子](#p33--技术选型阶段重复造轮子)
+- [P34 — Pydantic AI + LiteLLM prompt 超出模型上下文限制](#p34--pydantic-ai--litellm-prompt-超出模型上下文限制)
 - [按子系统快速索引](#按子系统快速索引)
   - [插件框架](#插件框架)
   - [GUI / PyQt6](#gui--pyqt6)
@@ -73,6 +76,8 @@
 | P29 | Python 短路求值传 None 给 Qt setEnabled() | 中等 | setEnabled、短路求值、bool |
 | P30 | QWidget 子类 CSS 背景不渲染 | 中等 | paintEvent、QStyleOption、透明 |
 | P31 | 函数早返回跳过资源清理逻辑 | 严重 | 早返回、cleanup、线程停止 |
+| P32 | Bug 修复中用瞬时值替代稳定基准值导致级联回归 | 严重 | 瞬时值、基准、回归、Jank 检测 |
+| P33 | 技术选型阶段重复造轮子 | 严重 | 技术选型、第三方库、LiteLLM、LLM Provider |
 
 ### ADB / 设备
 
@@ -87,6 +92,7 @@
 |------|------|--------|--------|
 | P15 | Perfetto detach 须配合 write_into_file | 严重 | detach、文件输出 |
 | P16 | 同 UID 并发会话上限与残留进程 | 中等 | UID、并发、cleanup |
+| P32 | Bug 修复中用瞬时值替代稳定基准值导致级联回归 | 严重 | 瞬时值、基准、Jank |
 | P17 | Ring buffer clone 覆盖的时间范围 | 中等 | ring_buffer、clone、时间窗口 |
 | P26 | Jank 检测误判（阈值与首周期） | 中等 | jank_1、jank_3、VSync、首周期 |
 | P28 | SurfaceView 游戏帧数据采集需 SF fallback | 严重 | SurfaceView、gfxinfo、SurfaceFlinger |
@@ -105,6 +111,8 @@
 | P23 | GLM API 400 错误：对话历史格式 | 中等 | GLM、message role、sanitize |
 | P24 | Tool Schema 中 Callable 参数 | 严重 | Callable、JSON Schema、序列化 |
 | P25 | Python 3.14 annotations 与 get_type_hints 冲突 | 低 | `__future__`、ForwardRef |
+| P33 | 技术选型阶段重复造轮子 | 严重 | LiteLLM、自建 Provider、第三方评估 |
+| P34 | Pydantic AI prompt 超出模型上下文限制 | 中 | pydantic-ai、LiteLLM、GLM、prompt length |
 
 ### 工具链 / 环境
 
@@ -1211,3 +1219,129 @@ def _on_stop(self) -> None:
 - 包含资源清理的函数，清理逻辑 MUST 放在前置条件检查之前，确保任何退出路径都不会跳过清理
 - 对于 QThread 等后台资源，停止/释放操作 SHOULD 无条件执行，即使关联的外部状态已变化
 - 函数中的早返回（guard clause）MUST 审查是否会跳过后续的清理/释放/断开连接等副作用操作
+
+## P32 — Bug 修复中用瞬时值替代稳定基准值导致级联回归
+
+**子系统**：Perfetto Capture / Jank 检测  
+**日期**：2026-04-03
+
+### 现象
+
+修复"30fps 游戏在 120Hz 屏幕上误触发 jank 抓取"的 bug 时，将丢帧判定的 vsync 基准从显示器刷新率（120Hz = 8.33ms）直接替换为 `stats.fps`（瞬时 FPS）计算的游戏帧周期。导致：
+
+1. 首次采样 FPS 为 0 时 vsync 计算异常，检测完全失效
+2. FPS 波动时（如游戏加载、场景切换）vsync 基准不稳定，时而误判时而漏判
+3. 连续两次"修了再改"但未跑回归测试，引入更多回归
+
+### 根因
+
+1. **用瞬时值替代稳定基准**：`stats.fps` 是 200ms 批次的瞬时计算值，受帧数波动影响大，不适合做检测阈值的基准
+2. **改动前缺乏影响分析**：没有梳理 vsync_ms 在状态机中的所有使用场景（触发条件、丢帧计数、稳定期判定）
+3. **连续修改无验证**：第一次改坏后又改了一版，仍未通过实际设备验证就部署
+
+### 解决方案
+
+采用**滚动中位数估算游戏目标帧率**：
+- 维护最近 15 次 FPS 采样的历史记录
+- 取中位数作为游戏稳定帧率的估算（抗抖动）
+- 前 5 次采样（约 1 秒）为热身期，不做触发判定，避免启动瞬态误触发
+- `max(game_vsync, display_vsync)` 确保不低于显示器基线
+
+```python
+sorted_fps = sorted(self._fps_history)
+median_fps = sorted_fps[len(sorted_fps) // 2]
+game_vsync = 1000.0 / max(median_fps, 1)
+return max(game_vsync, display_vsync)
+```
+
+### 预防措施
+
+- 修改检测算法的基准值时 MUST 评估该值的稳定性和边界情况（零值、极值、波动）
+- 核心逻辑修改 MUST 先输出影响分析（参见 `.cursor/rules/core-logic-change-gate.mdc`）
+- Bug 修复 MUST NOT 连续多次修改同一段核心逻辑而不跑测试验证
+- 涉及实时数据做基准的场景 SHOULD 使用滚动窗口统计量（中位数/均值）而非瞬时值
+
+## P33 — 技术选型阶段重复造轮子
+
+### 严重程度：严重
+
+### 场景
+
+需要为框架添加 LLM 多 Provider 统一调用能力时，直接从 `agent_chat` 模块中迁移了自建的 `GLMProvider`（手写 JWT + httpx SSE 流解析）和 `ClaudeProvider`（手写 Anthropic Stream 事件解析）。这些代码约 400 行，存在以下问题：
+
+1. **维护成本高**：每新增一个 Provider 需要手写 HTTP 请求、认证、流解析、错误处理
+2. **稳定性风险**：自建的 SSE 解析、JWT 生成、消息格式转换缺少充分测试
+3. **功能缺失**：缺少重试、速率限制、并发控制等生产级能力
+
+### 根因
+
+- 技术选型阶段（speckit research）只确认了"技术栈已在项目中使用"，**没有评估是否存在更好的第三方方案**
+- 从模块迁移代码时惯性思维，未重新审视"是否值得自建"
+
+### 正确做法
+
+引入 **LiteLLM**（`litellm>=1.80.0`），通过 `litellm.acompletion()` 统一所有 Provider 调用：
+
+- GLM: `zai/glm-4-plus` 路由
+- Claude: `claude-sonnet-4-20250514` 路由
+- 新增 Provider: 只需修改 model name，无需写代码
+
+```python
+# 自建（已废弃）— 每个 Provider ~200 行
+class GLMProvider(LLMProvider):
+    def __init__(self, api_key, model):
+        self._token = _generate_jwt(api_key)  # 手动 JWT
+    async def stream_chat(self, messages, ...):
+        resp = await self._client.post(...)  # 手动 HTTP + SSE
+
+# LiteLLM（当前）— 一个类适配所有 Provider
+class LiteLLMProvider(LLMProvider):
+    async def stream_chat(self, messages, ...):
+        async for chunk in await litellm.acompletion(
+            model=self._litellm_model, messages=messages,
+            api_key=self._api_key, stream=True,
+        ):
+            yield self._convert_chunk(chunk)
+```
+
+### 预防措施
+
+- Speckit research 阶段 MUST 评估"是否有成熟的第三方库可以替代自建实现"
+- 评估维度：社区活跃度、依赖重量、API 稳定性、功能覆盖度
+- 从其他模块迁移代码时 MUST 重新审视"迁移 vs 引入第三方"
+- `spec.md` 中的技术选型章节 SHOULD 包含"替代方案评估"小节
+
+## P34 — Pydantic AI + LiteLLM prompt 超出模型上下文限制
+
+### 严重程度：中
+
+### 场景
+
+使用 Pydantic AI 创建 SubAgent，其 system prompt 由以下部分组成：
+1. Agent instructions（SOP 文档内容）
+2. 工具 docstring（pydantic-ai 自动将所有注册工具的 docstring 序列化为 JSON schema 放入 system prompt）
+3. 用户 prompt（trace 路径、分析场景等）
+
+GLM-4-Plus（ZhipuAI）返回 `ZaiException - Prompt exceeds max length`，尽管模型标称 128K 上下文。
+
+### 根因
+
+- SOP 文档（最大 6.7KB）+ 工具 JSON schema + 指令文本总长超出模型实际输入限制
+- pydantic-ai 将**全部**注册工具的完整参数 schema（包括 docstring、参数描述）序列化为 system prompt 的一部分
+- 工具 docstring 使用了多行详细描述（每个工具 5-10 行），3 个工具合计约 1500 字符
+- Agent instructions 中包含重复冗余内容（分析要求、格式要求等）
+
+### 已做优化
+
+1. SOP 内容截断上限 3000 字符
+2. 工具 docstring 精简为一行
+3. MainAgent / SubAgent 指令大幅精简
+4. 上述优化后仍超限，待继续排查
+
+### 预防措施
+
+- 使用 Pydantic AI 时 MUST 预估 system prompt 总大小（instructions + 所有工具 schema）
+- 工具 docstring SHOULD 尽量简短（一行描述），详细文档放在外部文档中
+- SOP 文档 SHOULD 控制在 2000 字符以内，超出部分裁剪或分段加载
+- 如目标模型上下文较小，考虑动态选择工具子集（仅注册当前场景所需工具）
+- 考虑添加 prompt 大小检测日志，在发送前统计 token 数
