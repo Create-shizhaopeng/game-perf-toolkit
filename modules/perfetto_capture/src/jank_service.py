@@ -208,16 +208,23 @@ class JankMonitorService:
     def detect_frame_source(self, package: str) -> str:
         """检测应用适合的帧数据来源。
 
-        优先尝试 gfxinfo framestats，如果没有 PROFILEDATA 则回退到 SF latency。
+        先尝试 gfxinfo framestats 并实际解析验证是否有帧数据，
+        仅当存在 PROFILEDATA 且解析出帧数据时使用 gfxinfo；
+        否则回退到 SurfaceFlinger --latency。
 
         Returns:
             "gfxinfo" 或 "sf_latency"
         """
+        from .jank_parser import parse_framestats
+
         output = self.get_framestats(package)
         if output and "---PROFILEDATA---" in output:
-            self._use_sf_latency = False
-            logger.info("%s 使用 gfxinfo framestats 采集帧数据", package)
-            return "gfxinfo"
+            frames = parse_framestats(output)
+            if frames:
+                self._use_sf_latency = False
+                logger.info("%s 使用 gfxinfo framestats 采集帧数据 (%d帧)", package, len(frames))
+                return "gfxinfo"
+            logger.info("%s gfxinfo 有 PROFILEDATA 标记但无帧数据，尝试 SF latency", package)
 
         layer = self._find_surface_layer(package)
         if layer:

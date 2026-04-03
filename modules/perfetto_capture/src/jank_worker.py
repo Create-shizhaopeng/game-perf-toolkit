@@ -91,6 +91,7 @@ class JankMonitorWorker(QThread):
         self._last_sf_timestamp_ns: int = 0
         self._recent_frames_tail: list = []
         self._jank_window: list[tuple[float, int]] = []
+        self._gfxinfo_empty_count: int = 0
 
     def configure(self, config: JankConfig, target_package: str) -> None:
         """配置监控参数。"""
@@ -126,6 +127,7 @@ class JankMonitorWorker(QThread):
         self._last_sf_timestamp_ns = 0
         self._recent_frames_tail = []
         self._jank_window = []
+        self._gfxinfo_empty_count = 0
         self._start_capture_region()
 
         self._service.clear_cache()
@@ -193,12 +195,23 @@ class JankMonitorWorker(QThread):
         self._state = MonitorState.IDLE
         self.state_changed.emit(self._state)
 
+    GFXINFO_FALLBACK_THRESHOLD = 10
+
     def _poll_frame_data(self) -> None:
-        """轮询帧数据，自动选择 gfxinfo 或 SurfaceFlinger 采集方式。"""
+        """轮询帧数据，自动选择 gfxinfo 或 SurfaceFlinger 采集方式。
+
+        如果 gfxinfo 连续返回空超过阈值，自动降级到 SF latency。
+        """
         if self._service.using_sf_latency:
             frames = self._poll_sf_latency()
         else:
             frames = self._poll_gfxinfo()
+            if not frames:
+                self._gfxinfo_empty_count += 1
+                if self._gfxinfo_empty_count >= self.GFXINFO_FALLBACK_THRESHOLD:
+                    self._try_fallback_to_sf_latency()
+            else:
+                self._gfxinfo_empty_count = 0
 
         if not frames:
             return
@@ -235,6 +248,22 @@ class JankMonitorWorker(QThread):
 
         if not self._capture_paused:
             self._update_trigger_state(stats)
+
+    def _try_fallback_to_sf_latency(self) -> None:
+        """gfxinfo 持续返回空时，运行时降级到 SurfaceFlinger latency。"""
+        layer = self._service._find_surface_layer(self._target_package)
+        if layer:
+            self._service._use_sf_latency = True
+            self._service.reset_sf_latency(self._target_package)
+            self._last_sf_timestamp_ns = 0
+            self._gfxinfo_empty_count = 0
+            logger.info(
+                "gfxinfo 连续 %d 次为空，运行时降级到 SF latency (layer=%s)",
+                self.GFXINFO_FALLBACK_THRESHOLD, layer,
+            )
+        else:
+            self._gfxinfo_empty_count = 0
+            logger.warning("gfxinfo 持续为空且未找到 SF 图层，无法降级")
 
     def _poll_gfxinfo(self) -> list:
         """通过 gfxinfo framestats 采集帧数据。"""

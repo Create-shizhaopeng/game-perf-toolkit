@@ -1091,6 +1091,8 @@ class PerfettoCaptureTab(BaseTab):
             self._log("⚠ Jank 监控未启动：请先选择监控应用", "warning")
             return
 
+        self._fps_chart.clear()
+
         try:
             from .jank_worker import JankMonitorWorker
             self._jank_worker = JankMonitorWorker(self._adb, self._serial, self)
