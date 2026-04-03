@@ -8,8 +8,6 @@ import time
 from typing import Any, Callable
 
 from .llm.base import LLMProvider
-from .llm.claude_provider import ClaudeProvider
-from .llm.glm_provider import GLMProvider
 from .memory.conversation import ConversationStore
 from .models import (
     AgentConfig,
@@ -56,6 +54,7 @@ class AgentService:
         tool_registry: ToolRegistry | None = None,
         sop_manager: SOPManager | None = None,
         skills_manager: SkillsManager | None = None,
+        llm_manager: object | None = None,
     ) -> None:
         self._config = config
         self._store = conversation_store
@@ -65,6 +64,7 @@ class AgentService:
         self._provider: LLMProvider | None = None
         self._cancelled = False
         self._tracker: WorkflowTracker | None = None
+        self._llm_manager = llm_manager
 
         if tool_registry:
             self._tools = tool_registry.get_definitions()
@@ -81,8 +81,19 @@ class AgentService:
 
         self._init_provider()
 
+        if self._llm_manager and hasattr(self._llm_manager, "provider_changed"):
+            self._llm_manager.provider_changed.connect(  # type: ignore[union-attr]
+                self._on_provider_changed
+            )
+
     def _init_provider(self) -> None:
-        """根据配置初始化 LLM Provider。"""
+        """根据配置初始化 LLM Provider。优先从全局 LLMManager 获取。"""
+        if self._llm_manager and hasattr(self._llm_manager, "get_provider"):
+            self._provider = self._llm_manager.get_provider()  # type: ignore[union-attr]
+            if self._provider:
+                return
+            logger.info("LLMManager 未配置 Provider，尝试本地初始化")
+
         provider = self._config.provider
         api_key = self._resolve_api_key(provider)
 
@@ -91,18 +102,15 @@ class AgentService:
             return
 
         try:
-            if provider == "glm":
-                self._provider = GLMProvider(
-                    api_key=api_key, model=self._config.model_name
-                )
-            elif provider == "claude":
-                self._provider = ClaudeProvider(
-                    api_key=api_key, model=self._config.model_name
-                )
-            else:
-                logger.error("不支持的 Provider: %s", provider)
-        except ImportError as exc:
-            logger.error("Provider SDK 导入失败: %s", exc)
+            from toolkit.core.llm.litellm_provider import LiteLLMProvider
+
+            self._provider = LiteLLMProvider(
+                api_key=api_key,
+                model=self._config.model_name,
+                provider=provider,
+            )
+        except Exception as exc:
+            logger.error("Provider 初始化失败: %s", exc)
 
     def _resolve_api_key(self, provider: str) -> str:
         """解析 API Key（优先 api_key → 分 provider 的 key）。"""
@@ -113,6 +121,14 @@ class AgentService:
         if provider == "claude":
             return self._config.claude_api_key
         return ""
+
+    def _on_provider_changed(self, provider_name: str) -> None:
+        """全局 Provider 切换后刷新内部引用。"""
+        if self._llm_manager and hasattr(self._llm_manager, "get_provider"):
+            new_provider = self._llm_manager.get_provider()  # type: ignore[union-attr]
+            if new_provider:
+                self._provider = new_provider
+                logger.info("Agent Provider 已切换至: %s", provider_name)
 
     @property
     def is_ready(self) -> bool:
@@ -396,6 +412,9 @@ class AgentService:
             elif chunk.type == StreamChunkType.USAGE:
                 if isinstance(chunk.data, dict):
                     usage = chunk.data
+                    total = usage.get("total_tokens", 0)
+                    if total and self._llm_manager and hasattr(self._llm_manager, "record_tokens"):
+                        self._llm_manager.record_tokens(total)  # type: ignore[union-attr]
 
             elif chunk.type == StreamChunkType.ERROR:
                 error_text = str(chunk.data)

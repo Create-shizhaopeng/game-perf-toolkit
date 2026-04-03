@@ -24,25 +24,26 @@ from pydantic import BaseModel, Field
 class AgentConfig(BaseModel):
     """Agent 模块配置。"""
 
+    # --- LLM 字段（已迁移至全局 LLMConfig，保留用于向后兼容和降级回退） ---
     provider: str = Field(
         default="glm",
-        description="LLM Provider: glm / claude",
+        description="[deprecated] LLM Provider — 优先使用全局 LLMManager",
     )
     api_key: str = Field(
         default="",
-        description="当前 Provider 的 API Key",
+        description="[deprecated] 当前 Provider 的 API Key",
     )
     model_name: str = Field(
         default="glm-4-plus",
-        description="模型名称",
+        description="[deprecated] 模型名称",
     )
     max_tokens: int = Field(
         default=4096,
-        description="LLM 最大输出 token 数",
+        description="[deprecated] LLM 最大输出 token 数",
     )
     temperature: float = Field(
         default=0.3,
-        description="采样温度",
+        description="[deprecated] 采样温度",
     )
     sop_dir: str = Field(
         default="",
@@ -54,7 +55,7 @@ class AgentConfig(BaseModel):
     )
     smart_switch: bool = Field(
         default=True,
-        description="智能 Provider 切换（复杂任务自动使用 Claude）",
+        description="[deprecated] 智能 Provider 切换 — 优先使用全局 LLMManager",
     )
     max_conversations: int = Field(
         default=50,
@@ -74,11 +75,11 @@ class AgentConfig(BaseModel):
     )
     claude_api_key: str = Field(
         default="",
-        description="Claude 的 API Key（支持双 Key 智能切换）",
+        description="[deprecated] Claude API Key — 优先使用全局 LLMConfig",
     )
     glm_api_key: str = Field(
         default="",
-        description="GLM 的 API Key",
+        description="[deprecated] GLM API Key — 优先使用全局 LLMConfig",
     )
 
 

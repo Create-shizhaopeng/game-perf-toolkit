@@ -594,7 +594,6 @@ class _SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         tabs = QTabWidget()
 
-        tabs.addTab(self._build_model_tab(), "模型配置")
         tabs.addTab(self._build_sop_tab(), "SOP 管理")
         tabs.addTab(self._build_mcp_tab(), "MCP 管理")
         tabs.addTab(self._build_advanced_tab(), "高级设置")
@@ -855,6 +854,16 @@ class _SettingsDialog(QDialog):
         wf_layout.addWidget(self._chk_wf_learn)
         layout.addWidget(grp_wf)
 
+        grp_lang = QGroupBox("语言")
+        lang_layout = QHBoxLayout(grp_lang)
+        lang_layout.addWidget(QLabel("回复语言:"))
+        self._lang_combo = QComboBox()
+        self._lang_combo.addItems(["中文", "English"])
+        self._lang_combo.setCurrentIndex(0 if self._config.language == "zh" else 1)
+        lang_layout.addWidget(self._lang_combo)
+        lang_layout.addStretch()
+        layout.addWidget(grp_lang)
+
         layout.addStretch()
         return w
 
@@ -893,33 +902,17 @@ class _SettingsDialog(QDialog):
             self._refresh_sop_tree()
 
     def _on_save(self) -> None:
-        from .models import AgentConfig, save_config
+        from .models import save_config
 
-        provider = "claude" if self._rb_claude.isChecked() else "glm"
-        api_key = self._key_input.text().strip()
-        model_name = self._model_combo.currentText().strip()
         language = "en" if self._lang_combo.currentIndex() == 1 else "zh"
-        temperature = self._temp_slider.value() / 100.0
 
-        updates = {
-            "provider": provider,
-            "model_name": model_name or self._config.model_name,
-            "temperature": temperature,
+        updates: dict = {
             "language": language,
-            "smart_switch": self._chk_smart.isChecked(),
             "max_conversations": self._spin_max_conv.value(),
             "max_context_messages": self._spin_max_ctx.value(),
             "tool_result_max_length": self._spin_tool_len.value(),
             "workflow_learning_enabled": self._chk_wf_learn.isChecked(),
         }
-
-        if api_key:
-            if provider == "glm":
-                updates["glm_api_key"] = api_key
-                updates["api_key"] = api_key
-            else:
-                updates["claude_api_key"] = api_key
-                updates["api_key"] = api_key
 
         new_config = self._config.model_copy(update=updates)
         save_config(new_config)
@@ -1260,12 +1253,14 @@ class AgentTab(BaseTab):
         skill_tools = self._skills_manager.create_agent_tools()
         tool_registry.register_many(skill_tools)
 
+        llm_manager = self.context.get("llm_manager") if self.context else None
         self._service = AgentService(
             config=self._config,
             conversation_store=self._store,
             tool_registry=tool_registry,
             sop_manager=self._sop_manager,
             skills_manager=self._skills_manager,
+            llm_manager=llm_manager,
         )
 
     def _reinit_service(self) -> None:

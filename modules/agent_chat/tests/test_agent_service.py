@@ -95,7 +95,7 @@ class TestServiceInit:
 
     def test_is_ready_with_key(self, config: AgentConfig):
         with patch(
-            "modules.agent_chat.src.service.GLMProvider"
+            "modules.agent_chat.src.llm.glm_provider.GLMProvider"
         ) as MockProv:
             svc = AgentService(config=config)
         assert svc.is_ready
@@ -105,10 +105,11 @@ class TestServiceInit:
         svc = AgentService(config=cfg)
         assert not svc.is_ready
 
-    def test_unsupported_provider(self):
+    def test_any_provider_with_key_is_ready(self):
+        """LiteLLM 接受任意 Provider 名称，验证在运行时而非初始化时。"""
         cfg = AgentConfig(provider="unknown", api_key="key")
         svc = AgentService(config=cfg)
-        assert not svc.is_ready
+        assert svc.is_ready
 
 
 class TestServiceChat:
@@ -116,7 +117,7 @@ class TestServiceChat:
     @pytest.mark.asyncio
     async def test_simple_text_response(self, config, store):
         with patch(
-            "modules.agent_chat.src.service.GLMProvider"
+            "modules.agent_chat.src.llm.glm_provider.GLMProvider"
         ) as MockProv:
             mock_provider = _make_mock_provider(
                 return_chunks=_make_text_chunks("你好！我是 Agent。")
@@ -137,7 +138,7 @@ class TestServiceChat:
     @pytest.mark.asyncio
     async def test_chat_without_store(self, config):
         with patch(
-            "modules.agent_chat.src.service.GLMProvider"
+            "modules.agent_chat.src.llm.glm_provider.GLMProvider"
         ) as MockProv:
             mock_provider = _make_mock_provider(
                 return_chunks=_make_text_chunks("回复")
@@ -164,7 +165,7 @@ class TestServiceChat:
     @pytest.mark.asyncio
     async def test_cancel_during_chat(self, config):
         with patch(
-            "modules.agent_chat.src.service.GLMProvider"
+            "modules.agent_chat.src.llm.glm_provider.GLMProvider"
         ) as MockProv:
             async def slow_stream(*args, **kwargs):
                 svc.cancel()
@@ -204,7 +205,7 @@ class TestServiceToolCalls:
         ))
 
         with patch(
-            "modules.agent_chat.src.service.GLMProvider"
+            "modules.agent_chat.src.llm.glm_provider.GLMProvider"
         ) as MockProv:
             mock_provider = _make_mock_provider(side_effect=mock_stream)
             MockProv.return_value = mock_provider
@@ -242,7 +243,7 @@ class TestServiceToolCalls:
         ))
 
         with patch(
-            "modules.agent_chat.src.service.GLMProvider"
+            "modules.agent_chat.src.llm.glm_provider.GLMProvider"
         ) as MockProv:
             mock_provider = _make_mock_provider(side_effect=mock_stream)
             MockProv.return_value = mock_provider
@@ -281,7 +282,7 @@ class TestServiceToolCalls:
                     yield c
 
         with patch(
-            "modules.agent_chat.src.service.GLMProvider"
+            "modules.agent_chat.src.llm.glm_provider.GLMProvider"
         ) as MockProv:
             mock_provider = _make_mock_provider(side_effect=mock_stream)
             MockProv.return_value = mock_provider
@@ -310,7 +311,7 @@ class TestServiceToolCalls:
                     yield c
 
         with patch(
-            "modules.agent_chat.src.service.GLMProvider"
+            "modules.agent_chat.src.llm.glm_provider.GLMProvider"
         ) as MockProv:
             mock_provider = _make_mock_provider(side_effect=mock_stream)
             MockProv.return_value = mock_provider
@@ -325,7 +326,7 @@ class TestServiceSystemPrompt:
     @pytest.mark.asyncio
     async def test_default_chinese(self, config):
         with patch(
-            "modules.agent_chat.src.service.GLMProvider"
+            "modules.agent_chat.src.llm.glm_provider.GLMProvider"
         ) as MockProv:
             mock_provider = MagicMock()
             MockProv.return_value = mock_provider
@@ -364,7 +365,7 @@ class TestServiceSystemPrompt:
                 yield c
 
         with patch(
-            "modules.agent_chat.src.service.GLMProvider"
+            "modules.agent_chat.src.llm.glm_provider.GLMProvider"
         ) as MockProv:
             mock_provider = MagicMock()
             MockProv.return_value = mock_provider
@@ -378,7 +379,7 @@ class TestServiceSystemPrompt:
 
     def test_trim_system_prompt_short(self, config):
         with patch(
-            "modules.agent_chat.src.service.GLMProvider"
+            "modules.agent_chat.src.llm.glm_provider.GLMProvider"
         ) as MockProv:
             MockProv.return_value = MagicMock()
             svc = AgentService(config=config)
@@ -388,7 +389,7 @@ class TestServiceSystemPrompt:
 
     def test_trim_system_prompt_long(self, config):
         with patch(
-            "modules.agent_chat.src.service.GLMProvider"
+            "modules.agent_chat.src.llm.glm_provider.GLMProvider"
         ) as MockProv:
             MockProv.return_value = MagicMock()
             svc = AgentService(config=config)
@@ -427,7 +428,7 @@ class TestServiceWorkflowDeposit:
         reg.register(ToolDefinition(name="tool_b", description="B", method=tool_fn))
 
         with patch(
-            "modules.agent_chat.src.service.GLMProvider"
+            "modules.agent_chat.src.llm.glm_provider.GLMProvider"
         ) as MockProv:
             mock_provider = _make_mock_provider(side_effect=mock_stream)
             MockProv.return_value = mock_provider
