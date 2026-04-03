@@ -133,6 +133,7 @@ class JankConfig(BaseModel):
     max_captures: int = Field(default=3, ge=1, le=10)
     stabilize_delay_sec: int = Field(default=2, ge=1, le=10)
     max_stabilize_sec: int = Field(default=8, ge=2, le=30)
+    max_duration_hours: int = Field(default=3, ge=1, le=12)
 
 
 class FrameExportRow(BaseModel):
@@ -202,6 +203,9 @@ class HistoryTrace(BaseModel):
     device_model: str | None = None
     device_soc: str | None = None
     captured_at: datetime.datetime | None = None
+    analysis_status: str | None = None
+    target_package: str | None = None
+    last_analysis_id: str | None = None
 
 
 class HistorySession(BaseModel):

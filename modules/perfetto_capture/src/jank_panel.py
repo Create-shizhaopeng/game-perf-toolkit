@@ -162,6 +162,17 @@ class JankConfigPanel(QWidget):
         lbl2.setStyleSheet("font-size: 11px;")
         form.addRow(lbl2, self._max_captures_spin)
 
+        self._duration_spin = QSpinBox()
+        self._duration_spin.setRange(1, 12)
+        self._duration_spin.setValue(3)
+        self._duration_spin.setSuffix(" 小时")
+        self._duration_spin.setFixedHeight(24)
+        self._duration_spin.setToolTip("监控最大持续时长，到期自动停止")
+        self._duration_spin.valueChanged.connect(self._on_duration_changed)
+        lbl3 = QLabel("监控时长")
+        lbl3.setStyleSheet("font-size: 11px;")
+        form.addRow(lbl3, self._duration_spin)
+
         layout.addLayout(form)
 
         # 抓取状态
@@ -194,12 +205,14 @@ class JankConfigPanel(QWidget):
             target_package=self._app_selector.selected_package,
             jank_threshold=self._threshold_spin.value(),
             max_captures=self._max_captures_spin.value(),
+            max_duration_hours=self._duration_spin.value(),
         )
 
     def set_config(self, config: JankConfig) -> None:
         self._config = config
         self._threshold_spin.setValue(config.jank_threshold)
         self._max_captures_spin.setValue(config.max_captures)
+        self._duration_spin.setValue(config.max_duration_hours)
 
     def set_default_threshold(self, threshold: int) -> None:
         self._threshold_spin.setValue(threshold)
@@ -208,6 +221,7 @@ class JankConfigPanel(QWidget):
         self._app_selector.set_enabled(enabled)
         self._threshold_spin.setEnabled(enabled)
         self._max_captures_spin.setEnabled(enabled)
+        self._duration_spin.setEnabled(enabled)
 
     def update_capture_count(self, current: int, max_count: int) -> None:
         """更新抓取进度。"""
@@ -233,4 +247,8 @@ class JankConfigPanel(QWidget):
 
     def _on_max_captures_changed(self, value: int) -> None:
         self._config.max_captures = value
+        self.config_changed.emit(self.get_config())
+
+    def _on_duration_changed(self, value: int) -> None:
+        self._config.max_duration_hours = value
         self.config_changed.emit(self.get_config())

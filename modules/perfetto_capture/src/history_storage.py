@@ -70,14 +70,56 @@ class HistoryStorage:
                     device_model TEXT,
                     device_soc TEXT,
                     captured_at TEXT,
+                    analysis_status TEXT,
+                    target_package TEXT,
+                    last_analysis_id TEXT,
                     FOREIGN KEY (session_id) REFERENCES pe_history_sessions(id) ON DELETE CASCADE
+                );
+
+                -- 分析任务表
+                CREATE TABLE IF NOT EXISTS pe_analysis_tasks (
+                    id TEXT PRIMARY KEY,
+                    trace_path TEXT NOT NULL,
+                    process_name TEXT,
+                    user_intent TEXT,
+                    scene TEXT,
+                    status TEXT NOT NULL DEFAULT 'PENDING',
+                    result_dir TEXT,
+                    error_message TEXT,
+                    token_used INTEGER DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    completed_at TEXT
                 );
 
                 -- 索引
                 CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON pe_history_sessions(created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_traces_session_id ON pe_history_traces(session_id);
+                CREATE INDEX IF NOT EXISTS idx_analysis_trace ON pe_analysis_tasks(trace_path);
+                CREATE INDEX IF NOT EXISTS idx_analysis_status ON pe_analysis_tasks(status);
             """)
+            self._ensure_extra_columns(conn)
             logger.debug("历史记录表已就绪: %s", self.db_path)
+
+    def _ensure_extra_columns(self, conn: sqlite3.Connection) -> None:
+        """向后兼容：为旧数据库动态添加新列。"""
+        existing = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(pe_history_traces)").fetchall()
+        }
+        new_cols = [
+            ("analysis_status", "TEXT"),
+            ("target_package", "TEXT"),
+            ("last_analysis_id", "TEXT"),
+        ]
+        for col_name, col_type in new_cols:
+            if col_name not in existing:
+                try:
+                    conn.execute(
+                        f"ALTER TABLE pe_history_traces ADD COLUMN {col_name} {col_type}"
+                    )
+                    logger.info("已添加列: pe_history_traces.%s", col_name)
+                except sqlite3.OperationalError:
+                    pass
 
     def insert_session(self, session: HistorySession) -> None:
         """插入或更新会话记录。"""
@@ -285,3 +327,101 @@ class HistoryStorage:
             count = cursor.rowcount
         logger.info("已清空 %d 个会话的历史记录", count)
         return count
+
+    # ── 分析任务 CRUD ──────────────────────────────────────────────
+
+    def create_analysis_task(
+        self,
+        task_id: str,
+        trace_path: str,
+        process_name: str = "",
+        user_intent: str = "",
+    ) -> None:
+        """创建分析任务记录。"""
+        now = datetime.now().isoformat()
+        with self._get_conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO pe_analysis_tasks (id, trace_path, process_name, user_intent, status, created_at)
+                VALUES (?, ?, ?, ?, 'PENDING', ?)
+                """,
+                (task_id, trace_path, process_name, user_intent, now),
+            )
+        logger.debug("分析任务已创建: %s", task_id)
+
+    def update_task_status(
+        self,
+        task_id: str,
+        status: str,
+        result_dir: str = "",
+        error_message: str = "",
+        token_used: int = 0,
+    ) -> None:
+        """更新分析任务状态。"""
+        completed_at = (
+            datetime.now().isoformat()
+            if status in ("COMPLETED", "FAILED", "TIMEOUT", "CANCELLED")
+            else None
+        )
+        with self._get_conn() as conn:
+            conn.execute(
+                """
+                UPDATE pe_analysis_tasks
+                SET status = ?, result_dir = ?, error_message = ?,
+                    token_used = ?, completed_at = ?
+                WHERE id = ?
+                """,
+                (status, result_dir, error_message, token_used, completed_at, task_id),
+            )
+
+    def get_tasks_for_trace(self, trace_path: str) -> list[dict]:
+        """获取指定 trace 的所有分析任务。"""
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM pe_analysis_tasks
+                WHERE trace_path = ?
+                ORDER BY created_at DESC
+                """,
+                (trace_path,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_all_analysis_tasks(self, limit: int = 100) -> list[dict]:
+        """获取所有分析任务（按时间倒序）。"""
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM pe_analysis_tasks
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def delete_analysis_task(self, task_id: str) -> bool:
+        """删除分析任务记录。"""
+        with self._get_conn() as conn:
+            cursor = conn.execute(
+                "DELETE FROM pe_analysis_tasks WHERE id = ?",
+                (task_id,),
+            )
+            deleted = cursor.rowcount > 0
+        if deleted:
+            logger.debug("分析任务已删除: %s", task_id)
+        return deleted
+
+    def update_trace_analysis_status(
+        self, file_path: str, status: str, analysis_id: str = ""
+    ) -> None:
+        """更新 trace 的分析状态标记。"""
+        with self._get_conn() as conn:
+            conn.execute(
+                """
+                UPDATE pe_history_traces
+                SET analysis_status = ?, last_analysis_id = ?
+                WHERE file_path = ?
+                """,
+                (status, analysis_id, file_path),
+            )

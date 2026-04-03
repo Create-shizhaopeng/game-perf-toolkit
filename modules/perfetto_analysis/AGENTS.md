@@ -7,6 +7,7 @@
 - [Skills 管理](#skills-管理)
 - [继承的全局规则](#继承的全局规则)
 - [模块边界约束](#模块边界约束)
+- [Agent 编排引擎](#agent-编排引擎)
 - [模块特有规则](#模块特有规则)
 - [GUI 开发注意事项](#gui-开发注意事项)
 - [数据库相关规则](#数据库相关规则)
@@ -85,6 +86,28 @@ Perfetto trace 丢帧解析与多维度卡顿归因分析模块。基于 Android
 - 禁止修改：`toolkit/`、其他模块目录、项目根配置文件
 - 可以导入：`toolkit.sdk.*`、`toolkit.core.hookspecs`
 - 禁止导入：`toolkit.core` 内部实现、其他模块的 `src/`
+
+## Agent 编排引擎
+
+本模块包含基于 Pydantic AI 的多 Agent 编排引擎，位于 `src/agent/` 目录。
+
+| 文件 | 说明 |
+|------|------|
+| `__init__.py` | 数据模型（AnalysisTask, AnalysisStatus, AnalysisReport, AnalysisRouting, AgentRole, AnalysisConfig） |
+| `agents.py` | Pydantic AI Agent 工厂（MainAgent / SubAgent / ReviewAgent） |
+| `orchestrator.py` | 编排器，管理 Main→Sub→Review 流程，支持单条和批量分析 |
+| `tools.py` | 将 PerfettoAnalysisService 的 pa_* 方法封装为 Pydantic AI 工具 |
+| `prompts.py` | SOP 加载和 Agent 指令模板管理 |
+| `report.py` | Jinja2 HTML 报告生成 + 原始数据 JSON 保存 |
+| `package_db.py` | 包名↔进程名映射数据库（自动学习 + JSON 导入/导出） |
+
+### 关键约束
+
+- `AnalysisOrchestrator` 是编排器（非 Agent），管理 Agent 实例生命周期
+- 每个 trace 的分析在独立 SubAgent 中执行，上下文完全隔离
+- 通过 `pydantic-ai-litellm` 适配 LiteLLM，复用全局 LLMManager 配置
+- 分析结果存放路径：`output/analysis/<trace_stem>_<YYYYMMDD_HHmmss>/`
+- GUI 层通过 `AnalysisWorker(QThread)` 调用编排器，使用 `asyncio.run()` 驱动异步流程
 
 ## 模块特有规则
 

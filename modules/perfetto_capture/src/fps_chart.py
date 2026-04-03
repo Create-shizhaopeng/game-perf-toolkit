@@ -15,6 +15,7 @@ from PyQt6.QtGui import QColor, QFont, QPainter
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QScrollBar,
     QVBoxLayout,
     QWidget,
 )
@@ -35,50 +36,82 @@ _REGION_BAR_BG = "#313244"
 
 
 class FpsChartData:
-    """FPS 图表数据管理。"""
+    """FPS 图表数据管理（1 秒聚合，分块增长 numpy 数组）。"""
 
-    def __init__(self, max_seconds: int = 300) -> None:
-        self._max_points = max_seconds * 5
-        self._timestamps = np.zeros(self._max_points, dtype=np.float64)
-        self._fps_values = np.zeros(self._max_points, dtype=np.float64)
-        self._current_idx = 0
+    INITIAL_CAPACITY = 1800
+
+    def __init__(self) -> None:
+        self._capacity = self.INITIAL_CAPACITY
+        self._timestamps = np.empty(self._capacity, dtype=np.float64)
+        self._fps_values = np.empty(self._capacity, dtype=np.float64)
+        self._size = 0
         self._start_time: datetime.datetime | None = None
         self._max_fps_seen = 0.0
 
         self._jank_points: list[tuple[float, float]] = []
         self._big_jank_points: list[tuple[float, float]] = []
 
+        self._pending_fps: list[float] = []
+        self._pending_jank: int = 0
+        self._pending_big_jank: int = 0
+        self._last_second: int = -1
+        self._latest_fps: float = 0.0
+
     def add_stats(self, stats: FrameStats) -> None:
         if self._start_time is None:
             self._start_time = stats.timestamp
 
         elapsed = (stats.timestamp - self._start_time).total_seconds()
+        current_second = int(elapsed)
 
-        if self._current_idx >= self._max_points:
-            self._timestamps[:-1] = self._timestamps[1:]
-            self._fps_values[:-1] = self._fps_values[1:]
-            self._current_idx = self._max_points - 1
-            cutoff = elapsed - 300
-            self._jank_points = [(x, y) for x, y in self._jank_points if x > cutoff]
-            self._big_jank_points = [(x, y) for x, y in self._big_jank_points if x > cutoff]
+        self._latest_fps = stats.fps
+        self._pending_fps.append(stats.fps)
+        self._pending_jank += stats.jank_count
+        self._pending_big_jank += stats.big_jank_count
 
-        self._timestamps[self._current_idx] = elapsed
-        self._fps_values[self._current_idx] = stats.fps
-        self._current_idx += 1
+        if current_second > self._last_second and self._last_second >= 0:
+            self._flush_second(float(self._last_second))
 
-        if stats.fps > self._max_fps_seen:
-            self._max_fps_seen = stats.fps
+        self._last_second = current_second
 
-        if stats.jank_count > 0:
-            self._jank_points.append((elapsed, stats.fps))
-        if stats.big_jank_count > 0:
-            self._big_jank_points.append((elapsed, stats.fps))
+    def _flush_second(self, timestamp: float) -> None:
+        """将累积的 200ms 样本聚合为 1 秒数据点。"""
+        if not self._pending_fps:
+            return
+
+        avg_fps = sum(self._pending_fps) / len(self._pending_fps)
+
+        if self._size >= self._capacity:
+            self._grow()
+
+        self._timestamps[self._size] = timestamp
+        self._fps_values[self._size] = avg_fps
+        self._size += 1
+
+        if avg_fps > self._max_fps_seen:
+            self._max_fps_seen = avg_fps
+
+        if self._pending_jank > 0:
+            self._jank_points.append((timestamp, avg_fps))
+        if self._pending_big_jank > 0:
+            self._big_jank_points.append((timestamp, avg_fps))
+
+        self._pending_fps.clear()
+        self._pending_jank = 0
+        self._pending_big_jank = 0
+
+    def _grow(self) -> None:
+        new_cap = self._capacity * 2
+        new_ts = np.empty(new_cap, dtype=np.float64)
+        new_fps = np.empty(new_cap, dtype=np.float64)
+        new_ts[: self._capacity] = self._timestamps
+        new_fps[: self._capacity] = self._fps_values
+        self._timestamps = new_ts
+        self._fps_values = new_fps
+        self._capacity = new_cap
 
     def get_curve_data(self) -> tuple[np.ndarray, np.ndarray]:
-        return (
-            self._timestamps[: self._current_idx].copy(),
-            self._fps_values[: self._current_idx].copy(),
-        )
+        return self._timestamps[: self._size], self._fps_values[: self._size]
 
     def get_jank_markers(self) -> tuple[np.ndarray, np.ndarray]:
         if not self._jank_points:
@@ -94,15 +127,13 @@ class FpsChartData:
 
     @property
     def elapsed_seconds(self) -> float:
-        if self._current_idx == 0:
+        if self._last_second < 0:
             return 0.0
-        return self._timestamps[self._current_idx - 1]
+        return float(self._last_second)
 
     @property
     def latest_fps(self) -> float:
-        if self._current_idx == 0:
-            return 0.0
-        return self._fps_values[self._current_idx - 1]
+        return self._latest_fps
 
     @property
     def total_jank(self) -> int:
@@ -117,13 +148,19 @@ class FpsChartData:
         return self._max_fps_seen
 
     def clear(self) -> None:
-        self._timestamps.fill(0)
-        self._fps_values.fill(0)
-        self._current_idx = 0
+        self._capacity = self.INITIAL_CAPACITY
+        self._timestamps = np.empty(self._capacity, dtype=np.float64)
+        self._fps_values = np.empty(self._capacity, dtype=np.float64)
+        self._size = 0
         self._start_time = None
         self._max_fps_seen = 0.0
+        self._latest_fps = 0.0
         self._jank_points.clear()
         self._big_jank_points.clear()
+        self._pending_fps.clear()
+        self._pending_jank = 0
+        self._pending_big_jank = 0
+        self._last_second = -1
 
 
 class ChartStatsOverlay(QWidget):
@@ -183,10 +220,14 @@ class FpsChartWidget(QWidget):
     pause_clicked = pyqtSignal()
     export_clicked = pyqtSignal()
 
+    _FOLLOW_TOLERANCE = 2.0
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._data = FpsChartData()
         self._paused = False
+        self._following = True
+        self._syncing_scrollbar = False
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -216,14 +257,23 @@ class FpsChartWidget(QWidget):
 
         y_axis = self._plot.getAxis("left")
         y_axis.setTicks([[(v, str(v)) for v in (30, 60, 90, 120, 150)]])
+
+        x_axis = self._plot.getAxis("bottom")
+        x_axis.setTickSpacing(major=10, minor=1)
         self._plot.setYRange(0, 70)
         self._plot.setXRange(0, 60)
         vb = self._plot.getViewBox()
-        vb.setMouseEnabled(x=False, y=False)
+        vb.setMouseEnabled(x=True, y=False)
         vb.setLimits(xMin=0, yMin=0, yMax=200)
+        vb.enableAutoRange(axis="x", enable=False)
+        vb.enableAutoRange(axis="y", enable=False)
+        vb.sigRangeChangedManually.connect(self._on_range_changed_manually)
 
         self._fps_curve = self._plot.plot(
             pen=pg.mkPen(color=_FPS_COLOR, width=2),
+            clipToView=True,
+            downsample=1,
+            downsampleMethod="peak",
         )
         self._jank_scatter = self._plot.plot(
             pen=None, symbol="o",
@@ -246,6 +296,109 @@ class FpsChartWidget(QWidget):
         chart_layout.addWidget(self._stats_overlay)
 
         layout.addWidget(chart_container)
+
+        self._scrollbar = QScrollBar(Qt.Orientation.Horizontal)
+        self._scrollbar.setStyleSheet(f"""
+            QScrollBar:horizontal {{
+                background: {_BG}; height: 12px; border: none;
+            }}
+            QScrollBar::handle:horizontal {{
+                background: {_AXIS}; min-width: 20px; border-radius: 4px;
+            }}
+            QScrollBar::add-line, QScrollBar::sub-line {{
+                width: 0px;
+            }}
+        """)
+        self._scrollbar.setRange(0, 0)
+        self._scrollbar.valueChanged.connect(self._on_scrollbar_changed)
+        layout.addWidget(self._scrollbar)
+
+        self._crosshair_v = pg.InfiniteLine(angle=90, pen=pg.mkPen("#585b70", width=1, style=Qt.PenStyle.DashLine))
+        self._crosshair_h = pg.InfiniteLine(angle=0, pen=pg.mkPen("#585b70", width=1, style=Qt.PenStyle.DashLine))
+        self._crosshair_v.setVisible(False)
+        self._crosshair_h.setVisible(False)
+        self._plot.addItem(self._crosshair_v, ignoreBounds=True)
+        self._plot.addItem(self._crosshair_h, ignoreBounds=True)
+
+        self._hover_text = pg.TextItem(color="#cdd6f4", anchor=(0, 1))
+        self._hover_text.setVisible(False)
+        font = QFont()
+        font.setPixelSize(11)
+        self._hover_text.setFont(font)
+        self._plot.addItem(self._hover_text, ignoreBounds=True)
+
+        self._proxy = pg.SignalProxy(
+            self._plot.scene().sigMouseMoved, rateLimit=60, slot=self._on_mouse_moved
+        )
+        self._plot.scene().sigMouseClicked.connect(lambda _: None)
+
+    def _on_mouse_moved(self, evt) -> None:
+        pos = evt[0]
+        if not self._plot.sceneBoundingRect().contains(pos):
+            self._hide_crosshair()
+            return
+        mouse_point = self._plot.getViewBox().mapSceneToView(pos)
+        mx = mouse_point.x()
+
+        idx = self._find_nearest_point(mx)
+        if idx < 0:
+            self._hide_crosshair()
+            return
+
+        ts_val = float(self._data._timestamps[idx])
+        fps_val = float(self._data._fps_values[idx])
+
+        self._crosshair_v.setPos(ts_val)
+        self._crosshair_h.setPos(fps_val)
+        self._crosshair_v.setVisible(True)
+        self._crosshair_h.setVisible(True)
+
+        if self._data._start_time:
+            abs_time = self._data._start_time + datetime.timedelta(seconds=ts_val)
+            time_str = abs_time.strftime("%H:%M:%S")
+        else:
+            time_str = f"{ts_val:.1f}s"
+
+        label = f"{time_str}  FPS: {fps_val:.0f}"
+        jank_type = self._check_jank_at(ts_val)
+        if jank_type:
+            label += f"  {jank_type}"
+
+        self._hover_text.setText(label)
+        self._hover_text.setPos(ts_val + 1, fps_val + 5)
+        self._hover_text.setVisible(True)
+
+    def _hide_crosshair(self) -> None:
+        self._crosshair_v.setVisible(False)
+        self._crosshair_h.setVisible(False)
+        self._hover_text.setVisible(False)
+
+    def _find_nearest_point(self, mouse_x: float) -> int:
+        if self._data._size == 0:
+            return -1
+        timestamps = self._data._timestamps[: self._data._size]
+        idx = int(np.searchsorted(timestamps, mouse_x))
+        if idx >= self._data._size:
+            idx = self._data._size - 1
+        if idx > 0:
+            left_dist = abs(mouse_x - timestamps[idx - 1])
+            right_dist = abs(mouse_x - timestamps[idx])
+            if left_dist < right_dist:
+                idx -= 1
+        return idx
+
+    def _check_jank_at(self, elapsed: float, tolerance: float = 0.3) -> str:
+        for t, _ in self._data._big_jank_points:
+            if abs(t - elapsed) < tolerance:
+                return "BigJank"
+        for t, _ in self._data._jank_points:
+            if abs(t - elapsed) < tolerance:
+                return "Jank"
+        return ""
+
+    def leaveEvent(self, event) -> None:
+        self._hide_crosshair()
+        super().leaveEvent(event)
 
     def update_stats(self, stats: FrameStats) -> None:
         self._data.add_stats(stats)
@@ -314,20 +467,97 @@ class FpsChartWidget(QWidget):
         self._refresh_regions()
         self._region_start_time = None
         self._stats_overlay.set_values(0, 0, 0)
+        self._following = True
         self._plot.setXRange(0, 60, padding=0)
         self._plot.setYRange(0, 70, padding=0)
+        vb = self._plot.getViewBox()
+        vb.setLimits(xMax=62)
+        self._scrollbar.setRange(0, 0)
+
+    def _on_range_changed_manually(self, _mask: list) -> None:
+        """用户手动缩放/拖动后判断是否恢复跟随模式。"""
+        if self._data._size == 0:
+            return
+        x_range = self._plot.getViewBox().viewRange()[0]
+        latest = self._data.elapsed_seconds
+        covers_all_data = (
+            x_range[0] <= self._FOLLOW_TOLERANCE
+            and x_range[1] >= latest - self._FOLLOW_TOLERANCE
+        )
+        self._following = covers_all_data
+        if not self._following:
+            self._update_y_axis_for_visible_range()
+        self._sync_scrollbar_from_view()
+
+    def _on_scrollbar_changed(self, value: int) -> None:
+        if self._syncing_scrollbar:
+            return
+        if self._data._size == 0:
+            return
+        vb = self._plot.getViewBox()
+        x_range = vb.viewRange()[0]
+        view_width = x_range[1] - x_range[0]
+        scale = self._data.elapsed_seconds / max(self._scrollbar.maximum(), 1)
+        new_x_min = value * scale
+        new_x_max = new_x_min + view_width
+        self._syncing_scrollbar = True
+        vb.setXRange(new_x_min, new_x_max, padding=0)
+        self._syncing_scrollbar = False
+        self._update_y_axis_for_visible_range()
+
+    def _sync_scrollbar_from_view(self) -> None:
+        if self._syncing_scrollbar or self._data._size == 0:
+            return
+        self._syncing_scrollbar = True
+        vb = self._plot.getViewBox()
+        x_range = vb.viewRange()[0]
+        latest = self._data.elapsed_seconds
+        total = max(latest, 1.0)
+        view_width = x_range[1] - x_range[0]
+        sb_max = 1000
+        if view_width >= total:
+            self._scrollbar.setRange(0, 0)
+        else:
+            page = int(sb_max * view_width / total)
+            self._scrollbar.setRange(0, sb_max - page)
+            self._scrollbar.setPageStep(page)
+            pos = int(x_range[0] / total * sb_max)
+            self._scrollbar.setValue(pos)
+        self._syncing_scrollbar = False
+
+    def _update_y_axis_for_visible_range(self) -> None:
+        """根据当前可见 X 范围内的数据自适应调整 Y 轴。"""
+        if self._data._size == 0:
+            return
+        x_range = self._plot.getViewBox().viewRange()[0]
+        timestamps, fps_values = self._data.get_curve_data()
+        mask = (timestamps >= x_range[0]) & (timestamps <= x_range[1])
+        visible = fps_values[mask]
+        if len(visible) > 0:
+            y_max = self._calc_y_max(float(visible.max()))
+        else:
+            y_max = 70
+        self._plot.setYRange(0, y_max, padding=0)
 
     def _update_chart(self) -> None:
         timestamps, fps_values = self._data.get_curve_data()
         if len(timestamps) > 0:
             self._fps_curve.setData(timestamps, fps_values)
 
-            latest = timestamps[-1]
-            x_max = max(latest + 5, 60)
-            self._plot.setXRange(0, x_max, padding=0)
+            latest = float(timestamps[-1])
+            full_x_max = max(latest + 5, 60)
 
-            y_max = self._calc_y_max(self._data.max_fps)
-            self._plot.setYRange(0, y_max, padding=0)
+            vb = self._plot.getViewBox()
+            vb.setLimits(xMax=latest + 2)
+
+            if self._following:
+                self._plot.setXRange(0, full_x_max, padding=0)
+                y_max = self._calc_y_max(self._data.max_fps)
+                self._plot.setYRange(0, y_max, padding=0)
+            else:
+                self._update_y_axis_for_visible_range()
+
+            self._sync_scrollbar_from_view()
 
             jx, jy = self._data.get_jank_markers()
             if len(jx) > 0:

@@ -88,6 +88,9 @@ class JankMonitorWorker(QThread):
         self._capture_regions: list[CaptureRegion] = []
         self._current_region: CaptureRegion | None = None
 
+        self._fps_history: list[float] = []
+        self._game_vsync_ms: float | None = None
+
         self._last_sf_timestamp_ns: int = 0
         self._recent_frames_tail: list = []
         self._jank_window: list[tuple[float, int]] = []
@@ -117,6 +120,8 @@ class JankMonitorWorker(QThread):
         self._total_fps_sum = 0.0
         self._fps_sample_count = 0
         self._start_time = datetime.datetime.now()
+        self._fps_history.clear()
+        self._game_vsync_ms = None
 
         self._was_foreground = True
         self._foreground_resume_time = None
@@ -246,7 +251,12 @@ class JankMonitorWorker(QThread):
         self._total_fps_sum += stats.fps
         self._fps_sample_count += 1
 
-        if not self._capture_paused:
+        if stats.fps > 0:
+            self._fps_history.append(stats.fps)
+            if len(self._fps_history) > self._FPS_HISTORY_SIZE:
+                self._fps_history.pop(0)
+
+        if not self._capture_paused and len(self._fps_history) >= self._STABILIZATION_POLLS:
             self._update_trigger_state(stats)
 
     def _try_fallback_to_sf_latency(self) -> None:
@@ -339,6 +349,26 @@ class JankMonitorWorker(QThread):
         self._recent_frames_tail = []
         self._service.invalidate_sf_layer_cache()
 
+    _FPS_HISTORY_SIZE = 15
+    _STABILIZATION_POLLS = 5
+
+    def _get_game_vsync_ms(self) -> float:
+        """用滚动中位数估算游戏目标帧周期。"""
+        display_vsync = 1000.0 / self._service.get_display_refresh_rate()
+
+        if len(self._fps_history) < self._STABILIZATION_POLLS:
+            return display_vsync
+
+        sorted_fps = sorted(self._fps_history)
+        median_fps = sorted_fps[len(sorted_fps) // 2]
+        game_vsync = 1000.0 / max(median_fps, 1)
+
+        if self._game_vsync_ms is None or abs(game_vsync - self._game_vsync_ms) > 2.0:
+            logger.info("游戏帧周期估算: %.1fms (median FPS=%.1f)", game_vsync, median_fps)
+            self._game_vsync_ms = game_vsync
+
+        return max(game_vsync, display_vsync)
+
     def _update_trigger_state(self, stats: FrameStats) -> None:
         """更新触发状态机（使用 1 秒滑动窗口累积 jank 计数）。"""
         if not self._config or self._capture_count >= self._config.max_captures:
@@ -352,8 +382,7 @@ class JankMonitorWorker(QThread):
         now = datetime.datetime.now()
         now_ts = now.timestamp()
 
-        refresh_rate = self._service.get_display_refresh_rate()
-        vsync_ms = 1000.0 / refresh_rate
+        vsync_ms = self._get_game_vsync_ms()
 
         dropped_in_batch = 0
         for f in stats.frames:
@@ -376,12 +405,19 @@ class JankMonitorWorker(QThread):
 
         if self._state == MonitorState.MONITORING:
             if dropped_in_window >= threshold:
-                jank_frames = [f for f in stats.frames if f.is_jank or f.is_big_jank]
+                slow_frames = [
+                    f for f in stats.frames
+                    if f.frame_duration_ms > vsync_ms * 1.5
+                ]
                 max_ft = max((f.frame_duration_ms for f in stats.frames), default=0)
+                avg_ft = (
+                    sum(f.frame_duration_ms for f in slow_frames) / len(slow_frames)
+                    if slow_frames else max_ft
+                )
                 jank_event = JankEvent(
                     timestamp=now,
                     jank_count=dropped_in_window,
-                    avg_frame_time_ms=sum(f.frame_duration_ms for f in jank_frames) / max(len(jank_frames), 1),
+                    avg_frame_time_ms=avg_ft,
                     max_frame_time_ms=max_ft,
                 )
                 self._state = MonitorState.TRIGGERED
@@ -399,7 +435,11 @@ class JankMonitorWorker(QThread):
                 self.state_changed.emit(self._state)
 
         elif self._state == MonitorState.STABILIZING:
-            stabilize_elapsed = (
+            total_since_trigger = (
+                (now - self._trigger_time).total_seconds()
+                if self._trigger_time else 0
+            )
+            quiet_elapsed = (
                 (now - self._stabilize_start).total_seconds()
                 if self._stabilize_start
                 else 0
@@ -407,15 +447,22 @@ class JankMonitorWorker(QThread):
 
             if dropped_in_window >= threshold:
                 self._stabilize_start = now
-                stabilize_elapsed = 0
+                quiet_elapsed = 0
 
-            if stabilize_elapsed >= self._config.stabilize_delay_sec:
+            if total_since_trigger >= self._config.max_stabilize_sec:
+                logger.info("达到最大稳定等待 %.1fs，强制抓取", total_since_trigger)
                 self._request_capture()
-            elif stabilize_elapsed >= self._config.max_stabilize_sec:
+            elif quiet_elapsed >= self._config.stabilize_delay_sec:
+                logger.info("安静期 %.1fs，触发抓取", quiet_elapsed)
                 self._request_capture()
 
     def _request_capture(self) -> None:
         """请求保存 trace。"""
+        logger.info(
+            "请求抓取: capture_count=%d/%d",
+            self._capture_count + 1,
+            self._config.max_captures if self._config else 0,
+        )
         self._state = MonitorState.SAVING
         self.state_changed.emit(self._state)
         self.capture_requested.emit()
@@ -426,8 +473,11 @@ class JankMonitorWorker(QThread):
 
         if self._capture_count < self._config.max_captures:
             self._state = MonitorState.MONITORING
+            logger.info("抓取完成，恢复监控状态 (%d/%d)",
+                        self._capture_count, self._config.max_captures)
         else:
             self._state = MonitorState.COMPLETED
+            logger.info("已达最大抓取次数，监控完成")
 
         self.state_changed.emit(self._state)
 

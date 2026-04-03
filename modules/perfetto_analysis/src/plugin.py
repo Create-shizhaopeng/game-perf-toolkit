@@ -109,9 +109,7 @@ class PerfettoAnalysisPlugin(BasePlugin):
 
     @hookimpl
     def register_gui_tab(self):
-        from .gui_tab import PerfettoAnalysisTab
-
-        return PerfettoAnalysisTab(context=self.context)
+        return None
 
     @hookimpl
     def register_agent_tools(self) -> list:
@@ -379,6 +377,23 @@ class PerfettoAnalysisPlugin(BasePlugin):
         context["pa_service"] = self._service
         context["pa_adb"] = adb
         context["pa_data_dir"] = str(data_dir)
+
+        llm_manager = context.get("llm_manager")
+        if llm_manager:
+            try:
+                from .agent.orchestrator import AnalysisOrchestrator
+
+                orchestrator = AnalysisOrchestrator(
+                    llm_manager=llm_manager,
+                    pa_service=self._service,
+                )
+                context["pa_orchestrator"] = orchestrator
+            except Exception as exc:
+                import sys
+                print(
+                    f"[perfetto_analysis] AnalysisOrchestrator 初始化失败: {exc}",
+                    file=sys.stderr,
+                )
 
         self._event_bus = context.get("event_bus")
         if self._event_bus:
