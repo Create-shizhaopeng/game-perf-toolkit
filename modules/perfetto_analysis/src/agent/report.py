@@ -15,6 +15,14 @@ logger = logging.getLogger(__name__)
 _TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "templates"
 
 
+_COMPLETION_LABELS = {
+    "llm_complete": "LLM 分析完成",
+    "llm_partial": "LLM 部分完成（因请求限制）",
+    "engine_fallback": "引擎分析（Pydantic AI 不可用）",
+    "engine_degraded": "引擎降级分析（因上下文超限）",
+}
+
+
 def generate_html_report(
     task_id: str,
     result_dir: str,
@@ -24,25 +32,15 @@ def generate_html_report(
     conclusion: str,
     raw_data: dict,
 ) -> AnalysisReport:
-    """生成 HTML 分析报告并保存原始数据。
-
-    Args:
-        task_id: 分析任务 ID
-        result_dir: 输出目录
-        trace_path: trace 文件路径
-        scene: 分析场景
-        process_name: 目标进程
-        conclusion: 分析结论
-        raw_data: 原始分析数据
-
-    Returns:
-        AnalysisReport 包含路径信息
-    """
+    """生成 HTML 分析报告并保存原始数据。"""
     os.makedirs(result_dir, exist_ok=True)
     raw_data_dir = os.path.join(result_dir, "raw_data")
     os.makedirs(raw_data_dir, exist_ok=True)
 
     _save_raw_data(raw_data_dir, raw_data)
+
+    completion = raw_data.get("completion", "llm_complete")
+    completion_label = _COMPLETION_LABELS.get(completion, completion)
 
     html_path = os.path.join(result_dir, "report.html")
     html_content = _render_report(
@@ -52,6 +50,7 @@ def generate_html_report(
         conclusion=conclusion,
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         raw_data=raw_data,
+        completion_label=completion_label,
     )
 
     with open(html_path, "w", encoding="utf-8") as f:
@@ -89,6 +88,7 @@ def _render_report(
     conclusion: str,
     timestamp: str,
     raw_data: dict,
+    completion_label: str = "LLM 分析完成",
 ) -> str:
     """渲染 HTML 报告。优先使用 Jinja2 模板，降级使用内嵌模板。"""
     try:
@@ -109,13 +109,16 @@ def _render_report(
                 conclusion=conclusion,
                 timestamp=timestamp,
                 raw_data=raw_data,
+                completion_label=completion_label,
             )
     except ImportError:
         logger.debug("Jinja2 不可用，使用内嵌模板")
     except Exception as exc:
         logger.warning("Jinja2 渲染失败: %s，使用内嵌模板", exc)
 
-    return _fallback_render(trace_path, scene, process_name, conclusion, timestamp)
+    return _fallback_render(
+        trace_path, scene, process_name, conclusion, timestamp, completion_label
+    )
 
 
 def _markdown_to_html(text: str) -> str:
@@ -149,9 +152,13 @@ def _fallback_render(
     process_name: str,
     conclusion: str,
     timestamp: str,
+    completion_label: str = "LLM 分析完成",
 ) -> str:
     """内嵌 HTML 模板（Jinja2 不可用时的降级方案）。"""
     from html import escape
+
+    is_degraded = "降级" in completion_label or "引擎" in completion_label
+    badge_color = "#ff9800" if is_degraded else "#4caf50"
 
     return f"""\
 <!DOCTYPE html>
@@ -170,6 +177,8 @@ def _fallback_render(
   .meta {{ background: #f8f9fa; padding: 16px; border-radius: 6px; margin: 16px 0; }}
   .meta dt {{ font-weight: 600; color: #555; }}
   .meta dd {{ margin: 0 0 8px 0; }}
+  .badge {{ display: inline-block; padding: 4px 12px; border-radius: 12px;
+            font-size: 13px; font-weight: 600; color: #fff; background: {badge_color}; }}
   .conclusion {{ background: #e8f5e9; padding: 20px; border-radius: 6px;
                 border-left: 4px solid #4caf50; white-space: pre-wrap; }}
   .footer {{ margin-top: 32px; padding-top: 16px; border-top: 1px solid #eee;
@@ -185,6 +194,7 @@ def _fallback_render(
       <dt>分析场景</dt><dd>{escape(scene)}</dd>
       <dt>目标进程</dt><dd>{escape(process_name or '自动检测')}</dd>
       <dt>分析时间</dt><dd>{escape(timestamp)}</dd>
+      <dt>分析方式</dt><dd><span class="badge">{escape(completion_label)}</span></dd>
     </dl>
   </div>
   <h2>分析结论</h2>

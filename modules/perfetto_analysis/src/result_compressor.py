@@ -2,9 +2,11 @@
 """Perfetto 分析结果压缩器。
 
 将一组原子工具的分析结果压缩为结构化 JSON 摘要，供 agent_chat 使用。
+同时提供工具返回值压缩（compress_tool_output），用于 ToolReturn 场景。
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Literal
 
@@ -21,6 +23,8 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 _SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+
+_CHAR_PER_TOKEN = 2.5
 
 
 class ResultCompressor:
@@ -192,6 +196,150 @@ class ResultCompressor:
                     )
 
         return health
+
+    def compress_tool_output(
+        self,
+        tool_name: str,
+        raw_output: Any,
+        token_budget: int = 300,
+    ) -> str:
+        """将工具原始返回值压缩为 LLM 可消费的文本摘要。
+
+        Args:
+            tool_name: 工具名称，用于选择压缩策略
+            raw_output: 工具原始返回值
+            token_budget: token 预算上限
+
+        Returns:
+            压缩后的文本摘要
+        """
+        if raw_output is None:
+            return "工具未返回数据"
+        if isinstance(raw_output, dict) and "error" in raw_output:
+            return f"错误: {raw_output['error']}"
+        if not raw_output:
+            return "工具未返回数据"
+
+        strategy = self._COMPRESS_STRATEGIES.get(tool_name)
+        try:
+            if strategy:
+                result = strategy(self, raw_output, token_budget)
+            else:
+                result = self._compress_generic(raw_output, token_budget)
+        except Exception as exc:
+            logger.warning("压缩工具 %s 输出失败: %s", tool_name, exc)
+            result = self._compress_generic(raw_output, token_budget)
+
+        max_chars = int(token_budget * _CHAR_PER_TOKEN)
+        if len(result) > max_chars:
+            result = result[:max_chars - 20] + "\n...(结果已截断)"
+        return result
+
+    def _compress_jank(self, data: Any, token_budget: int) -> str:
+        """pa_detect_jank: Top-5 严重 jank + 统计摘要。"""
+        if not isinstance(data, dict):
+            return self._compress_generic(data, token_budget)
+
+        jank_frames = data.get("jank_frames", data.get("frames", []))
+        if isinstance(jank_frames, list):
+            total = len(jank_frames)
+            if total == 0:
+                return "未检测到 Jank 帧"
+
+            sorted_frames = sorted(
+                jank_frames,
+                key=lambda f: f.get("jank_num", f.get("duration_ms", 0)),
+                reverse=True,
+            )
+            top5 = sorted_frames[:self._top_n]
+
+            durations = [
+                f.get("duration_ms", f.get("jank_num", 0)) for f in jank_frames
+            ]
+            avg_dur = sum(durations) / len(durations) if durations else 0
+            max_dur = max(durations) if durations else 0
+
+            lines = [f"Jank 统计: 总计 {total} 条, 平均耗时 {avg_dur:.1f}ms, 最大耗时 {max_dur:.1f}ms"]
+            lines.append(f"Top-{len(top5)} 严重帧:")
+            for i, f in enumerate(top5, 1):
+                frame_id = f.get("frame_number", f.get("idx", "?"))
+                dur = f.get("duration_ms", f.get("jank_num", "?"))
+                sev = f.get("severity", "")
+                lines.append(f"  {i}. 帧#{frame_id}: {dur}ms {sev}")
+
+            return "\n".join(lines)
+
+        return self._compress_generic(data, token_budget)
+
+    def _compress_dimension(self, data: Any, token_budget: int) -> str:
+        """pa_analyze_dimension: 保留 issues + top 指标。"""
+        if not isinstance(data, dict):
+            return self._compress_generic(data, token_budget)
+
+        parts: list[str] = []
+
+        for dim_name, dim_data in data.items():
+            if not isinstance(dim_data, dict):
+                continue
+            issues = dim_data.get("issues", [])
+            if issues:
+                parts.append(f"[{dim_name}] {len(issues)} 个问题:")
+                for issue in issues[:3]:
+                    desc = issue.get("description", str(issue)) if isinstance(issue, dict) else str(issue)
+                    parts.append(f"  - {desc[:100]}")
+            else:
+                parts.append(f"[{dim_name}] 无异常")
+
+        if not parts:
+            keys = list(data.keys())[:5]
+            parts.append(f"返回字段: {', '.join(keys)}")
+            for k in keys[:3]:
+                v = data[k]
+                if isinstance(v, (str, int, float)):
+                    parts.append(f"  {k}: {v}")
+                elif isinstance(v, list):
+                    parts.append(f"  {k}: {len(v)} 项")
+                elif isinstance(v, dict):
+                    parts.append(f"  {k}: {list(v.keys())[:3]}")
+
+        return "\n".join(parts)
+
+    def _compress_generic(self, data: Any, token_budget: int) -> str:
+        """通用截断: 按 token 预算截断。"""
+        max_chars = int(token_budget * _CHAR_PER_TOKEN)
+
+        if isinstance(data, str):
+            return data[:max_chars]
+
+        if isinstance(data, (int, float, bool)):
+            return str(data)
+
+        if isinstance(data, list):
+            if not data:
+                return "空列表"
+            total = len(data)
+            preview_count = min(3, total)
+            preview_items = []
+            for item in data[:preview_count]:
+                s = json.dumps(item, ensure_ascii=False, default=str)
+                preview_items.append(s[:200])
+            return f"共 {total} 项。前 {preview_count} 项:\n" + "\n".join(preview_items)
+
+        if isinstance(data, dict):
+            try:
+                text = json.dumps(data, ensure_ascii=False, indent=None, default=str)
+            except (TypeError, ValueError):
+                text = str(data)
+            if len(text) <= max_chars:
+                return text
+            return text[:max_chars - 20] + "\n...(结果已截断)"
+
+        return str(data)[:max_chars]
+
+    _COMPRESS_STRATEGIES: dict[str, Any] = {
+        "pa_detect_jank": _compress_jank,
+        "pa_analyze_dimension": _compress_dimension,
+    }
 
     @staticmethod
     def _build_data_completeness(

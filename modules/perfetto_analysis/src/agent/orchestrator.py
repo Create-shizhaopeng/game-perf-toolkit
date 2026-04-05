@@ -239,13 +239,23 @@ class AnalysisOrchestrator:
                 on_stream("system", f"⚠ Pydantic AI 未安装，使用默认路由: {routing.scene}")
             return routing
 
+    @staticmethod
+    def _is_context_overflow(exc: Exception) -> bool:
+        """判断异常是否为上下文超限。"""
+        msg = str(exc).lower()
+        overflow_keywords = ["max length", "context", "too long", "token limit", "exceeds"]
+        return any(kw in msg for kw in overflow_keywords)
+
     async def _run_sub_agent(
         self,
         trace_path: str,
         routing: AnalysisRouting,
         on_stream: Callable | None,
     ) -> dict:
-        """SubAgent: 使用 pa_* 工具执行分析。"""
+        """SubAgent: 使用 pa_* 工具执行分析。
+
+        上下文超限时渐进降级到 engine 分析。
+        """
         try:
             from .agents import create_sub_agent
             from .prompts import load_sop
@@ -254,17 +264,24 @@ class AnalysisOrchestrator:
                 on_stream("system", f"🔬 正在加载 {routing.scene} 场景 SOP...")
 
             sop_content = load_sop(routing.scene)
+            if not sop_content and on_stream:
+                on_stream("system", "⚠ 未找到匹配的分析 SOP，LLM 将自主分析")
+
+            from ..result_compressor import ResultCompressor
+            compressor = ResultCompressor()
 
             from .tools import set_tool_stream_callback
             set_tool_stream_callback(on_stream)
 
-            agent = create_sub_agent(self._get_model(), sop_content, self._pa_service)
+            agent = create_sub_agent(
+                self._get_model(), sop_content, self._pa_service, compressor
+            )
 
             if on_stream:
                 on_stream("system", "🔧 SubAgent 已创建，开始分析...")
 
             prompt = (
-                f"请按照 SOP 分析以下 trace，并输出**人类可读的中文分析报告**:\n"
+                f"请分析以下 trace，并输出**人类可读的中文分析报告**:\n"
                 f"- Trace 路径: {trace_path}\n"
                 f"- 目标进程: {routing.process_name or '自动检测'}\n"
                 f"- 分析场景: {routing.scene}\n\n"
@@ -273,8 +290,13 @@ class AnalysisOrchestrator:
                 f"2. **根因分析**: 列出每个根因的详细分析和证据\n"
                 f"3. **关键数据**: 提供支撑结论的量化数据\n"
                 f"4. **优化建议**: 给出具体可操作的优化方案\n"
+                f"\n注意：调用工具后请尽快归纳结论，避免过多重复调用。"
             )
-            result = await agent.run(prompt)
+            from pydantic_ai.usage import UsageLimits
+            result = await agent.run(
+                prompt,
+                usage_limits=UsageLimits(request_limit=100),
+            )
 
             output = result.output if hasattr(result, "output") else str(result)
             conclusion = str(output) if output else "分析完成，未生成结论。"
@@ -295,11 +317,39 @@ class AnalysisOrchestrator:
                     preview += "...\n(完整结论见报告)"
                 on_stream("assistant", f"📊 分析结论:\n\n{preview}")
 
-            return {"conclusion": conclusion, "token_used": token_used}
+            return {
+                "conclusion": conclusion,
+                "token_used": token_used,
+                "completion": "llm_complete",
+            }
 
         except ImportError:
             logger.warning("Pydantic AI 未安装，使用引擎直接分析")
-            return await self._fallback_engine_analysis(trace_path, routing)
+            if on_stream:
+                on_stream("system", "⚠ Pydantic AI 未安装，降级为引擎分析")
+            result = await self._fallback_engine_analysis(trace_path, routing)
+            result["completion"] = "engine_fallback"
+            return result
+
+        except Exception as exc:
+            from .tools import set_tool_stream_callback
+            set_tool_stream_callback(None)
+
+            exc_name = type(exc).__name__
+            is_usage_limit = exc_name == "UsageLimitExceeded" or "request_limit" in str(exc)
+            is_overflow = self._is_context_overflow(exc)
+
+            if is_usage_limit or is_overflow:
+                reason = "LLM 请求次数已达上限" if is_usage_limit else "模型上下文不足"
+                logger.warning("%s，分析未完成: %s", reason, exc)
+                if on_stream:
+                    on_stream("system", f"⚠ {reason}，已基于已有数据生成报告")
+                return {
+                    "conclusion": f"分析因 {reason} 未完整完成。请查看原始数据获取更多信息。",
+                    "token_used": 0,
+                    "completion": "llm_partial",
+                }
+            raise
 
     async def _fallback_engine_analysis(
         self, trace_path: str, routing: AnalysisRouting

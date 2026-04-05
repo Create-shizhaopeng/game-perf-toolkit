@@ -28,23 +28,27 @@ def create_main_agent(model: Any) -> Any:
     return agent
 
 
-def create_sub_agent(model: Any, sop_content: str, pa_service: Any) -> Any:
+def create_sub_agent(model: Any, sop_content: str, pa_service: Any, compressor: Any = None) -> Any:
     """创建 SubAgent: 按 SOP 执行 trace 分析。
 
     每个 trace 一个独立实例，上下文完全隔离。
+    工具返回 ToolReturn，压缩摘要给 LLM，原始数据通过 metadata 保留。
     """
     from pydantic_ai import Agent
 
     from .tools import build_analysis_tools
 
-    tools = build_analysis_tools(pa_service)
+    tools = build_analysis_tools(pa_service, compressor)
+
+    instructions = "你是 Perfetto trace 分析专家。中文输出。"
+    if sop_content:
+        instructions += f"\n\n{sop_content}"
+    else:
+        instructions += "\n\n请根据 trace 数据自主判断分析路径。"
 
     agent = Agent(
         model,
-        instructions=(
-            "你是 Perfetto trace 分析专家。按照 SOP 分析，中文输出。\n\n"
-            f"{sop_content}"
-        ),
+        instructions=instructions,
         tools=tools,
     )
     return agent
