@@ -208,12 +208,27 @@ class TestDefaultThreshold:
 class TestSurfaceLayerDetection:
     """测试 SurfaceFlinger 图层发现。"""
 
-    SF_LIST_OUTPUT = (
+    SF_LIST_OUTPUT_OLD = (
+        "Task=24#2450\n"
+        "Background for 74ba9e0 SurfaceView[com.tencent.lolm/com.tencent.lolm.lgame]#2539\n"
+        "74ba9e0 SurfaceView[com.tencent.lolm/com.tencent.lolm.lgame]#2537\n"
+        "74ba9e0 SurfaceView[com.tencent.lolm/com.tencent.lolm.lgame](BLAST)#2538\n"
+        "Display 0 name=\"内置屏幕\"#47\n"
+    )
+
+    SF_LIST_OUTPUT_RLS = (
         "RequestedLayerState{Task=24#2450 parentId=10 z=4}\n"
         "RequestedLayerState{Background for 74ba9e0 SurfaceView[com.tencent.lolm/com.tencent.lolm.lgame]#2539 parentId=2537}\n"
         "RequestedLayerState{74ba9e0 SurfaceView[com.tencent.lolm/com.tencent.lolm.lgame]#2537 parentId=2536}\n"
         "RequestedLayerState{74ba9e0 SurfaceView[com.tencent.lolm/com.tencent.lolm.lgame](BLAST)#2538 parentId=2537}\n"
         "RequestedLayerState{Display 0 name=\"内置屏幕\"#47}\n"
+    )
+
+    SF_LIST_OUTPUT_ANDROID16 = (
+        "RequestedLayerState{Task=24 04-05 15:26:34.887#2450 parentId=10 z=4}\n"
+        "RequestedLayerState{Background for 76aea0c SurfaceView[com.tencent.af/com.tencent.af.AFActivity] 04-05 15:36:50.170#4820 parentId=4818 relativeParentId=4814 z=-2147483648}\n"
+        "RequestedLayerState{76aea0c SurfaceView[com.tencent.af/com.tencent.af.AFActivity] 04-05 15:36:50.170#4818 parentId=4817 relativeParentId=4814 z=-2}\n"
+        "RequestedLayerState{76aea0c SurfaceView[com.tencent.af/com.tencent.af.AFActivity](BLAST) 04-05 15:36:50.170#4819 parentId=4818}\n"
     )
 
     SF_LATENCY_OUTPUT = (
@@ -225,9 +240,12 @@ class TestSurfaceLayerDetection:
         "131811779176695\t131811827226487\t131811798513675\n"
     )
 
-    def test_find_surface_layer(self):
+    SF_LATENCY_ONLY_REFRESH = "8333333\n"
+
+    def test_find_surface_layer_old_format(self):
+        """旧格式（无 RequestedLayerState 包裹）正确解析。"""
         adb = MockAdbManager()
-        adb.set_shell_response("dumpsys SurfaceFlinger --list", self.SF_LIST_OUTPUT)
+        adb.set_shell_response("dumpsys SurfaceFlinger --list", self.SF_LIST_OUTPUT_OLD)
 
         svc = JankMonitorService(adb, TEST_SERIAL)
         layer = svc._find_surface_layer("com.tencent.lolm")
@@ -235,6 +253,48 @@ class TestSurfaceLayerDetection:
         assert layer is not None
         assert "(BLAST)" in layer
         assert layer == "74ba9e0 SurfaceView[com.tencent.lolm/com.tencent.lolm.lgame](BLAST)#2538"
+
+    def test_find_surface_layer_rls_format(self):
+        """RequestedLayerState 包裹格式（无时间戳）正确解析。"""
+        adb = MockAdbManager()
+        adb.set_shell_response("dumpsys SurfaceFlinger --list", self.SF_LIST_OUTPUT_RLS)
+
+        svc = JankMonitorService(adb, TEST_SERIAL)
+        layer = svc._find_surface_layer("com.tencent.lolm")
+
+        assert layer is not None
+        assert "(BLAST)" in layer
+        assert layer == "74ba9e0 SurfaceView[com.tencent.lolm/com.tencent.lolm.lgame](BLAST)#2538"
+
+    def test_find_surface_layer_android16(self):
+        """Android 16 新格式（时间戳插入 BLAST 和 # 之间）正确解析完整图层名。"""
+        adb = MockAdbManager()
+        adb.set_shell_response("dumpsys SurfaceFlinger --list", self.SF_LIST_OUTPUT_ANDROID16)
+
+        svc = JankMonitorService(adb, TEST_SERIAL)
+        layer = svc._find_surface_layer("com.tencent.af")
+
+        assert layer is not None
+        assert "(BLAST)" in layer
+        assert "04-05" in layer
+        assert layer == "76aea0c SurfaceView[com.tencent.af/com.tencent.af.AFActivity](BLAST) 04-05 15:36:50.170#4819"
+
+    def test_find_surface_layer_android16_fallback(self):
+        """Android 16 非 BLAST 图层作为 fallback。"""
+        sf_list = (
+            "RequestedLayerState{76aea0c SurfaceView[com.tencent.af/com.tencent.af.AFActivity] "
+            "04-05 15:36:50.170#4818 parentId=4817 relativeParentId=4814 z=-2}\n"
+        )
+        adb = MockAdbManager()
+        adb.set_shell_response("dumpsys SurfaceFlinger --list", sf_list)
+
+        svc = JankMonitorService(adb, TEST_SERIAL)
+        layer = svc._find_surface_layer("com.tencent.af")
+
+        assert layer is not None
+        assert "(BLAST)" not in layer
+        assert "04-05" in layer
+        assert "#4818" in layer
 
     def test_find_surface_layer_not_found(self):
         adb = MockAdbManager()
@@ -247,7 +307,7 @@ class TestSurfaceLayerDetection:
 
     def test_sf_layer_cache(self):
         adb = MockAdbManager()
-        adb.set_shell_response("dumpsys SurfaceFlinger --list", self.SF_LIST_OUTPUT)
+        adb.set_shell_response("dumpsys SurfaceFlinger --list", self.SF_LIST_OUTPUT_RLS)
 
         svc = JankMonitorService(adb, TEST_SERIAL)
         layer1 = svc._find_surface_layer("com.tencent.lolm")
@@ -255,9 +315,48 @@ class TestSurfaceLayerDetection:
 
         assert layer1 == layer2
 
+    def test_sf_layer_cache_invalidation(self):
+        """invalidate_sf_layer_cache 清除缓存后重新查询。"""
+        adb = MockAdbManager()
+        adb.set_shell_response("dumpsys SurfaceFlinger --list", self.SF_LIST_OUTPUT_RLS)
+
+        svc = JankMonitorService(adb, TEST_SERIAL)
+        svc._find_surface_layer("com.tencent.lolm")
+        svc.invalidate_sf_layer_cache()
+
+        assert svc._cached_sf_layer is None
+        assert svc._sf_layer_pkg is None
+
+    def test_sf_empty_poll_triggers_invalidation(self):
+        """连续 SF 空帧超过阈值触发缓存失效。"""
+        adb = MockAdbManager()
+        adb.set_shell_response("dumpsys SurfaceFlinger --list", self.SF_LIST_OUTPUT_RLS)
+
+        svc = JankMonitorService(adb, TEST_SERIAL)
+        svc._find_surface_layer("com.tencent.lolm")
+        assert svc._cached_sf_layer is not None
+
+        for i in range(9):
+            assert svc.notify_sf_empty_poll() is False
+
+        assert svc.notify_sf_empty_poll() is True
+        assert svc._cached_sf_layer is None
+
+    def test_sf_empty_count_reset(self):
+        """有效数据重置空帧计数。"""
+        adb = MockAdbManager()
+        svc = JankMonitorService(adb, TEST_SERIAL)
+
+        for _ in range(5):
+            svc.notify_sf_empty_poll()
+        assert svc._sf_empty_count == 5
+
+        svc.reset_sf_empty_count()
+        assert svc._sf_empty_count == 0
+
     def test_get_sf_latency(self):
         adb = MockAdbManager()
-        adb.set_shell_response("dumpsys SurfaceFlinger --list", self.SF_LIST_OUTPUT)
+        adb.set_shell_response("dumpsys SurfaceFlinger --list", self.SF_LIST_OUTPUT_RLS)
         adb.set_shell_response("dumpsys SurfaceFlinger --latency", self.SF_LATENCY_OUTPUT)
 
         svc = JankMonitorService(adb, TEST_SERIAL)
@@ -275,6 +374,7 @@ class TestSurfaceLayerDetection:
             "---PROFILEDATA---\n"
         )
         adb.set_shell_response("dumpsys gfxinfo", profiledata)
+        adb.set_shell_response("getprop", "14")
 
         svc = JankMonitorService(adb, TEST_SERIAL)
         source = svc.detect_frame_source("com.normal.app")
@@ -282,10 +382,59 @@ class TestSurfaceLayerDetection:
         assert source == "gfxinfo"
         assert svc.using_sf_latency is False
 
-    def test_detect_frame_source_sf_latency(self):
+    def test_detect_frame_source_sf_latency_with_validation(self):
+        """SF latency 选择前验证帧数据有效性。"""
         adb = MockAdbManager()
         adb.set_shell_response("dumpsys gfxinfo", "Profile data in ms:\n")
-        adb.set_shell_response("dumpsys SurfaceFlinger --list", self.SF_LIST_OUTPUT)
+        adb.set_shell_response("dumpsys SurfaceFlinger --list", self.SF_LIST_OUTPUT_RLS)
+        adb.set_shell_response("dumpsys SurfaceFlinger --latency", self.SF_LATENCY_OUTPUT)
+        adb.set_shell_response("getprop", "14")
+
+        svc = JankMonitorService(adb, TEST_SERIAL)
+        source = svc.detect_frame_source("com.tencent.lolm")
+
+        assert source == "sf_latency"
+        assert svc.using_sf_latency is True
+
+    def test_detect_frame_source_sf_only_refresh_rate(self):
+        """SF latency 只返回刷新率时不应选择 sf_latency。"""
+        adb = MockAdbManager()
+        adb.set_shell_response("dumpsys gfxinfo", "Profile data in ms:\n")
+        adb.set_shell_response("dumpsys SurfaceFlinger --list", self.SF_LIST_OUTPUT_RLS)
+        adb.set_shell_response("dumpsys SurfaceFlinger --latency", self.SF_LATENCY_ONLY_REFRESH)
+        adb.set_shell_response("getprop", "16")
+
+        svc = JankMonitorService(adb, TEST_SERIAL)
+        source = svc.detect_frame_source("com.tencent.lolm")
+
+        assert source == "gfxinfo"
+        assert svc.using_sf_latency is False
+
+    def test_detect_frame_source_no_source(self):
+        """gfxinfo 和 SF 均无有效数据时回退到 gfxinfo。"""
+        adb = MockAdbManager()
+        adb.set_shell_response("dumpsys gfxinfo", "")
+        adb.set_shell_response("dumpsys SurfaceFlinger --list", "no layers\n")
+        adb.set_shell_response("getprop", "14")
+
+        svc = JankMonitorService(adb, TEST_SERIAL)
+        source = svc.detect_frame_source("com.example.app")
+
+        assert source == "gfxinfo"
+        assert svc.using_sf_latency is False
+
+    def test_detect_frame_source_empty_profiledata(self):
+        """gfxinfo 有 PROFILEDATA 标记但无帧数据，降级到 SF。"""
+        adb = MockAdbManager()
+        empty_profile = (
+            "---PROFILEDATA---\n"
+            "Flags,IntendedVsync\n"
+            "---PROFILEDATA---\n"
+        )
+        adb.set_shell_response("dumpsys gfxinfo", empty_profile)
+        adb.set_shell_response("dumpsys SurfaceFlinger --list", self.SF_LIST_OUTPUT_RLS)
+        adb.set_shell_response("dumpsys SurfaceFlinger --latency", self.SF_LATENCY_OUTPUT)
+        adb.set_shell_response("getprop", "14")
 
         svc = JankMonitorService(adb, TEST_SERIAL)
         source = svc.detect_frame_source("com.tencent.lolm")

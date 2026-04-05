@@ -228,6 +228,36 @@ class TestParseSfLatency:
         assert frames[1].frame_duration_ms == pytest.approx(66.67, rel=0.01)
 
 
+class TestParseSfLatencyEdgeCases:
+    """SF latency 解析边界情况。"""
+
+    def test_all_invalid_timestamps(self):
+        """所有时间戳均为无效值（全 9）时返回空。"""
+        output = (
+            "16666666\n"
+            "9223372036854775807\t9223372036854775807\t9223372036854775807\n"
+            "9223372036854775807\t9223372036854775807\t9223372036854775807\n"
+        )
+        assert parse_sf_latency(output) == []
+
+    def test_single_valid_row(self):
+        """仅一行有效帧时间戳，不足以计算帧间距，返回空。"""
+        output = "16666666\n100000000000\t100000000000\t100000000000\n"
+        assert parse_sf_latency(output) == []
+
+    def test_mixed_valid_and_invalid(self):
+        """有效和无效时间戳混合，仅有效行被解析。"""
+        output = (
+            "16666666\n"
+            "100000000000\t100000000000\t100000000000\n"
+            "9223372036854775807\t9223372036854775807\t9223372036854775807\n"
+            "100016666667\t100016666667\t100016666667\n"
+            "100033333334\t100033333334\t100033333334\n"
+        )
+        frames = parse_sf_latency(output)
+        assert len(frames) >= 1
+
+
 class TestDynamicJankDetection:
     """测试 PerfDog 风格动态 Jank 判定。"""
 

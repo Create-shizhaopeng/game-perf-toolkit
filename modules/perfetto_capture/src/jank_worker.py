@@ -260,20 +260,38 @@ class JankMonitorWorker(QThread):
             self._update_trigger_state(stats)
 
     def _try_fallback_to_sf_latency(self) -> None:
-        """gfxinfo 持续返回空时，运行时降级到 SurfaceFlinger latency。"""
+        """gfxinfo 持续返回空时，运行时降级到 SurfaceFlinger latency。
+
+        降级后做一次验证性 poll；如果 SF latency 也无法获取帧数据，
+        发出 ERROR 状态通知用户。
+        """
         layer = self._service._find_surface_layer(self._target_package)
-        if layer:
-            self._service._use_sf_latency = True
-            self._service.reset_sf_latency(self._target_package)
-            self._last_sf_timestamp_ns = 0
-            self._gfxinfo_empty_count = 0
-            logger.info(
-                "gfxinfo 连续 %d 次为空，运行时降级到 SF latency (layer=%s)",
-                self.GFXINFO_FALLBACK_THRESHOLD, layer,
-            )
-        else:
+        if not layer:
             self._gfxinfo_empty_count = 0
             logger.warning("gfxinfo 持续为空且未找到 SF 图层，无法降级")
+            self._state = MonitorState.ERROR
+            self.state_changed.emit(self._state)
+            return
+
+        self._service._use_sf_latency = True
+        self._service.reset_sf_latency(self._target_package)
+        self._last_sf_timestamp_ns = 0
+        self._gfxinfo_empty_count = 0
+
+        time.sleep(0.3)
+        verify_frames = self._poll_sf_latency()
+        if verify_frames:
+            logger.info(
+                "gfxinfo 连续 %d 次为空，运行时降级到 SF latency (layer=%s, 验证帧=%d)",
+                self.GFXINFO_FALLBACK_THRESHOLD, layer, len(verify_frames),
+            )
+        else:
+            logger.warning(
+                "运行时降级到 SF latency 但验证失败: 无帧数据 (layer=%s)",
+                layer,
+            )
+            self._state = MonitorState.ERROR
+            self.state_changed.emit(self._state)
 
     def _poll_gfxinfo(self) -> list:
         """通过 gfxinfo framestats 采集帧数据。"""
@@ -289,15 +307,21 @@ class JankMonitorWorker(QThread):
         """通过 SurfaceFlinger --latency 采集帧数据。
 
         SF latency 返回累积的帧缓冲区，通过 _last_sf_timestamp_ns 过滤已处理的帧。
+        连续空帧时触发图层缓存失效并尝试重新检测。
         """
         output = self._service.get_sf_latency(self._target_package)
         if not output:
+            if self._service.notify_sf_empty_poll():
+                self._last_sf_timestamp_ns = 0
             return []
         all_frames = parse_sf_latency(output)
         if not all_frames:
             logger.debug("SF latency 解析帧数据为空 (output len=%d)", len(output))
+            if self._service.notify_sf_empty_poll():
+                self._last_sf_timestamp_ns = 0
             return []
 
+        self._service.reset_sf_empty_count()
         new_frames = [f for f in all_frames if f.timestamp_ns > self._last_sf_timestamp_ns]
         if new_frames:
             self._last_sf_timestamp_ns = new_frames[-1].timestamp_ns

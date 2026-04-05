@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import TYPE_CHECKING
 
-from .jank_parser import get_default_jank_threshold
+from .jank_parser import get_default_jank_threshold, parse_framestats, parse_sf_latency
 from .models import AppInfo
 
 if TYPE_CHECKING:
@@ -19,11 +20,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_SF_LAYER_PATTERN = re.compile(r"SurfaceView\[([^\]]+)\]")
-
 
 class JankMonitorService:
     """Jank 监控服务。"""
+
+    SF_LAYER_CACHE_TTL_SEC = 60.0
 
     def __init__(self, adb: AdbManager, serial: str) -> None:
         self._adb = adb
@@ -31,6 +32,8 @@ class JankMonitorService:
         self._cached_refresh_rate: int | None = None
         self._cached_sf_layer: str | None = None
         self._sf_layer_pkg: str | None = None
+        self._sf_layer_cache_time: float = 0.0
+        self._sf_empty_count: int = 0
         self._use_sf_latency: bool = False
 
     def get_running_apps(self) -> list[AppInfo]:
@@ -153,9 +156,16 @@ class JankMonitorService:
 
         优先匹配 (BLAST) 图层（活跃渲染层），回退到非 BLAST 图层。
         图层名需包含完整前缀（如 hash 前缀），否则 SF latency 查询无结果。
+
+        兼容两种 ``--list`` 输出格式:
+        - 旧格式 (Android 15-): ``hash SurfaceView[pkg/Act](BLAST)#id``
+        - 新格式 (Android 16+): ``RequestedLayerState{hash SurfaceView[...](BLAST) date#id ...}``
         """
         if self._sf_layer_pkg == package and self._cached_sf_layer:
-            return self._cached_sf_layer
+            if self._is_layer_cache_valid():
+                return self._cached_sf_layer
+            self._cached_sf_layer = None
+            self._sf_layer_pkg = None
 
         try:
             output = self._adb.shell(
@@ -176,6 +186,7 @@ class JankMonitorService:
 
         blast_match = None
         fallback_match = None
+        candidate_lines: list[str] = []
 
         for line in output.splitlines():
             if f"SurfaceView[{package}/" not in line:
@@ -183,12 +194,18 @@ class JankMonitorService:
             if "Background for" in line:
                 continue
 
-            m = blast_pattern.search(line)
+            rls_match = re.search(r"RequestedLayerState\{(.+)\}", line)
+            content = rls_match.group(1) if rls_match else line
+
+            if len(candidate_lines) < 3:
+                candidate_lines.append(content.strip()[:120])
+
+            m = blast_pattern.search(content)
             if m and blast_match is None:
                 blast_match = m.group(1)
                 break
 
-            m = fallback_pattern.search(line)
+            m = fallback_pattern.search(content)
             if m and fallback_match is None:
                 fallback_match = m.group(1)
 
@@ -196,7 +213,13 @@ class JankMonitorService:
         if result:
             self._cached_sf_layer = result
             self._sf_layer_pkg = package
+            self._sf_layer_cache_time = time.monotonic()
             logger.info("找到 SF 图层: %s", result)
+        elif candidate_lines:
+            logger.warning(
+                "未能从 SurfaceView 行中提取图层名 (pkg=%s), 候选行:\n  %s",
+                package, "\n  ".join(candidate_lines),
+            )
 
         return result
 
@@ -210,12 +233,12 @@ class JankMonitorService:
 
         先尝试 gfxinfo framestats 并实际解析验证是否有帧数据，
         仅当存在 PROFILEDATA 且解析出帧数据时使用 gfxinfo；
-        否则回退到 SurfaceFlinger --latency。
+        否则回退到 SurfaceFlinger --latency 并验证确实能获取帧时间戳。
 
         Returns:
             "gfxinfo" 或 "sf_latency"
         """
-        from .jank_parser import parse_framestats
+        self._log_android_version()
 
         output = self.get_framestats(package)
         if output and "---PROFILEDATA---" in output:
@@ -228,13 +251,37 @@ class JankMonitorService:
 
         layer = self._find_surface_layer(package)
         if layer:
-            self._use_sf_latency = True
-            logger.info("%s 使用 SurfaceFlinger latency 采集帧数据 (layer=%s)", package, layer)
-            return "sf_latency"
+            self.reset_sf_latency(package)
+            time.sleep(0.5)
+            sf_output = self.get_sf_latency(package)
+            if sf_output:
+                sf_frames = parse_sf_latency(sf_output)
+                if len(sf_frames) >= 2:
+                    self._use_sf_latency = True
+                    logger.info(
+                        "%s 使用 SurfaceFlinger latency 采集帧数据 (layer=%s, 验证帧=%d)",
+                        package, layer, len(sf_frames),
+                    )
+                    return "sf_latency"
+                logger.warning(
+                    "%s SF latency 有图层但无有效帧数据 (帧=%d), layer=%s",
+                    package, len(sf_frames), layer,
+                )
+            else:
+                logger.warning("%s SF latency 返回空数据, layer=%s", package, layer)
 
         self._use_sf_latency = False
         logger.warning("%s 未找到可用的帧数据来源", package)
         return "gfxinfo"
+
+    def _log_android_version(self) -> None:
+        """记录设备 Android 版本用于诊断。"""
+        try:
+            sdk = self._adb.shell(self._serial, "getprop ro.build.version.sdk")
+            release = self._adb.shell(self._serial, "getprop ro.build.version.release")
+            logger.info("设备 Android 版本: %s (API %s)", release.strip(), sdk.strip())
+        except Exception:
+            logger.debug("无法获取 Android 版本信息")
 
     def reset_framestats(self, package: str) -> bool:
         """重置应用的帧统计数据。"""
@@ -258,6 +305,12 @@ class JankMonitorService:
         except Exception:
             return False
 
+    def _is_layer_cache_valid(self) -> bool:
+        """检查 SF 图层缓存是否仍然有效（TTL 未过期）。"""
+        if self._sf_layer_cache_time <= 0:
+            return False
+        return (time.monotonic() - self._sf_layer_cache_time) < self.SF_LAYER_CACHE_TTL_SEC
+
     def invalidate_sf_layer_cache(self) -> None:
         """使 SurfaceFlinger 图层缓存失效。
 
@@ -265,10 +318,30 @@ class JankMonitorService:
         """
         self._cached_sf_layer = None
         self._sf_layer_pkg = None
+        self._sf_layer_cache_time = 0.0
+        self._sf_empty_count = 0
+
+    def notify_sf_empty_poll(self) -> bool:
+        """通知一次 SF latency 返回空帧数据。
+
+        连续空帧超过阈值时自动失效缓存并返回 True（需要重新检测图层）。
+        """
+        self._sf_empty_count += 1
+        if self._sf_empty_count >= 10:
+            logger.info("SF latency 连续 %d 次空帧，触发图层缓存失效", self._sf_empty_count)
+            self.invalidate_sf_layer_cache()
+            return True
+        return False
+
+    def reset_sf_empty_count(self) -> None:
+        """重置 SF 空帧计数（收到有效数据时调用）。"""
+        self._sf_empty_count = 0
 
     def clear_cache(self) -> None:
         """清除所有缓存数据。"""
         self._cached_refresh_rate = None
         self._cached_sf_layer = None
         self._sf_layer_pkg = None
+        self._sf_layer_cache_time = 0.0
+        self._sf_empty_count = 0
         self._use_sf_latency = False
