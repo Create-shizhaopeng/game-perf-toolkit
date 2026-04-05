@@ -26,6 +26,9 @@ def _fix_frozen_stdio() -> None:
 
 _fix_frozen_stdio()
 
+if getattr(sys, "frozen", False):
+    os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "1")
+
 if sys.stderr is not None:
     faulthandler.enable()
 

@@ -168,10 +168,10 @@ class JankMonitorService:
             return None
 
         blast_pattern = re.compile(
-            r"(\w+ SurfaceView\[" + re.escape(package) + r"/[^\]]+\]\(BLAST\)#\d+)"
+            r"(\w+ SurfaceView\[" + re.escape(package) + r"/[^\]]+\]\(BLAST\)[^#]*#\d+)"
         )
         fallback_pattern = re.compile(
-            r"(\w+ SurfaceView\[" + re.escape(package) + r"/[^\]]+\]#\d+)"
+            r"(\w+ SurfaceView\[" + re.escape(package) + r"/[^\]]+\][^#]*#\d+)"
         )
 
         blast_match = None
