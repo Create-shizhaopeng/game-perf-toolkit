@@ -1326,22 +1326,27 @@ GLM-4-Plus（ZhipuAI）返回 `ZaiException - Prompt exceeds max length`，尽�
 
 ### 根因
 
-- SOP 文档（最大 6.7KB）+ 工具 JSON schema + 指令文本总长超出模型实际输入限制
-- pydantic-ai 将**全部**注册工具的完整参数 schema（包括 docstring、参数描述）序列化为 system prompt 的一部分
-- 工具 docstring 使用了多行详细描述（每个工具 5-10 行），3 个工具合计约 1500 字符
-- Agent instructions 中包含重复冗余内容（分析要求、格式要求等）
+实际测量后发现，**初始 prompt 仅约 5K token**（远低于 128K 上限），真正的瓶颈是：
 
-### 已做优化
+- **工具返回值在对话历史中的累积**：每个 pa_* 工具返回的原始数据（丢帧列表、线程统计等）约 5K-20K token/次
+- LLM 连续调用 3-4 个工具后，对话历史中的工具返回值累积超出模型上下文限制
+- 冗余工具（pa_analyze_full、pa_cpu_overview 功能被 pa_analyze_dimension 覆盖）增加了不必要的 schema 占用
 
-1. SOP 内容截断上限 3000 字符
-2. 工具 docstring 精简为一行
-3. MainAgent / SubAgent 指令大幅精简
-4. 上述优化后仍超限，待继续排查
+早期误判：
+- 最初以为是 SOP 文档过长或工具 docstring 过于详细导致 system prompt 超限
+- 实际上 SOP + 工具 schema + instructions 总计仅 ~5K token
+
+### 解决方案（010-prompt-budget-management）
+
+1. **ToolReturn 压缩工具返回值**：所有 pa_* 工具返回 Pydantic AI 的 `ToolReturn` 对象，`return_value` 为 ResultCompressor 压缩后的摘要（Top-5 + 统计，~300 token），`metadata` 保留原始数据给应用层
+2. **移除冗余工具**：删除 pa_analyze_full 和 pa_cpu_overview（11 → 9 个工具），减少 ~20% 的 schema 占用
+3. **SOP 完整加载**：取消 3000 字符截断限制，通过 SKILL 路由完整加载场景 SOP，提升分析质量
+4. **上下文超限降级**：LLM 调用因上下文超限失败时，不终止分析，降级到 engine 分析并在报告中标注
 
 ### 预防措施
 
-- 使用 Pydantic AI 时 MUST 预估 system prompt 总大小（instructions + 所有工具 schema）
-- 工具 docstring SHOULD 尽量简短（一行描述），详细文档放在外部文档中
-- SOP 文档 SHOULD 控制在 2000 字符以内，超出部分裁剪或分段加载
-- 如目标模型上下文较小，考虑动态选择工具子集（仅注册当前场景所需工具）
-- 考虑添加 prompt 大小检测日志，在发送前统计 token 数
+- 使用 Pydantic AI 的 `ToolReturn` 控制工具返回值大小，MUST 在 `return_value` 中只放摘要
+- 工具 docstring SHOULD 尽量简短（一行描述）
+- 注册的工具 MUST 无功能重叠，冗余工具及时清理
+- 新增工具时 MUST 评估其返回值大小，超过 1K token 的原始数据 MUST 经过压缩
+- 上下文超限 MUST 有降级方案，不可直接终止用户操作

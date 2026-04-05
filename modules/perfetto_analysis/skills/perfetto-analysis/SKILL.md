@@ -58,7 +58,7 @@ pa_trace_overview(trace_path, process_name?)
 | **转屏/配置变更** | 旋转慢、转屏、横竖屏                      | [rotation-analysis.md](sop/rotation-analysis.md) | pa_execute_sql + 唤醒链追踪                    |
 | **ANR/无响应** | ANR、无响应、卡死、freeze               | [anr-analysis.md](sop/anr-analysis.md)           | pa_analyze_anr                            |
 | **内存问题**    | 内存泄漏、OOM、heap                   | [memory-analysis.md](sop/memory-analysis.md)     | pa_analyze_memory                         |
-| **CPU/线程**  | CPU 占用、线程阻塞、调度延迟                | 见下方维度分析                                          | pa_cpu_overview + pa_analyze_dimension    |
+| **CPU/线程**  | CPU 占用、线程阻塞、调度延迟                | 见下方维度分析                                          | pa_analyze_dimension(cpu/thread)          |
 | **IO 阻塞**   | IO block、D-State、文件读取慢          | [io-block-analysis.md](sop/io-block-analysis.md) | pa_analyze_dimension(io) + pa_execute_sql |
 | **通用/不明确**  | "分析一下"、"看看性能"                   | [general-analysis.md](sop/general-analysis.md)   | 场景分类 → 路由                                 |
 

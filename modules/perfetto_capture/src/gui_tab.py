@@ -521,7 +521,7 @@ class PerfettoCaptureTab(BaseTab):
         self._history_panel.update_stats(stats)
 
         try:
-            storage = self._history_service._storage
+            storage = self._history_service.storage
             tasks = storage.get_all_analysis_tasks(limit=50)
             self._history_panel.refresh_analysis_history(tasks)
         except Exception:
@@ -653,7 +653,7 @@ class PerfettoCaptureTab(BaseTab):
         try:
             import uuid
 
-            storage = self._history_service._storage
+            storage = self._history_service.storage
             task_id = str(uuid.uuid4())
 
             trace_path = ""

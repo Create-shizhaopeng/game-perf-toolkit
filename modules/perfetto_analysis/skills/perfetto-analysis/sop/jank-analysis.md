@@ -31,8 +31,8 @@
   - 推荐维度: gpu, sf, io（影响渲染管线）
   - 辅助维度: gc, input, lock（特定场景才有影响）
   - MCP 增强: hotspot（主线程热点函数，仅 MCP 可用）
-4. **全局 CPU 概览**: 调用 `pa_cpu_overview` 获取整体 CPU 使用情况
-5. **结果压缩**: 调用 `pa_compress_results` 生成摘要
+4. **全局 CPU 概览**: 调用 `pa_analyze_dimension(cpu)` 获取整体 CPU 使用情况
+5. **结果压缩**: 工具返回值已自动压缩为摘要
 
 ## 结果解读指引
 
@@ -50,7 +50,7 @@
    - Running 高 + 小核/低频 → 调度策略或 Perflock 未生效
    - Running 高 + 大核/满频 → 应用代码本身耗时（查 hotspot）
    - Runnable 高 → CPU 争抢严重，需查看全局 CPU 使用率
-4. **工具**：`pa_cpu_overview` 获取全局概况，`pa_execute_sql` 查 CPU 频率
+4. **工具**：`pa_analyze_dimension(cpu)` 获取全局概况，`pa_execute_sql` 查 CPU 频率
 
 SQL 查询见 [sql-patterns.md — CPU 频率查询](../sql-patterns.md#cpu-频率查询)。
 设备调优见 [ref/device-tuning.md](../ref/device-tuning.md)。

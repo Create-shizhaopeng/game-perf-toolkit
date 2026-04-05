@@ -63,7 +63,7 @@
 │       支持 time_range 限定分析窗口
 │
 ├── 需要全局 CPU 概览？
-│   └── pa_cpu_overview（MCP）
+│   └── pa_analyze_dimension(cpu)
 │
 ├── 需要主线程状态分布？
 │   └── pa_thread_state_summary（MCP SQL）
