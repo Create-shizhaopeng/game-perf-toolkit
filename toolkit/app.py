@@ -26,12 +26,16 @@ def _fix_frozen_stdio() -> None:
 
 _fix_frozen_stdio()
 
+if getattr(sys, "frozen", False):
+    os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "1")
+
 if sys.stderr is not None:
     faulthandler.enable()
 
 from toolkit.core.config_manager import ConfigManager
 from toolkit.core.db_manager import DatabaseManager
 from toolkit.core.event_bus import EventBus
+from toolkit.core.llm.manager import LLMManager
 from toolkit.core.logger import setup_logging
 from toolkit.core.plugin_manager import PluginManager
 from toolkit.core.service_registry import ServiceRegistry
@@ -70,6 +74,13 @@ def _build_context() -> dict:
     }
 
 
+def _init_llm_manager(context: dict) -> None:
+    """初始化 LLM Manager 并注入 context。需在 QApplication 创建后调用。"""
+    config_manager = context["config_manager"]
+    llm_manager = LLMManager(config_manager)
+    context["llm_manager"] = llm_manager
+
+
 def _load_plugins(context: dict) -> PluginManager:
     """发现并加载所有模块。"""
     pm = PluginManager(MODULES_DIR)
@@ -103,6 +114,7 @@ def run_gui() -> None:
         app.setWindowIcon(QIcon(str(icon_path)))
 
     context = _build_context()
+    _init_llm_manager(context)
     pm = _load_plugins(context)
     context["plugin_manager"] = pm
 

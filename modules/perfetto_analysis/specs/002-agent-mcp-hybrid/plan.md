@@ -1,6 +1,6 @@
 # Implementation Plan: Perfetto 分析 Agent 化 — MCP 混合架构
 
-**Branch**: `005-agent-mcp-hybrid` | **Date**: 2026-03-31 | **Spec**: [spec.md](spec.md)
+**Branch**: `002-agent-mcp-hybrid` | **Date**: 2026-03-31 | **Spec**: [spec.md](spec.md)
 
 ## 目录
 
@@ -14,6 +14,7 @@
   - [压缩摘要生成](#压缩摘要生成)
   - [Feature Flag 机制](#feature-flag-机制)
   - [Agent 编排集成](#agent-编排集成)
+  - [分析链路与置信度](#分析链路与置信度)
 - [Project Structure](#project-structure)
 - [实现阶段](#实现阶段)
 - [关键设计决策](#关键设计决策)
@@ -82,6 +83,14 @@ AnalysisToolkit
 ├── get_cpu_overview(trace_path, process) → dict | None
 │   调用 MCP cpu_utilization_profiler，返回全 trace CPU 概览
 │
+├── thread_state_summary(trace_path, process, time_range?, compact?) → ThreadStateSummary
+│   查询主线程状态分布（Running/S/R/D/R+），返回各状态耗时和占比
+│   ThreadStateSummary 为 Pydantic 模型，compact 模式返回 .to_compact_dict()
+│
+├── cpu_freq_analysis(trace_path, process, time_range?, compact?) → CpuFreqAnalysis
+│   查询主线程运行核心分布和各核心频率统计（min/max/avg）
+│   CpuFreqAnalysis 为 Pydantic 模型，compact 模式返回 .to_compact_dict()
+│
 ├── find_slices(trace_path, pattern, process?) → dict | None
 │   调用 MCP find_slices，按名称模式搜索 slice
 │
@@ -93,6 +102,8 @@ AnalysisToolkit
 - 每个工具独立可调用，无隐含依赖关系
 - Agent 自由组合工具以实现不同分析流程
 - 现有 `analyze()` 保留不变（调用引擎的全量流水线），`analyze_hybrid()` 不再需要
+- 所有工具支持 `compact=True` 参数，compact 模式返回摘要（关键指标 + 行数 + 样本），默认全量。对透传工具（`find_slices`、`execute_sql`）的 compact 行为：返回 `total_rows` + 前 N 条样本（默认 5 条），省略全量数据
+- 决策逻辑由 LLM 执行（通过 Skill 中的决策树指导），工具只负责数据准备
 
 ### MCP 集成层
 
@@ -197,17 +208,46 @@ Agent 编排流程（由 Cursor LLM 执行）：
 7. Agent 基于摘要推理结论并输出
 ```
 
-**SOP 文档结构**（存放在 `modules/perfetto_analysis/docs/sop/`）：
+**SOP 文档结构**（存放在 `modules/perfetto_analysis/skills/perfetto-analysis/sop/`）：
 
 ```text
-docs/sop/
-├── jank-analysis.md        # 卡顿分析 SOP
-├── anr-analysis.md         # ANR 分析 SOP
-├── memory-analysis.md      # 内存分析 SOP
-└── general-analysis.md     # 通用分析 SOP（场景不明时的引导）
+skills/perfetto-analysis/
+├── SKILL.md                # Cursor Skill 入口（全场景路由 + 决策树）
+├── tool-catalog.md         # 完整工具文档
+├── sql-patterns.md         # SQL 查询模板库
+├── sop/
+│   ├── jank-analysis.md        # 卡顿分析 SOP
+│   ├── anr-analysis.md         # ANR 分析 SOP
+│   ├── memory-analysis.md      # 内存分析 SOP
+│   ├── general-analysis.md     # 通用分析 SOP
+│   ├── startup-analysis.md     # 启动分析 SOP
+│   ├── response-latency.md     # 响应时延 SOP
+│   ├── input-latency.md        # 输入时延 SOP
+│   ├── rotation-analysis.md    # 转屏分析 SOP
+│   └── io-block-analysis.md    # IO 阻塞 SOP
+├── patterns/
+│   └── root-cause-patterns.md  # 根因模式库
+├── cases/                      # 分析案例库
+└── ref/                        # 参考文档
 ```
 
 每个 SOP 包含：分析目标、前置检查、工具调用顺序、结果解读指引、常见模式识别。
+
+### 分析链路与置信度
+
+`AnalysisChainResult` 的置信度计算规则：
+
+```text
+confidence = 1.0
+- 每个 source="degraded" 的维度：-0.1
+- 每个 source="unavailable" 的维度：-0.2
+- 时间范围由用户指定：+0（最可靠）
+- 时间范围由 Agent 自动推断：-0.05
+- jank_count=0 但用户报告卡顿：-0.15
+最终 confidence = max(0.0, min(1.0, confidence))
+```
+
+置信度阈值：≥0.8 为高置信度，0.5~0.8 为中等，<0.5 需标注"建议人工复核"。
 
 ## Project Structure
 
@@ -220,12 +260,6 @@ modules/perfetto_analysis/src/
 ├── result_compressor.py   # 结果压缩器
 └── analysis_mode.py       # Feature Flag + 降级逻辑
 
-modules/perfetto_analysis/docs/sop/
-├── jank-analysis.md       # 卡顿分析 SOP
-├── anr-analysis.md        # ANR 分析 SOP
-├── memory-analysis.md     # 内存分析 SOP
-└── general-analysis.md    # 通用分析 SOP
-
 modules/perfetto_analysis/tests/
 ├── test_mcp_client.py     # MCP 调用 mock 测试
 ├── test_toolkit.py        # 原子工具集测试
@@ -233,6 +267,8 @@ modules/perfetto_analysis/tests/
 └── data/
     └── launcher慢划*.perfetto-trace  # 已有测试 trace
 ```
+
+> **注**: SOP/Skill/知识资产的目录结构见 [Agent 编排集成](#agent-编排集成) 章节。
 
 ### 修改文件（最小改动）
 
@@ -271,23 +307,24 @@ modules/perfetto_analysis/src/
 11. **SOP 文档** — 编写卡顿分析、通用分析 SOP
 12. **service.py** — 新增 `compress_results()` 公共方法供 Agent 按需调用
 
-### Phase 5: Feature Flag + CLI（P2）
+### Phase 5: Feature Flag + CLI + 引擎输出增强（P2）
 
 13. **CLI 参数** — `--mode mcp_preferred|engine_only|mcp_only`
 14. **运行时切换** — `set_analysis_mode()` / `get_analysis_mode()` API
 15. **config 子命令** — `analysis config show/set`
+16a. **引擎 CLI 输出增强** — 混合刷新率检测时输出 `mixed_refresh_rates`、`segments`（含各段 Hz/duration_s）和切换时间点
 
 ### Phase 6: 多场景扩展（P2）
 
-16. **ANR 场景** — mcp_client 中 ANR 相关方法 + service 入口 + SOP
-17. **Memory 场景** — mcp_client 中内存分析方法 + service 入口 + SOP
-18. **场景可用性检查** — trace 元数据检测 + 友好提示
+17. **ANR 场景** — mcp_client 中 ANR 相关方法 + service 入口 + SOP
+18. **Memory 场景** — mcp_client 中内存分析方法 + service 入口 + SOP
+19. **场景可用性检查** — trace 元数据检测 + 友好提示
 
 ### Phase 7: 测试与验证
 
-19. **单元测试** — mcp_client mock、toolkit 降级、compressor
-20. **集成测试** — 使用真实 trace 端到端验证
-21. **回归测试** — engine_only 模式与改造前行为一致
+20. **单元测试** — mcp_client mock、toolkit 降级、compressor
+21. **集成测试** — 使用真实 trace 端到端验证（含性能基准：22MB trace < 5s）
+22. **回归测试** — engine_only 模式与改造前行为一致
 
 ## 关键设计决策
 

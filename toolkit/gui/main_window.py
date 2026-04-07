@@ -61,6 +61,7 @@ class MainWindow(QWidget):
         self._title_bar.maximize_clicked.connect(self._toggle_maximize)
         self._title_bar.close_clicked.connect(self.close)
         self._title_bar.theme_toggled.connect(self._toggle_theme)
+        self._title_bar.llm_settings_requested.connect(self._open_llm_settings)
         self._root_layout.addWidget(self._title_bar)
 
         self._nav_panel = NavPanel(self)
@@ -94,6 +95,20 @@ class MainWindow(QWidget):
         sb_layout.addWidget(self._status_text)
 
         sb_layout.addStretch()
+
+        llm_manager = context.get("llm_manager")
+        if llm_manager:
+            from toolkit.gui.widgets.llm_status_widget import LLMStatusWidget
+
+            self._llm_status = LLMStatusWidget(llm_manager, self)
+            sb_layout.addWidget(self._llm_status)
+
+            if hasattr(llm_manager, "budget_alert"):
+                llm_manager.budget_alert.connect(self._on_budget_alert)
+            if hasattr(llm_manager, "degradation_occurred"):
+                llm_manager.degradation_occurred.connect(self._on_degradation)
+        else:
+            self._llm_status = None
 
         self._status_version = QLabel("v1.0.0")
         self._status_version.setObjectName("statusBarText")
@@ -287,6 +302,42 @@ class MainWindow(QWidget):
         self._home_tab.update_status(self._devices, module_count, self._current_theme)
 
         logger.info("主题已切换: %s", self._current_theme)
+
+    def _on_budget_alert(self, ratio: float) -> None:
+        """Token 预算到达告警阈值。"""
+        from PyQt6.QtWidgets import QMessageBox
+
+        pct = int(ratio * 100)
+        result = QMessageBox.warning(
+            self,
+            "Token 预算告警",
+            f"当前会话 Token 用量已达预算的 {pct}%。\n\n"
+            "是否继续后续请求？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        llm_mgr = self.context.get("llm_manager")
+        if llm_mgr and hasattr(llm_mgr, "set_budget_paused"):
+            llm_mgr.set_budget_paused(result == QMessageBox.StandardButton.No)
+
+    def _on_degradation(self, from_provider: str, to_provider: str) -> None:
+        """LLM Provider 降级通知。"""
+        from PyQt6.QtCore import QTimer
+
+        original = self._status_text.text()
+        self._status_text.setText(f"⚠ LLM 已降级: {from_provider} → {to_provider}")
+        QTimer.singleShot(3000, lambda: self._status_text.setText(original))
+
+    def _open_llm_settings(self) -> None:
+        """打开 LLM 模型设置对话框（T018-T020 实现）。"""
+        from toolkit.gui.llm_settings_dialog import LLMSettingsDialog
+
+        llm_manager = self.context.get("llm_manager")
+        if not llm_manager:
+            logger.warning("LLM Manager 未初始化")
+            return
+        dialog = LLMSettingsDialog(llm_manager, parent=self)
+        dialog.exec()
 
     def _apply_theme(self) -> None:
         """应用主题样式表到整个应用。"""

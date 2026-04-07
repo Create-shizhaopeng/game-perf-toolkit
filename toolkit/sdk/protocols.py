@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel
@@ -26,3 +27,22 @@ class ComparableService(Protocol):
     """可对比服务 — 提供对比功能的模块应满足此接口"""
 
     def compare(self, result_a: BaseModel, result_b: BaseModel) -> dict: ...
+
+
+@runtime_checkable
+class LLMProviderProtocol(Protocol):
+    """LLM Provider 协议 — 模块通过此协议使用 LLM 能力"""
+
+    async def stream_chat(
+        self,
+        messages: list[dict],
+        tools: list | None = None,
+        system_prompt: str = "",
+    ) -> AsyncIterator: ...
+
+    def count_tokens(self, messages: list[dict]) -> int: ...
+
+    def get_available_models(self) -> list[str]: ...
+
+    @property
+    def provider_name(self) -> str: ...

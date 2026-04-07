@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -155,10 +156,22 @@ class _CaptureWorker(QThread):
                 self.save_ok.emit(count)
 
             elif self._action == "stop":
-                exported = self._svc.session_stop_and_export(
-                    self._serial,
-                    on_progress=lambda msg: self.progress.emit(msg),
-                )
+                device_info = self._kwargs.get("device_info")
+                device_dir = self._kwargs.get("device_dir")
+                auto_save = self._kwargs.get("auto_save", False)
+
+                if auto_save and device_info and device_dir:
+                    exported = self._svc.session_stop_with_auto_save(
+                        self._serial,
+                        device_info,
+                        device_dir,
+                        on_progress=lambda msg: self.progress.emit(msg),
+                    )
+                else:
+                    exported = self._svc.session_stop_and_export(
+                        self._serial,
+                        on_progress=lambda msg: self.progress.emit(msg),
+                    )
                 self.progress.emit(f"■ 会话结束，已导出 {len(exported)} 个文件")
                 self.export_ok.emit([str(p) for p in exported])
 
@@ -256,8 +269,11 @@ class PerfettoCaptureTab(BaseTab):
         self._chk_manual_buffer = QCheckBox("手动设置 Buffer")
         self._chk_manual_buffer.toggled.connect(self._on_manual_buffer_toggled)
         self._chk_ftrace = QCheckBox("启用 Ftrace 自定义")
+        self._chk_jank = QCheckBox("启用 Jank 检测")
+        self._chk_jank.toggled.connect(self._on_jank_toggled)
         chk_row.addWidget(self._chk_manual_buffer)
         chk_row.addWidget(self._chk_ftrace)
+        chk_row.addWidget(self._chk_jank)
         chk_row.addStretch()
         config_vbox.addLayout(chk_row)
 
@@ -304,6 +320,34 @@ class PerfettoCaptureTab(BaseTab):
         self._chk_ftrace.toggled.connect(lambda _: self._update_auto_buffer())
         scroll_layout.addWidget(self._ftrace_group)
 
+        # ── Jank 监控面板（默认隐藏）：左配置 + 右曲线 ──
+        self._jank_group = QGroupBox("📊 Jank 监控")
+        jank_outer = QHBoxLayout(self._jank_group)
+        jank_outer.setContentsMargins(4, 4, 4, 4)
+        jank_outer.setSpacing(4)
+
+        from .jank_panel import JankConfigPanel
+        from .fps_chart import FpsChartWidget
+
+        self._jank_config_panel = JankConfigPanel()
+        self._jank_config_panel.config_changed.connect(self._on_jank_config_changed)
+        self._jank_config_panel.app_selector.refresh_requested.connect(self._refresh_jank_apps)
+        self._jank_config_panel.pause_clicked.connect(self._on_jank_pause_clicked)
+        self._jank_config_panel.export_clicked.connect(self._on_jank_export_clicked)
+        jank_outer.addWidget(self._jank_config_panel)
+
+        self._fps_chart = FpsChartWidget()
+        self._fps_chart.setMinimumHeight(180)
+        jank_outer.addWidget(self._fps_chart, 1)
+
+        self._jank_group.setVisible(False)
+        scroll_layout.addWidget(self._jank_group)
+
+        # Jank Worker
+        self._jank_worker = None
+        self._jank_enabled = False
+        self._jank_duration_timer: QTimer | None = None
+
         scroll_layout.addStretch()
         top_scroll.setWidget(scroll_widget)
         root.addWidget(top_scroll, 1)
@@ -347,10 +391,14 @@ class PerfettoCaptureTab(BaseTab):
         self._btn_save.clicked.connect(self._on_save)
         self._btn_stop.clicked.connect(self._on_stop)
         self._btn_abandon.clicked.connect(self._on_abandon)
+        self._btn_history = QPushButton("📂 历史")
+        self._btn_history.setFixedWidth(action_btn_w)
+        self._btn_history.clicked.connect(self._toggle_history_panel)
         btn_layout.addWidget(self._btn_start)
         btn_layout.addWidget(self._btn_save)
         btn_layout.addWidget(self._btn_stop)
         btn_layout.addWidget(self._btn_abandon)
+        btn_layout.addWidget(self._btn_history)
         btn_layout.addStretch()
         bottom_layout.addLayout(btn_layout)
 
@@ -362,6 +410,336 @@ class PerfettoCaptureTab(BaseTab):
         bottom_layout.addWidget(self._log_area)
 
         root.addWidget(bottom_widget)
+
+        # 历史记录面板（延迟初始化）
+        self._history_panel = None
+        self._history_mask = None
+        self._history_service = None
+
+    def _ensure_history_panel(self) -> None:
+        """确保历史面板已初始化。"""
+        if self._history_panel is not None:
+            return
+
+        from .analysis_chat import AnalysisChatWidget
+        from .history_panel import HistoryPanel, OverlayMask
+        from .history_service import HistoryService
+        from .history_storage import HistoryStorage
+
+        # 初始化遮罩
+        self._history_mask = OverlayMask(self)
+        self._history_mask.clicked.connect(self._close_history_panel)
+
+        # 初始化面板
+        self._history_panel = HistoryPanel(self)
+        self._history_panel.close_requested.connect(self._close_history_panel)
+        self._history_panel.refresh_requested.connect(self._refresh_history)
+        self._history_panel.cleanup_requested.connect(self._cleanup_history)
+        self._history_panel.open_directory_requested.connect(self._open_history_directory)
+        self._history_panel.analyze_trace_requested.connect(self._analyze_history_trace)
+        self._history_panel.delete_session_requested.connect(self._delete_history_session)
+        self._history_panel.delete_trace_requested.connect(self._delete_history_trace)
+        self._history_panel.file_dropped.connect(self._on_trace_file_dropped)
+        self._history_panel._analysis_history_tree.open_report_requested.connect(
+            self._open_analysis_report
+        )
+
+        # AI 对话组件
+        self._analysis_chat = AnalysisChatWidget()
+        self._analysis_chat.send_message.connect(self._on_analysis_chat_send)
+        self._history_panel.set_chat_widget(self._analysis_chat)
+
+        # trace 选中时自动更新对话区域
+        self._history_panel._session_tree.itemSelectionChanged.connect(
+            self._on_trace_selection_changed
+        )
+
+        # 初始化历史服务
+        output_dir = self._get_output_dir()
+        db_path = output_dir / "history.db"
+        storage = HistoryStorage(db_path)
+        self._history_service = HistoryService(storage, output_dir, self._cfg.history)
+
+        # 检测 analysis 模块是否可用
+        analysis_available = self._is_analysis_module_available()
+        self._history_panel.set_analysis_available(bool(analysis_available))
+
+    def _get_output_dir(self) -> Path:
+        """获取输出目录。"""
+        import sys
+        if getattr(sys, "frozen", False):
+            base = Path(sys.executable).parent / "output"
+        else:
+            base = Path(__file__).parent.parent / "data" / self._cfg.output_dir
+        base.mkdir(parents=True, exist_ok=True)
+        return base
+
+    def _is_analysis_module_available(self) -> bool:
+        """检测 perfetto_analysis 模块是否可用。"""
+        try:
+            import importlib
+            return importlib.util.find_spec("modules.perfetto_analysis") is not None
+        except Exception:
+            return False
+
+    def _toggle_history_panel(self) -> None:
+        """切换历史面板显示状态。"""
+        try:
+            self._ensure_history_panel()
+        except Exception as e:
+            self._log(f"✗ 历史面板初始化失败: {e}", "error")
+            return
+
+        if self._history_panel.isVisible():
+            self._close_history_panel()
+        else:
+            self._open_history_panel()
+
+    def _open_history_panel(self) -> None:
+        """打开历史面板。"""
+        self._ensure_history_panel()
+        self._history_mask.show_mask()
+        self._history_panel.show_animated()
+        self._refresh_history()
+
+    def _close_history_panel(self) -> None:
+        """关闭历史面板。"""
+        if self._history_panel:
+            self._history_panel.hide_animated()
+        if self._history_mask:
+            self._history_mask.hide_mask()
+
+    def _refresh_history(self) -> None:
+        """刷新历史记录和分析历史。"""
+        if not self._history_service:
+            return
+
+        sessions = self._history_service.scan_sessions()
+        self._history_panel.refresh(sessions)
+
+        stats = self._history_service.get_stats()
+        self._history_panel.update_stats(stats)
+
+        try:
+            storage = self._history_service.storage
+            tasks = storage.get_all_analysis_tasks(limit=50)
+            self._history_panel.refresh_analysis_history(tasks)
+        except Exception:
+            pass
+
+    def _cleanup_history(self) -> None:
+        """清理过期历史。"""
+        if not self._history_service:
+            return
+
+        deleted = self._history_service.cleanup_expired()
+        if deleted > 0:
+            self._log(f"已清理 {deleted} 个过期会话", "success")
+            self._refresh_history()
+        else:
+            self._log("没有需要清理的过期会话", "info")
+
+    def _open_history_directory(self, path: Path) -> None:
+        """打开历史目录。"""
+        if path.is_file():
+            # 打开文件所在目录并选中文件
+            import subprocess
+            import sys
+            if sys.platform == "win32":
+                subprocess.run(["explorer", "/select,", str(path)], check=False)
+            else:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent)))
+        elif path.is_dir():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        else:
+            self._log(f"路径不存在: {path}", "error")
+
+    def _on_trace_file_dropped(self, file_path: Path) -> None:
+        """处理拖入的 trace 文件——移动到 user_traces 并刷新。"""
+        if not self._history_service:
+            self._log("历史服务未就绪", "error")
+            return
+
+        try:
+            output_dir = self._get_output_dir()
+            user_dir = output_dir / "user_traces"
+            user_dir.mkdir(parents=True, exist_ok=True)
+
+            import shutil
+
+            dest = user_dir / file_path.name
+            if dest.exists():
+                self._log(f"文件已存在: {dest.name}", "warning")
+                return
+
+            shutil.copy2(str(file_path), str(dest))
+            self._log(f"已导入: {dest.name}", "success")
+            self._refresh_history()
+        except Exception as e:
+            self._log(f"导入失败: {e}", "error")
+
+    def _on_trace_selection_changed(self) -> None:
+        """trace 选中变化时更新 AI 对话区域。"""
+        if not hasattr(self, "_analysis_chat"):
+            return
+        selected = self._history_panel._get_selected_items_data()
+        self._analysis_chat.set_selected_traces(selected)
+
+    def _on_analysis_chat_send(self, message: str, traces: list) -> None:
+        """AI 对话发送消息，启动 AnalysisWorker。"""
+        if message == "__cancel__":
+            if hasattr(self, "_analysis_worker") and self._analysis_worker:
+                self._analysis_worker.request_abort()
+                self._analysis_chat.set_analyzing(False)
+            self._log("取消分析请求", "info")
+            return
+
+        trace_paths = [t.get("path") for t in traces if t.get("type") == "trace"]
+        if not trace_paths:
+            self._analysis_chat.append_message("system", "请先在左侧选择 trace 文件")
+            return
+
+        orchestrator = self.context.get("pa_orchestrator") if self.context else None
+        if not orchestrator:
+            self._analysis_chat.append_message("system", "分析引擎未就绪，请确认 perfetto_analysis 模块已加载")
+            return
+
+        from .analysis_chat import AnalysisWorker
+
+        process_name = ""
+        for t in traces:
+            if t.get("target_package"):
+                process_name = t["target_package"]
+                break
+
+        self._analysis_worker = AnalysisWorker(
+            orchestrator=orchestrator,
+            trace_path=trace_paths[0],
+            user_intent=message,
+            process_name=process_name,
+        )
+        self._analysis_worker.message_received.connect(self._on_analysis_message)
+        self._analysis_worker.status_changed.connect(self._on_analysis_status)
+        self._analysis_worker.finished_with_report.connect(self._on_analysis_finished)
+        self._analysis_worker.analysis_error.connect(self._on_analysis_error)
+        self._analysis_worker.finished.connect(lambda: self._analysis_chat.set_analyzing(False))
+
+        self._analysis_chat.set_analyzing(True)
+        self._analysis_worker.start()
+
+    def _on_analysis_message(self, role: str, content: str) -> None:
+        self._analysis_chat.append_message(role, content)
+
+    def _on_analysis_status(self, task_id: str, status: str, detail: str) -> None:
+        self._log(f"分析状态: {status} — {detail}", "info")
+
+    def _on_analysis_finished(self, html_path: str) -> None:
+        if html_path:
+            from PyQt6.QtCore import QUrl
+            from PyQt6.QtGui import QDesktopServices
+
+            QDesktopServices.openUrl(QUrl.fromLocalFile(html_path))
+            self._analysis_chat.append_message("system", f"📄 报告已生成并打开: {Path(html_path).name}")
+
+            self._save_analysis_record(html_path, "COMPLETED")
+        else:
+            self._analysis_chat.append_message("system", "分析完成，但未生成报告")
+        self._refresh_history()
+
+    def _save_analysis_record(self, html_path: str, status: str) -> None:
+        """保存分析记录到数据库。"""
+        if not self._history_service:
+            return
+        try:
+            import uuid
+
+            storage = self._history_service.storage
+            task_id = str(uuid.uuid4())
+
+            trace_path = ""
+            process_name = ""
+            user_intent = ""
+            if hasattr(self, "_analysis_worker") and self._analysis_worker:
+                trace_path = self._analysis_worker._trace_path
+                process_name = self._analysis_worker._process_name
+                user_intent = self._analysis_worker._user_intent
+
+            storage.create_analysis_task(
+                task_id=task_id,
+                trace_path=trace_path,
+                process_name=process_name,
+                user_intent=user_intent,
+            )
+
+            result_dir = str(Path(html_path).parent) if html_path else ""
+            storage.update_task_status(
+                task_id=task_id,
+                status=status,
+                result_dir=result_dir,
+            )
+
+            if trace_path:
+                storage.update_trace_analysis_status(trace_path, status, task_id)
+        except Exception as e:
+            logger.warning("保存分析记录失败: %s", e)
+
+    def _on_analysis_error(self, error: str) -> None:
+        self._analysis_chat.append_message("system", f"❌ 分析失败: {error}")
+
+    def _open_analysis_report(self, html_path: str) -> None:
+        """打开分析报告 HTML。"""
+        from PyQt6.QtCore import QUrl
+        from PyQt6.QtGui import QDesktopServices
+
+        if Path(html_path).exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(html_path))
+        else:
+            self._log(f"报告文件不存在: {html_path}", "error")
+
+    def _analyze_history_trace(self, trace_path: Path) -> None:
+        """分析历史 trace。"""
+        if not trace_path.exists():
+            self._log(f"文件不存在: {trace_path}", "error")
+            self._refresh_history()
+            return
+
+        # 通过 EventBus 发布分析请求
+        try:
+            from toolkit.core.event_bus import get_event_bus
+            bus = get_event_bus()
+            bus.emit("perfetto_capture.open_trace_for_analysis", {"trace_path": str(trace_path)})
+            self._log(f"已请求分析: {trace_path.name}", "info")
+            self._close_history_panel()
+        except Exception as e:
+            self._log(f"发送分析请求失败: {e}", "error")
+
+    def _delete_history_session(self, session_id: str) -> None:
+        """删除历史会话（确认已在 history_panel 中完成）。"""
+        if not self._history_service:
+            return
+        if self._history_service.delete_session(session_id):
+            self._log(f"已删除会话: {session_id}", "success")
+        else:
+            self._log(f"删除会话失败: {session_id}", "error")
+        self._refresh_history()
+
+    def _delete_history_trace(self, trace_path: Path) -> None:
+        """删除历史 trace（确认已在 history_panel 中完成）。"""
+        if not self._history_service:
+            return
+        if self._history_service.delete_trace(trace_path):
+            self._log(f"已删除: {trace_path.name}", "success")
+        else:
+            self._log(f"删除失败: {trace_path.name}", "error")
+        self._refresh_history()
+
+    def keyPressEvent(self, event) -> None:
+        """键盘事件处理。"""
+        if event.key() == Qt.Key.Key_Escape:
+            if self._history_panel and self._history_panel.isVisible():
+                self._close_history_panel()
+                return
+        super().keyPressEvent(event)
 
     def _log(self, message: str, level: str = "info") -> None:
         ts = datetime.datetime.now().strftime("%H:%M:%S")
@@ -560,6 +938,15 @@ class PerfettoCaptureTab(BaseTab):
     def _on_start(self) -> None:
         if not self.require_device() or not self._service:
             return
+        if self._jank_enabled:
+            config = self._jank_config_panel.get_config()
+            if not config.target_package:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self, "提示",
+                    "已启用 Jank 检测，请先选择监控应用",
+                )
+                return
         self._apply_config_from_ui()
         self._log("正在启动 Perfetto 抓取...")
         cfg = self._service.config
@@ -603,6 +990,9 @@ class PerfettoCaptureTab(BaseTab):
             except Exception as e:
                 self._log(f"✗ 获取设备目录失败: {e}", "error")
 
+        if self._jank_enabled:
+            self._start_jank_monitor()
+
     def _on_save(self) -> None:
         if not self._service:
             self._log("✗ 服务未初始化，无法保存", "error")
@@ -634,13 +1024,24 @@ class PerfettoCaptureTab(BaseTab):
         self._log(f"✓ 第 {count} 段已保存", "success")
 
     def _on_stop(self) -> None:
-        if not self._service or not self._serial:
-            return
-        self._log("停止抓取，导出 trace...")
         self._set_capturing(False)
         self._timer.stop()
 
-        worker = _CaptureWorker("stop", self._service, self._serial)
+        if self._jank_worker:
+            self._stop_jank_monitor()
+
+        if not self._service or not self._serial:
+            return
+        self._log("停止抓取，导出 trace...")
+
+        worker = _CaptureWorker(
+            "stop",
+            self._service,
+            self._serial,
+            device_info=self._device_info,
+            device_dir=self._device_dir or self._service.config.device_trace_dir,
+            auto_save=True,
+        )
         worker.progress.connect(lambda msg: self._log(msg))
         worker.export_ok.connect(self._on_exported)
         worker.error.connect(self._on_error)
@@ -754,9 +1155,191 @@ class PerfettoCaptureTab(BaseTab):
         self._spin_buffer.setEnabled(not capturing and manual)
         for cb in self._cat_checks.values():
             cb.setEnabled(not capturing)
+        self._chk_jank.setEnabled(not capturing)
+        self._chk_ftrace.setEnabled(not capturing)
 
     def _update_timer(self) -> None:
         if self._capture_start_time:
             elapsed = datetime.datetime.now() - self._capture_start_time
             mins, secs = divmod(int(elapsed.total_seconds()), 60)
             self._lbl_timer.setText(f"时长: {mins:02d}:{secs:02d}")
+
+    # ── Jank 监控相关方法 ──────────────────────────────────────────
+
+    def _on_jank_toggled(self, checked: bool) -> None:
+        """Jank 检测复选框状态变化。"""
+        self._jank_group.setVisible(checked)
+        self._jank_enabled = checked
+        if checked and self._adb and self._serial:
+            self._refresh_jank_apps()
+
+    def _refresh_jank_apps(self) -> None:
+        """刷新应用列表。"""
+        if not self._adb or not self._serial:
+            self._log("⚠ 请先连接设备", "warning")
+            return
+
+        try:
+            from .jank_service import JankMonitorService
+            svc = JankMonitorService(self._adb, self._serial)
+            apps = svc.get_running_apps()
+            self._jank_config_panel.app_selector.set_apps(apps)
+
+            threshold = svc.get_default_threshold()
+            self._jank_config_panel.set_default_threshold(threshold)
+        except Exception as e:
+            self._log(f"⚠ 获取应用列表失败: {e}", "warning")
+
+    def _on_jank_config_changed(self, config) -> None:
+        """Jank 配置变化。"""
+        pass
+
+    def _on_jank_pause_clicked(self) -> None:
+        """Jank 暂停/恢复按钮点击。"""
+        if self._jank_worker:
+            if self._jank_config_panel._paused:
+                self._jank_worker.pause_capture_detection()
+                self._log("⏸ 已暂停 Jank 判定", "info")
+            else:
+                self._jank_worker.resume_capture_detection()
+                self._log("▶ 已恢复 Jank 判定", "info")
+
+    def _on_jank_export_clicked(self) -> None:
+        """导出帧率数据。"""
+        if not self._jank_worker:
+            self._log("⚠ 监控未运行，无数据可导出", "warning")
+            return
+
+        from PyQt6.QtWidgets import QFileDialog
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出帧率数据",
+            f"fps_data_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            "Excel 文件 (*.xlsx)",
+        )
+        if not file_path:
+            return
+
+        try:
+            from .frame_exporter import export_to_xlsx
+            regions = self._jank_worker.capture_regions
+            config = self._jank_config_panel.get_config()
+            export_to_xlsx(
+                data=self._fps_chart._data,
+                regions=regions,
+                output_path=Path(file_path),
+            )
+            self._log(f"✓ 已导出: {file_path}", "success")
+        except ImportError:
+            self._log("⚠ 导出功能尚未实现", "warning")
+        except Exception as e:
+            self._log(f"✗ 导出失败: {e}", "error")
+
+    def _start_jank_monitor(self) -> None:
+        """启动 Jank 监控。不阻塞 Perfetto 抓取。"""
+        if not self._adb or not self._jank_enabled:
+            return
+
+        config = self._jank_config_panel.get_config()
+        if not config.target_package:
+            self._log("⚠ Jank 监控未启动：请先选择监控应用", "warning")
+            return
+
+        self._fps_chart.clear()
+
+        try:
+            from .jank_worker import JankMonitorWorker
+            self._jank_worker = JankMonitorWorker(self._adb, self._serial, self)
+            self._jank_worker.configure(config, config.target_package)
+
+            self._jank_worker.frame_stats_ready.connect(self._on_jank_frame_stats)
+            self._jank_worker.jank_triggered.connect(self._on_jank_triggered)
+            self._jank_worker.app_state_changed.connect(self._on_jank_app_state)
+            self._jank_worker.state_changed.connect(self._on_jank_state_changed)
+            self._jank_worker.monitor_stats_updated.connect(self._on_jank_stats_updated)
+            self._jank_worker.capture_requested.connect(self._on_jank_capture_requested)
+            self._jank_worker.capture_region_changed.connect(self._on_capture_region_changed)
+
+            self._jank_worker.start_monitor()
+            self._jank_config_panel.set_enabled(False)
+            self._log(f"▶ 开始监控: {config.target_package}", "info")
+
+            duration_ms = config.max_duration_hours * 3600 * 1000
+            self._jank_duration_timer = QTimer(self)
+            self._jank_duration_timer.setSingleShot(True)
+            self._jank_duration_timer.timeout.connect(self._on_duration_exceeded)
+            self._jank_duration_timer.start(duration_ms)
+            self._log(
+                f"⏱ 监控时长上限: {config.max_duration_hours} 小时", "info"
+            )
+        except Exception as e:
+            self._log(f"✗ Jank 监控启动失败: {e}", "error")
+
+    def _stop_jank_monitor(self) -> None:
+        """停止 Jank 监控。"""
+        if self._jank_duration_timer:
+            self._jank_duration_timer.stop()
+            self._jank_duration_timer = None
+        if self._jank_worker:
+            self._jank_worker.stop_monitor()
+            self._jank_worker = None
+            self._jank_config_panel.set_enabled(True)
+            self._log("■ Jank 监控已停止", "info")
+
+    def _on_duration_exceeded(self) -> None:
+        """监控时长到达上限，自动停止。"""
+        self._log("⏱ 已达到最大监控时长，自动停止", "warning")
+        self._on_stop()
+
+    def _on_jank_frame_stats(self, stats) -> None:
+        """帧数据更新。"""
+        logger.debug("帧数据: fps=%.1f, jank=%d, big_jank=%d, frames=%d",
+                      stats.fps, stats.jank_count, stats.big_jank_count, len(stats.frames))
+        self._fps_chart.update_stats(stats)
+
+    def _on_jank_triggered(self, event) -> None:
+        """Jank 触发事件。"""
+        self._log(
+            f"⚠ Jank 触发: {event.jank_count} 帧, "
+            f"平均帧耗时 {event.avg_frame_time_ms:.1f}ms",
+            "warning",
+        )
+
+    def _on_jank_app_state(self, is_foreground: bool) -> None:
+        """应用前后台状态变化。"""
+        if is_foreground:
+            self._log("📱 应用回到前台", "info")
+        else:
+            self._log("📱 应用切到后台", "info")
+
+    def _on_jank_state_changed(self, state) -> None:
+        """监控状态变化。"""
+        from .models import MonitorState
+        state_labels = {
+            MonitorState.IDLE: "就绪",
+            MonitorState.MONITORING: "监控中",
+            MonitorState.TRIGGERED: "已触发",
+            MonitorState.STABILIZING: "稳定中",
+            MonitorState.SAVING: "保存中",
+            MonitorState.PAUSED: "已暂停",
+            MonitorState.COMPLETED: "已完成",
+            MonitorState.ERROR: "错误",
+        }
+        label = state_labels.get(state, str(state))
+        self._log(f"📊 Jank 状态: {label}", "info")
+
+    def _on_jank_stats_updated(self, stats) -> None:
+        """监控统计更新。"""
+        config = self._jank_config_panel.get_config()
+        self._jank_config_panel.update_capture_count(
+            stats.capture_count, config.max_captures
+        )
+
+    def _on_jank_capture_requested(self) -> None:
+        """Jank 请求保存 trace。"""
+        self._log("📦 Jank 检测触发，自动保存 trace...", "info")
+        self._on_save()
+
+    def _on_capture_region_changed(self, regions: list) -> None:
+        """抓取选区变化。"""
+        self._fps_chart.set_regions(regions)

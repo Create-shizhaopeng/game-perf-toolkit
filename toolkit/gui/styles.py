@@ -26,10 +26,105 @@ QLabel#titleLabel {
 QWidget#titleBar QPushButton#minBtn,
 QWidget#titleBar QPushButton#maxBtn,
 QWidget#titleBar QPushButton#closeBtn,
-QPushButton#themeBtn {
+QPushButton#themeBtn,
+QPushButton#settingsBtn {
     background-color: transparent;
     border: none;
     border-radius: 0;
+}
+
+QMenu#settingsMenu {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 4px;
+}
+QMenu#settingsMenu::item {
+    padding: 6px 24px;
+    border-radius: 4px;
+    color: #cdd6f4;
+}
+QMenu#settingsMenu::item:selected {
+    background-color: #45475a;
+}
+
+/* LLM 设置对话框 */
+QDialog#llmSettingsDialog {
+    background-color: #1e1e2e;
+}
+QDialog#llmSettingsDialog QLabel {
+    color: #cdd6f4;
+}
+QDialog#llmSettingsDialog QPushButton#providerBtn {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    padding: 4px 16px;
+    color: #cdd6f4;
+    min-width: 72px;
+}
+QDialog#llmSettingsDialog QPushButton#providerBtn:checked {
+    background-color: #cba6f7;
+    color: #1e1e2e;
+    border-color: #cba6f7;
+}
+QDialog#llmSettingsDialog QLineEdit#apiKeyEdit {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #cdd6f4;
+}
+QDialog#llmSettingsDialog QPushButton#apiKeyToggle {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    color: #cdd6f4;
+    padding: 4px;
+}
+QDialog#llmSettingsDialog QComboBox#modelCombo {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #cdd6f4;
+}
+QDialog#llmSettingsDialog QSlider::groove:horizontal {
+    background: #313244;
+    height: 4px;
+    border-radius: 2px;
+}
+QDialog#llmSettingsDialog QSlider::handle:horizontal {
+    background: #cba6f7;
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
+}
+QDialog#llmSettingsDialog QSpinBox {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    padding: 2px 4px;
+    color: #cdd6f4;
+}
+QDialog#llmSettingsDialog QPushButton#llmSaveBtn {
+    background-color: #cba6f7;
+    color: #1e1e2e;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 20px;
+    font-weight: bold;
+}
+QDialog#llmSettingsDialog QPushButton#llmSaveBtn:hover {
+    background-color: #b490e0;
+}
+QDialog#llmSettingsDialog QPushButton#llmCancelBtn {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    padding: 6px 20px;
+    color: #cdd6f4;
 }
 
 QComboBox#deviceCombo {
@@ -105,6 +200,35 @@ QLabel#statusBarText {
     color: #a6adc8;
     font-size: 11px;
     background: transparent;
+}
+
+QLabel#llmTokenLabel {
+    color: #a6adc8;
+    font-size: 11px;
+    background: transparent;
+}
+QLabel#llmModelLabel {
+    color: #cba6f7;
+    font-size: 11px;
+    background: transparent;
+    padding: 0 4px;
+}
+QLabel#llmModelLabel:hover {
+    text-decoration: underline;
+}
+QMenu#modelSwitchMenu {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 4px;
+}
+QMenu#modelSwitchMenu::item {
+    padding: 4px 20px;
+    border-radius: 4px;
+    color: #cdd6f4;
+}
+QMenu#modelSwitchMenu::item:selected {
+    background-color: #45475a;
 }
 
 /* Splitter 拖拽手柄 */
@@ -380,10 +504,105 @@ QLabel#titleLabel {
 QWidget#titleBar QPushButton#minBtn,
 QWidget#titleBar QPushButton#maxBtn,
 QWidget#titleBar QPushButton#closeBtn,
-QPushButton#themeBtn {
+QPushButton#themeBtn,
+QPushButton#settingsBtn {
     background-color: transparent;
     border: none;
     border-radius: 0;
+}
+
+QMenu#settingsMenu {
+    background-color: #eff1f5;
+    border: 1px solid #ccd0da;
+    border-radius: 6px;
+    padding: 4px;
+}
+QMenu#settingsMenu::item {
+    padding: 6px 24px;
+    border-radius: 4px;
+    color: #333333;
+}
+QMenu#settingsMenu::item:selected {
+    background-color: #ccd0da;
+}
+
+/* LLM 设置对话框 — 浅色 */
+QDialog#llmSettingsDialog {
+    background-color: #eff1f5;
+}
+QDialog#llmSettingsDialog QLabel {
+    color: #333333;
+}
+QDialog#llmSettingsDialog QPushButton#providerBtn {
+    background-color: #dce0e8;
+    border: 1px solid #bcc0cc;
+    border-radius: 4px;
+    padding: 4px 16px;
+    color: #333333;
+    min-width: 72px;
+}
+QDialog#llmSettingsDialog QPushButton#providerBtn:checked {
+    background-color: #8839ef;
+    color: #ffffff;
+    border-color: #8839ef;
+}
+QDialog#llmSettingsDialog QLineEdit#apiKeyEdit {
+    background-color: #dce0e8;
+    border: 1px solid #bcc0cc;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #333333;
+}
+QDialog#llmSettingsDialog QPushButton#apiKeyToggle {
+    background-color: #dce0e8;
+    border: 1px solid #bcc0cc;
+    border-radius: 4px;
+    color: #333333;
+    padding: 4px;
+}
+QDialog#llmSettingsDialog QComboBox#modelCombo {
+    background-color: #dce0e8;
+    border: 1px solid #bcc0cc;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #333333;
+}
+QDialog#llmSettingsDialog QSlider::groove:horizontal {
+    background: #bcc0cc;
+    height: 4px;
+    border-radius: 2px;
+}
+QDialog#llmSettingsDialog QSlider::handle:horizontal {
+    background: #8839ef;
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
+}
+QDialog#llmSettingsDialog QSpinBox {
+    background-color: #dce0e8;
+    border: 1px solid #bcc0cc;
+    border-radius: 4px;
+    padding: 2px 4px;
+    color: #333333;
+}
+QDialog#llmSettingsDialog QPushButton#llmSaveBtn {
+    background-color: #8839ef;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 20px;
+    font-weight: bold;
+}
+QDialog#llmSettingsDialog QPushButton#llmSaveBtn:hover {
+    background-color: #7030d0;
+}
+QDialog#llmSettingsDialog QPushButton#llmCancelBtn {
+    background-color: #dce0e8;
+    border: 1px solid #bcc0cc;
+    border-radius: 4px;
+    padding: 6px 20px;
+    color: #333333;
 }
 
 QComboBox#deviceCombo {
@@ -459,6 +678,35 @@ QLabel#statusBarText {
     color: #616161;
     font-size: 11px;
     background: transparent;
+}
+
+QLabel#llmTokenLabel {
+    color: #616161;
+    font-size: 11px;
+    background: transparent;
+}
+QLabel#llmModelLabel {
+    color: #8839ef;
+    font-size: 11px;
+    background: transparent;
+    padding: 0 4px;
+}
+QLabel#llmModelLabel:hover {
+    text-decoration: underline;
+}
+QMenu#modelSwitchMenu {
+    background-color: #eff1f5;
+    border: 1px solid #ccd0da;
+    border-radius: 6px;
+    padding: 4px;
+}
+QMenu#modelSwitchMenu::item {
+    padding: 4px 20px;
+    border-radius: 4px;
+    color: #333333;
+}
+QMenu#modelSwitchMenu::item:selected {
+    background-color: #ccd0da;
 }
 
 /* Splitter 拖拽手柄 */

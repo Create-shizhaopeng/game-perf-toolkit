@@ -3,8 +3,11 @@
 ## 目录
 
 - [模块概述](#模块概述)
+- [Agent 工具集](#agent-工具集)
+- [Skills 管理](#skills-管理)
 - [继承的全局规则](#继承的全局规则)
 - [模块边界约束](#模块边界约束)
+- [Agent 编排引擎](#agent-编排引擎)
 - [模块特有规则](#模块特有规则)
 - [GUI 开发注意事项](#gui-开发注意事项)
 - [数据库相关规则](#数据库相关规则)
@@ -13,6 +16,59 @@
 ## 模块概述
 
 Perfetto trace 丢帧解析与多维度卡顿归因分析模块。基于 Android 丢帧 SOP 执行 Phase 1（丢帧定位）和 Phase 2（结构化数据拆解），支持 9 个分析维度（CPU/Thread/Binder/IO/GC/GPU/SF/Input/Lock）+ 全 Trace 整体分析（Summary），生成 Markdown 报告和 JSON 数据。
+
+## Agent 工具集
+
+本模块注册了 14 个 Agent 工具（`pa_*` 前缀），支持 MCP + 引擎双通道路由。
+
+**完整工具文档**：`skills/perfetto-analysis/tool-catalog.md`（含参数、返回值、能力边界、决策树）
+
+### 核心原子工具
+
+| 工具 | 数据源 | 说明 |
+|------|--------|------|
+| `pa_trace_overview` | 引擎 | trace 元数据概览（时长、帧数、进程） |
+| `pa_detect_jank` | 引擎 | 卡顿帧检测（⚠️ 游戏 trace 可能为空，见下文） |
+| `pa_analyze_dimension` | MCP/引擎 | 单维度分析（cpu/thread/binder/hotspot/io/gc/gpu/sf/input/lock/summary） |
+| `pa_cpu_overview` | MCP | 全 trace CPU 概览（线程分布、频率） |
+| `pa_find_slices` | MCP | 按名称搜索 slice |
+| `pa_execute_sql` | MCP | 任意 Perfetto SQL 查询 |
+| `pa_analyze_anr` | MCP | ANR 检测与根因分析 |
+| `pa_analyze_memory` | MCP | 内存泄漏与堆分析 |
+| `pa_compress_results` | 本地 | 结果压缩（占位，需通过 service 调用） |
+
+### 传统流水线工具
+
+| 工具 | 说明 |
+|------|------|
+| `pa_analyze` | 完整 Phase 1+2 分析 + 报告导出 |
+| `pa_parse` | 仅 Phase 1 丢帧解析 |
+| `pa_analyze_dims` | 按维度列表分析 |
+| `pa_list_dims` | 列出可用维度 |
+| `pa_history` | 查询分析历史 |
+
+### 关键注意事项
+
+- **游戏 trace 帧检测**：`pa_detect_jank` 依赖 VSync/FrameTimeline，游戏进程（Unity/Unreal）绕过 Choreographer，此数据为空。引擎的 `frame_boundary.py` 支持通过 `eglSwapBuffers`/`vkQueuePresentKHR` 识别游戏帧边界，但当前未接入 `detect_jank_frames` 主流程。替代方案：`pa_find_slices("eglSwapBuffers")` + `pa_execute_sql` 计算帧间隔
+- **MCP 独有能力**：hotspot（主线程热点）、ANR、内存分析、任意 SQL
+- **引擎独有能力**：io、gc、gpu、sf、input、lock 维度分析
+- **分析模式**：通过 `config.json` 的 `analysis_mode` 控制（mcp_preferred / engine_only / mcp_only）
+- **SOP 文档**：`skills/perfetto-analysis/sop/` 下有卡顿、通用、ANR、内存、IO 阻塞、响应时延、输入时延、启动、转屏分析的标准操作流程
+
+## Skills 管理
+
+本模块的 Cursor Skills 源文件位于 `skills/` 目录下，通过 `scripts/sync_skills.py` 同步到 `.cursor/skills/` 供 Cursor IDE 自动发现。
+
+| 路径 | 说明 |
+|------|------|
+| `skills/perfetto-analysis/SKILL.md` | Perfetto 全场景性能分析（卡顿/ANR/内存/启动/CPU） |
+
+**工作流程**：
+1. 在 `skills/` 目录下编辑 SKILL.md（源文件，Git 追踪）
+2. 运行 `python scripts/sync_skills.py` 同步到 `.cursor/skills/`
+3. Cursor 自动发现更新后的 Skill
+
+修改 Skill 后 MUST 运行同步脚本以生效。同步副本由 `.cursor/skills/.gitignore` 排除，不入库。
 
 ## 继承的全局规则
 
@@ -30,6 +86,28 @@ Perfetto trace 丢帧解析与多维度卡顿归因分析模块。基于 Android
 - 禁止修改：`toolkit/`、其他模块目录、项目根配置文件
 - 可以导入：`toolkit.sdk.*`、`toolkit.core.hookspecs`
 - 禁止导入：`toolkit.core` 内部实现、其他模块的 `src/`
+
+## Agent 编排引擎
+
+本模块包含基于 Pydantic AI 的多 Agent 编排引擎，位于 `src/agent/` 目录。
+
+| 文件 | 说明 |
+|------|------|
+| `__init__.py` | 数据模型（AnalysisTask, AnalysisStatus, AnalysisReport, AnalysisRouting, AgentRole, AnalysisConfig） |
+| `agents.py` | Pydantic AI Agent 工厂（MainAgent / SubAgent / ReviewAgent） |
+| `orchestrator.py` | 编排器，管理 Main→Sub→Review 流程，支持单条和批量分析 |
+| `tools.py` | 将 PerfettoAnalysisService 的 pa_* 方法封装为 Pydantic AI 工具 |
+| `prompts.py` | SOP 加载和 Agent 指令模板管理 |
+| `report.py` | Jinja2 HTML 报告生成 + 原始数据 JSON 保存 |
+| `package_db.py` | 包名↔进程名映射数据库（自动学习 + JSON 导入/导出） |
+
+### 关键约束
+
+- `AnalysisOrchestrator` 是编排器（非 Agent），管理 Agent 实例生命周期
+- 每个 trace 的分析在独立 SubAgent 中执行，上下文完全隔离
+- 通过 `pydantic-ai-litellm` 适配 LiteLLM，复用全局 LLMManager 配置
+- 分析结果存放路径：`output/analysis/<trace_stem>_<YYYYMMDD_HHmmss>/`
+- GUI 层通过 `AnalysisWorker(QThread)` 调用编排器，使用 `asyncio.run()` 驱动异步流程
 
 ## 模块特有规则
 

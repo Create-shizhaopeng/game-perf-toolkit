@@ -5,11 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, Callable, Iterator
+from typing import Any, Callable
 
 from .llm.base import LLMProvider
-from .llm.claude_provider import ClaudeProvider
-from .llm.glm_provider import GLMProvider
 from .memory.conversation import ConversationStore
 from .models import (
     AgentConfig,
@@ -25,6 +23,7 @@ from .models import (
     ToolResult,
 )
 from .sop.manager import SOPManager
+from .skills.manager import SkillsManager
 from .tools.executor import ToolExecutor
 from .tools.registry import ToolRegistry
 from .knowledge.report_index import ReportIndex
@@ -51,17 +50,21 @@ class AgentService:
         config: AgentConfig,
         conversation_store: ConversationStore | None = None,
         tool_definitions: list[ToolDefinition] | None = None,
-        tool_executor: Callable[[ToolCall], ToolResult] | None = None,
+        tool_executor: ToolExecutor | None = None,
         tool_registry: ToolRegistry | None = None,
         sop_manager: SOPManager | None = None,
+        skills_manager: SkillsManager | None = None,
+        llm_manager: object | None = None,
     ) -> None:
         self._config = config
         self._store = conversation_store
         self._sop_manager = sop_manager
+        self._skills_manager = skills_manager
         self._report_index = ReportIndex()
         self._provider: LLMProvider | None = None
         self._cancelled = False
         self._tracker: WorkflowTracker | None = None
+        self._llm_manager = llm_manager
 
         if tool_registry:
             self._tools = tool_registry.get_definitions()
@@ -69,17 +72,28 @@ class AgentService:
                 tool_registry,
                 max_result_length=config.tool_result_max_length,
             )
-            self._executor: Callable[[ToolCall], ToolResult] | None = (
-                self._tool_executor.execute
-            )
+        elif tool_executor:
+            self._tools = tool_definitions or []
+            self._tool_executor = tool_executor
         else:
             self._tools = tool_definitions or []
-            self._executor = tool_executor
+            self._tool_executor = None
 
         self._init_provider()
 
+        if self._llm_manager and hasattr(self._llm_manager, "provider_changed"):
+            self._llm_manager.provider_changed.connect(  # type: ignore[union-attr]
+                self._on_provider_changed
+            )
+
     def _init_provider(self) -> None:
-        """根据配置初始化 LLM Provider。"""
+        """根据配置初始化 LLM Provider。优先从全局 LLMManager 获取。"""
+        if self._llm_manager and hasattr(self._llm_manager, "get_provider"):
+            self._provider = self._llm_manager.get_provider()  # type: ignore[union-attr]
+            if self._provider:
+                return
+            logger.info("LLMManager 未配置 Provider，尝试本地初始化")
+
         provider = self._config.provider
         api_key = self._resolve_api_key(provider)
 
@@ -88,18 +102,15 @@ class AgentService:
             return
 
         try:
-            if provider == "glm":
-                self._provider = GLMProvider(
-                    api_key=api_key, model=self._config.model_name
-                )
-            elif provider == "claude":
-                self._provider = ClaudeProvider(
-                    api_key=api_key, model=self._config.model_name
-                )
-            else:
-                logger.error("不支持的 Provider: %s", provider)
-        except ImportError as exc:
-            logger.error("Provider SDK 导入失败: %s", exc)
+            from toolkit.core.llm.litellm_provider import LiteLLMProvider
+
+            self._provider = LiteLLMProvider(
+                api_key=api_key,
+                model=self._config.model_name,
+                provider=provider,
+            )
+        except Exception as exc:
+            logger.error("Provider 初始化失败: %s", exc)
 
     def _resolve_api_key(self, provider: str) -> str:
         """解析 API Key（优先 api_key → 分 provider 的 key）。"""
@@ -111,6 +122,14 @@ class AgentService:
             return self._config.claude_api_key
         return ""
 
+    def _on_provider_changed(self, provider_name: str) -> None:
+        """全局 Provider 切换后刷新内部引用。"""
+        if self._llm_manager and hasattr(self._llm_manager, "get_provider"):
+            new_provider = self._llm_manager.get_provider()  # type: ignore[union-attr]
+            if new_provider:
+                self._provider = new_provider
+                logger.info("Agent Provider 已切换至: %s", provider_name)
+
     @property
     def is_ready(self) -> bool:
         return self._provider is not None
@@ -119,7 +138,7 @@ class AgentService:
         """取消当前对话。"""
         self._cancelled = True
 
-    def chat(
+    async def chat(
         self,
         user_message: str,
         conversation_id: str | None = None,
@@ -157,7 +176,7 @@ class AgentService:
         final_system = self._build_system_prompt(system_prompt)
 
         logger.debug("[DIAG] chat: 进入 _run_loop")
-        response = self._run_loop(
+        response = await self._run_loop(
             messages=messages,
             conv_id=conv.id,
             system_prompt=final_system,
@@ -197,7 +216,7 @@ class AgentService:
         max_ctx = self._config.max_context_messages
 
         if len(stored) > max_ctx:
-            stored = stored[-max_ctx:]
+            stored = self._smart_truncate(stored, max_ctx)
 
         result: list[dict] = []
         for msg in stored:
@@ -226,6 +245,34 @@ class AgentService:
             result.append(entry)
         return result
 
+    @staticmethod
+    def _smart_truncate(messages: list, max_count: int) -> list:
+        """智能截断消息列表，优先保留 Skill 相关的工具调用结果。"""
+        if len(messages) <= max_count:
+            return messages
+
+        skill_keywords = {"skill_load", "skill_list", "skill_load_resource"}
+
+        priority_indices: set[int] = set()
+        for i, msg in enumerate(messages):
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
+                    if tc.name in skill_keywords:
+                        priority_indices.add(i)
+                        if i + 1 < len(messages):
+                            priority_indices.add(i + 1)
+
+        priority_msgs = [messages[i] for i in sorted(priority_indices)]
+        remaining_count = max_count - len(priority_msgs)
+
+        if remaining_count <= 0:
+            return priority_msgs[-max_count:]
+
+        recent = [m for i, m in enumerate(messages) if i not in priority_indices]
+        recent = recent[-remaining_count:]
+
+        return priority_msgs + recent
+
     def _build_system_prompt(self, extra: str = "") -> str:
         """构建系统提示词。"""
         parts = []
@@ -246,7 +293,19 @@ class AgentService:
             tool_list = ", ".join(t.name for t in self._tools)
             parts.append(f"可用工具: {tool_list}")
 
-        if self._sop_manager:
+        if self._skills_manager:
+            all_meta = self._skills_manager.get_all_metadata()
+            if all_meta:
+                skill_summary = "\n".join(
+                    f"- {m.name}: {m.description} (tags: {', '.join(m.tags)})"
+                    for m in all_meta
+                )
+                parts.append(
+                    "可用 Skills：\n" + skill_summary + "\n"
+                    "使用 skill_list / skill_load / skill_load_resource 工具获取详细知识。"
+                    "根据用户意图自主编排工具调用流程。"
+                )
+        elif self._sop_manager:
             sop_meta = self._sop_manager.get_all_metadata()
             if sop_meta:
                 sop_summary = "\n".join(
@@ -295,7 +354,7 @@ class AgentService:
 
         return "\n\n".join(trimmed)
 
-    def _run_loop(
+    async def _run_loop(
         self,
         messages: list[dict],
         conv_id: str,
@@ -325,7 +384,7 @@ class AgentService:
             hint = "正在思考..." if loop_count == 0 else "正在分析工具结果..."
             on_chunk(StreamChunk(type=StreamChunkType.THINKING, data=hint))
 
-        for chunk in self._provider.stream_chat(
+        async for chunk in self._provider.stream_chat(
             messages=messages,
             tools=self._tools if self._tools else None,
             system_prompt=system_prompt if loop_count == 0 else "",
@@ -353,6 +412,9 @@ class AgentService:
             elif chunk.type == StreamChunkType.USAGE:
                 if isinstance(chunk.data, dict):
                     usage = chunk.data
+                    total = usage.get("total_tokens", 0)
+                    if total and self._llm_manager and hasattr(self._llm_manager, "record_tokens"):
+                        self._llm_manager.record_tokens(total)  # type: ignore[union-attr]
 
             elif chunk.type == StreamChunkType.ERROR:
                 error_text = str(chunk.data)
@@ -393,7 +455,7 @@ class AgentService:
         messages.append(self._build_assistant_message(full_text, tool_calls))
 
         logger.debug("[DIAG] _run_loop[%d]: 有 %d 个 tool_calls, 开始执行", loop_count, len(tool_calls))
-        tool_results = self._handle_tool_calls(tool_calls, on_chunk)
+        tool_results = await self._handle_tool_calls(tool_calls, on_chunk)
         logger.debug("[DIAG] _run_loop[%d]: tool_calls 执行完成", loop_count)
 
         for tc, tr in zip(tool_calls, tool_results):
@@ -413,7 +475,7 @@ class AgentService:
                 self._store.save_message(conv_id, tool_msg)
 
         logger.debug("[DIAG] _run_loop[%d]: 递归调用 _run_loop[%d]", loop_count, loop_count + 1)
-        result = self._run_loop(
+        result = await self._run_loop(
             messages=messages,
             conv_id=conv_id,
             system_prompt=system_prompt,
@@ -448,7 +510,7 @@ class AgentService:
             ]
         return msg
 
-    def _handle_tool_calls(
+    async def _handle_tool_calls(
         self,
         tool_calls: list[ToolCall],
         on_chunk: Callable[[StreamChunk], None] | None,
@@ -465,11 +527,11 @@ class AgentService:
                 ))
                 continue
 
-            result = self._execute_single_tool(tc, on_chunk)
+            result = await self._execute_single_tool(tc, on_chunk)
 
             if result.is_error and _TOOL_RETRY_COUNT > 0:
                 logger.info("工具 '%s' 失败，重试 1 次", tc.name)
-                result = self._execute_single_tool(tc, on_chunk)
+                result = await self._execute_single_tool(tc, on_chunk)
 
             if self._tracker:
                 self._tracker.record_tool_call(
@@ -480,13 +542,13 @@ class AgentService:
 
         return results
 
-    def _execute_single_tool(
+    async def _execute_single_tool(
         self,
         tc: ToolCall,
         on_chunk: Callable[[StreamChunk], None] | None,
     ) -> ToolResult:
         """执行单个工具调用。"""
-        if not self._executor:
+        if not self._tool_executor:
             return ToolResult(
                 tool_call_id=tc.id,
                 content=f"工具 '{tc.name}' 无可用执行器",
@@ -497,7 +559,7 @@ class AgentService:
         start = time.time()
 
         try:
-            result = self._executor(tc)
+            result = await self._tool_executor.execute(tc)
         except Exception as exc:
             logger.error("工具 '%s' 执行异常: %s", tc.name, exc)
             result = ToolResult(

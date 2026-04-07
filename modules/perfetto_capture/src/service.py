@@ -489,6 +489,38 @@ class PerfettoCaptureService:
 
         return item
 
+    def session_stop_with_auto_save(
+        self,
+        serial: str,
+        device_info: DeviceInfo,
+        device_trace_dir: str,
+        on_progress: type(None) | type(lambda: None) = None,
+    ) -> list[Path]:
+        """停止抓取，若有未保存的 trace 则自动保存，然后导出所有 trace。
+
+        Args:
+            serial: 设备序列号
+            device_info: 设备信息
+            device_trace_dir: 设备上的 trace 目录
+            on_progress: 进度回调
+
+        Returns:
+            导出的文件路径列表
+        """
+        session = self._session
+        if session is None:
+            raise RuntimeError("无活动会话")
+
+        if session.running is not None:
+            if on_progress:
+                on_progress("自动保存当前 trace...")
+            try:
+                self.session_save_trace(serial, device_trace_dir, device_info)
+            except Exception as e:
+                logger.warning("自动保存 trace 失败: %s", e)
+
+        return self.session_stop_and_export(serial, on_progress)
+
     def session_stop_and_export(
         self,
         serial: str,

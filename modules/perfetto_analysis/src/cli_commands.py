@@ -12,6 +12,8 @@ from rich.console import Console
 from rich.table import Table
 
 analysis_app = typer.Typer(help="Perfetto 解析分析")
+config_app = typer.Typer(help="分析配置管理")
+analysis_app.add_typer(config_app, name="config")
 console = Console()
 
 _pa_context: dict | None = None
@@ -149,9 +151,12 @@ def analyze_cmd(
     process: Annotated[str, typer.Option("--process", "-p", help="目标进程/包名")] = "",
     fmt: Annotated[str, typer.Option("--format", "-f", help="输出格式 md/json")] = "md",
     as_json: Annotated[bool, typer.Option("--json", help="JSON 输出到 stdout")] = False,
+    mode: Annotated[Optional[str], typer.Option("--mode", help="分析模式: mcp_preferred / engine_only / mcp_only")] = None,
 ) -> None:
     """按维度独立分析。"""
     svc = _get_service()
+    if mode is not None:
+        svc.set_analysis_mode(mode)
 
     if not dims:
         console.print(svc.list_dimensions())
@@ -183,6 +188,39 @@ def analyze_cmd(
                 )
         except Exception as e:
             console.print(f"  [red]失败: {e}[/red]")
+
+
+@config_app.command("show")
+def config_show(
+    as_json: Annotated[bool, typer.Option("--json", help="JSON 格式输出")] = False,
+) -> None:
+    """显示当前分析模式配置。"""
+    svc = _get_service()
+    mode_info = svc.get_analysis_mode()
+    if as_json:
+        import json
+        console.print(json.dumps(mode_info, ensure_ascii=False, indent=2))
+    else:
+        console.print(f"[bold]分析模式:[/bold] {mode_info['analysis_mode']}")
+        console.print(f"[bold]MCP 超时:[/bold] {mode_info['mcp_timeout_ms']}ms")
+        if mode_info['dimension_overrides']:
+            console.print("[bold]维度覆盖:[/bold]")
+            for dim, m in mode_info['dimension_overrides'].items():
+                console.print(f"  {dim}: {m}")
+
+
+@config_app.command("set")
+def config_set(
+    mode: Annotated[str, typer.Argument(help="分析模式: mcp_preferred / engine_only / mcp_only")],
+) -> None:
+    """设置分析模式。"""
+    svc = _get_service()
+    try:
+        svc.set_analysis_mode(mode)
+        console.print(f"[green]分析模式已设置为: {mode}[/green]")
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
 
 
 @analysis_app.command("dims")

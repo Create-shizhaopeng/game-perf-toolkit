@@ -28,6 +28,15 @@
 - [P23 — GLM API 400 错误：对话历史格式不合规](#p23--glm-api-400-错误对话历史格式不合规)
 - [P24 — LLM Tool Schema 中 Callable 参数导致 API 拒绝](#p24--llm-tool-schema-中-callable-参数导致-api-拒绝)
 - [P25 — Python 3.14 from \_\_future\_\_ import annotations 与 get\_type\_hints 冲突](#p25--python-314-from-__future__-import-annotations-与-get_type_hints-冲突)
+- [P26 — Perfetto 引擎 Jank 检测误判（阈值与首周期）](#p26--perfetto-引擎-jank-检测误判阈值与首周期)
+- [P27 — Speckit Skills 通用模板需项目适配](#p27--speckit-skills-通用模板需项目适配)
+- [P28 — SurfaceView 游戏帧数据采集需 SurfaceFlinger fallback](#p28--surfaceview-游戏帧数据采集需-surfaceflinger-fallback)
+- [P29 — Python 短路求值传 None 给 Qt setEnabled()](#p29--python-短路求值传-none-给-qt-setenabled)
+- [P30 — QWidget 子类 CSS 背景不渲染](#p30--qwidget-子类-css-背景不渲染)
+- [P31 — 函数早返回跳过资源清理逻辑](#p31--函数早返回跳过资源清理逻辑)
+- [P32 — Bug 修复中用瞬时值替代稳定基准值导致级联回归](#p32--bug-修复中用瞬时值替代稳定基准值导致级联回归)
+- [P33 — 技术选型阶段重复造轮子](#p33--技术选型阶段重复造轮子)
+- [P34 — Pydantic AI + LiteLLM prompt 超出模型上下文限制](#p34--pydantic-ai--litellm-prompt-超出模型上下文限制)
 - [按子系统快速索引](#按子系统快速索引)
   - [插件框架](#插件框架)
   - [GUI / PyQt6](#gui--pyqt6)
@@ -42,7 +51,7 @@
 
 ## 按子系统快速索引
 
-开发时根据当前工作的子系统快速定位相关踩坑经验，无需通读全部 25 项。
+开发时根据当前工作的子系统快速定位相关踩坑经验，无需通读全部 31 项。
 
 ### 插件框架
 
@@ -64,6 +73,11 @@
 | P19 | QComboBox 自定义 Popup 崩溃 | 严重 | Windows、Popup、showPopup |
 | P20 | SQLite 跨线程连接访问 | 严重 | check_same_thread、QThread |
 | P21 | QTableWidget 操作按钮刷新竞态 | 中等 | blockSignals、cellWidget |
+| P29 | Python 短路求值传 None 给 Qt setEnabled() | 中等 | setEnabled、短路求值、bool |
+| P30 | QWidget 子类 CSS 背景不渲染 | 中等 | paintEvent、QStyleOption、透明 |
+| P31 | 函数早返回跳过资源清理逻辑 | 严重 | 早返回、cleanup、线程停止 |
+| P32 | Bug 修复中用瞬时值替代稳定基准值导致级联回归 | 严重 | 瞬时值、基准、回归、Jank 检测 |
+| P33 | 技术选型阶段重复造轮子 | 严重 | 技术选型、第三方库、LiteLLM、LLM Provider |
 
 ### ADB / 设备
 
@@ -78,7 +92,10 @@
 |------|------|--------|--------|
 | P15 | Perfetto detach 须配合 write_into_file | 严重 | detach、文件输出 |
 | P16 | 同 UID 并发会话上限与残留进程 | 中等 | UID、并发、cleanup |
+| P32 | Bug 修复中用瞬时值替代稳定基准值导致级联回归 | 严重 | 瞬时值、基准、Jank |
 | P17 | Ring buffer clone 覆盖的时间范围 | 中等 | ring_buffer、clone、时间窗口 |
+| P26 | Jank 检测误判（阈值与首周期） | 中等 | jank_1、jank_3、VSync、首周期 |
+| P28 | SurfaceView 游戏帧数据采集需 SF fallback | 严重 | SurfaceView、gfxinfo、SurfaceFlinger |
 
 ### 构建 / PyInstaller
 
@@ -94,6 +111,8 @@
 | P23 | GLM API 400 错误：对话历史格式 | 中等 | GLM、message role、sanitize |
 | P24 | Tool Schema 中 Callable 参数 | 严重 | Callable、JSON Schema、序列化 |
 | P25 | Python 3.14 annotations 与 get_type_hints 冲突 | 低 | `__future__`、ForwardRef |
+| P33 | 技术选型阶段重复造轮子 | 严重 | LiteLLM、自建 Provider、第三方评估 |
+| P34 | Pydantic AI prompt 超出模型上下文限制 | 中 | pydantic-ai、LiteLLM、GLM、prompt length |
 
 ### 工具链 / 环境
 
@@ -103,18 +122,19 @@
 | P08 | Typer CLI 帮助命令退出码 | 低 | SystemExit、exit code |
 | P10 | PowerShell heredoc 语法不兼容 | 低 | heredoc、`@"`...`"@` |
 | P22 | core.autocrlf 与 .editorconfig 行尾符冲突 | 低 | CRLF、LF、幽灵修改 |
+| P27 | Speckit Skills 通用模板需项目适配 | 低 | speckit、模板裁剪、技术工具 |
 
 ## 按生命周期分类
 
 | 阶段 | 相关 Pitfalls |
 |------|---------------|
 | 设计时 | P01, P03, P04, P12 |
-| 编码时（GUI） | P05, P07, P11, P18, P19, P20, P21 |
+| 编码时（GUI） | P05, P07, P11, P18, P19, P20, P21, P29, P30, P31 |
 | 编码时（ADB/设备） | P02, P09 |
-| 编码时（Perfetto） | P15, P16, P17 |
+| 编码时（Perfetto） | P15, P16, P17, P26, P28 |
 | 编码时（Agent/LLM） | P23, P24, P25 |
 | 构建时 | P13, P14, P22 |
-| 环境/工具 | P06, P08, P10 |
+| 环境/工具 | P06, P08, P10, P27 |
 
 ---
 
@@ -942,3 +962,391 @@ my_tool = ns["my_tool"]
 
 - 在测试中定义需要 `get_type_hints()` 处理的函数时，MUST 确保类型注解在函数的 `__globals__` 中可解析
 - 优先使用 `collections.abc.Callable` 而非 `typing.Callable`（前者不受 annotations future 影响）
+
+---
+
+## P26 — Perfetto 引擎 Jank 检测误判（阈值与首周期）
+
+**严重程度**：中等（影响分析准确度）
+
+### 现象
+
+引擎对无卡顿的游戏 trace（`com.tencent.lolm`，60Hz）报告 5 次丢帧，但人工在 Perfetto UI 中逐帧确认无实际丢帧，MCP 工具也报告 0 jank。
+
+### 根因（三个并发问题）
+
+1. **jank_1 阈值过严**：App Deadline Missed 判定条件为 `(vt - bt2) > 1× VSync 周期`（60Hz 下 16.67ms），导致 17ms 完成的正常帧被标为丢帧。实际用户标准为 1.5× VSync（25ms）
+2. **jank_3 观测窗口不合理**：SF Composition Missed 使用固定 1ms 窗口检查 SF 是否消费了 buffer，该窗口过窄且与刷新率无关。SF 的正常消费延迟在不同刷新率下差异显著
+3. **首周期无守卫**：trace 第一个 VSync 周期中 `prev_cycle_ns == 0` 导致双周期校验被跳过，`bt2` 初始化为 `pre_vt`（非真实消费时间戳），buffer 状态尚未稳态，jank_3 触发初始化伪影
+
+### 修复方案
+
+```python
+# 1. 首周期守卫：第一个周期缺乏前置上下文，跳过 jank 判定
+skip_jank = prev_cycle_ns == 0
+
+# 2. jank_1: 阈值从 1× 放宽到 1.5× VSync
+jank_1 = (vt - bt2) / 1e6 > stand_ms * 1.5 if bt2 else False
+
+# 3. jank_3: 自适应窗口，按刷新率缩放
+sf_window_ns = int(stand_ms * 0.5 * 1e6)  # 0.5× VSync
+hi_3 = bisect.bisect_right(buffer_ev_ts, pre_vt + sf_window_ns)
+```
+
+### 阈值设计依据
+
+| 判定 | 含义 | 旧阈值 | 新阈值 | 理由 |
+|------|------|--------|--------|------|
+| jank_1 | App 交付帧超时 | 1× VSync | 1.5× VSync | 与 SurfaceFlinger FrameTimeline 的 Jank 判定对齐 |
+| jank_3 | SF 有 buffer 但未消费 | 固定 1ms | 0.5× VSync | 给 SF 合理响应时间，同时自适应不同刷新率 |
+| 首周期 | trace 开头首个 VSync 周期 | 无守卫 | 跳过判定 | 缺乏前周期上下文和稳态 buffer 状态 |
+
+### 验证结果
+
+| Trace | 修复前 | 修复后 | 人工判定 |
+|-------|--------|--------|----------|
+| lolm 游戏（60Hz，无卡顿） | 5 次丢帧 | 0 次 | 0 次 |
+| Launcher 慢划（120Hz，有卡顿） | 5 次丢帧 | 3 次 | 有丢帧 |
+
+### 预防措施
+
+- Jank 检测阈值 MUST 有明确的理论依据（如对齐 Android FrameTimeline 标准），MUST NOT 使用未经验证的固定值
+- 与刷新率相关的参数 MUST 按 `stand_ms` 自适应缩放，MUST NOT 使用固定毫秒/纳秒常量
+- Trace 边界（首/末周期）的 jank 判定需额外守卫，因为 VSync/BufferTX 状态机尚未/已经退出稳态
+- 新增或修改 jank 判定逻辑后，MUST 同时用已知有卡顿和无卡顿的 trace 交叉验证
+
+---
+
+## P27 — Speckit Skills 通用模板需项目适配
+
+| 属性 | 值 |
+|------|------|
+| 严重度 | 低 |
+| 影响 | spec 质量 |
+| 触发条件 | 使用 speckit skills 模板初始化或执行 spec 流程 |
+
+### 现象
+
+Speckit 的通用 skills（specify、implement、constitution 等）基于广泛假设设计，直接使用时部分规则不适合本项目：
+
+1. `speckit-implement` 的 ignore-file matrix 包含大量非 Python 技术栈配置（如 Rust、Go、Java 相关），对纯 Python 项目无意义
+2. `speckit-specify` 要求 spec "不涉及技术实现"，但本项目的模块（Perfetto 引擎、ADB 工具）本身是技术工具，spec 中需合理包含技术约束
+3. `speckit-constitution` 的模板初始化适用于新项目，对已有成熟 constitution 的项目应做增量修订而非重建
+
+### 应对
+
+- 使用 speckit skills 时，根据本项目技术栈（Python 3.12+ / PyQt6 / Pydantic）裁剪不适用的配置
+- 技术工具类模块的 spec 可在 Functional Requirements 中包含技术约束（如 CLI 参数格式、数据模型定义），不必严格遵循"不涉及技术实现"
+- 对已有 constitution 执行增量修订（添加新原则/更新技术栈），而非从模板重建
+
+---
+
+## P28 — SurfaceView 游戏帧数据采集需 SurfaceFlinger fallback
+
+| 属性 | 值 |
+|------|------|
+| 严重度 | 严重 |
+| 影响 | 帧率监控完全失效 |
+| 触发条件 | 对 SurfaceView 渲染的游戏使用 `dumpsys gfxinfo framestats` |
+
+### 现象
+
+使用 `dumpsys gfxinfo <pkg> framestats` 采集帧数据时，大多数游戏（Unity/Unreal/自研引擎）返回的 `---PROFILEDATA---` 段为空。日志显示 `解析帧数据为空`，FPS 曲线完全无数据。
+
+### 根因
+
+游戏通常使用 `SurfaceView` 渲染（OpenGL ES / Vulkan），不经过 Android HWUI 渲染管线。`gfxinfo framestats` 只统计 HWUI 管线的帧数据，对 SurfaceView 渲染无效。
+
+### 解决方案
+
+使用 `dumpsys SurfaceFlinger --latency <layer_name>` 作为 fallback：
+
+1. **自动检测帧数据源**：先尝试 `gfxinfo framestats`，如果 `---PROFILEDATA---` 为空则切换到 SF latency
+2. **SurfaceFlinger 图层名匹配**：通过 `dumpsys SurfaceFlinger --list` 列出所有图层，使用正则匹配包名 + `SurfaceView` + `(BLAST)` 后缀
+3. **图层名必须精确**：`dumpsys SurfaceFlinger --latency` 要求完整图层名（含 hash 前缀和 `(BLAST)` 后缀），否则返回空数据
+
+```python
+# 图层名格式示例
+# 正确：SurfaceView[com.game.pkg/Activity](BLAST)#12
+# 错误：SurfaceView[com.game.pkg/Activity]  （缺少 BLAST 后缀）
+pattern = re.compile(
+    rf"SurfaceView\[{re.escape(package)}[^\]]*\].*?\(BLAST\)",
+    re.IGNORECASE,
+)
+```
+
+### 预防措施
+
+- 帧率采集逻辑 MUST 先检测帧数据源，MUST NOT 硬编码 gfxinfo 为唯一来源
+- 使用 `SurfaceFlinger --latency` 时 MUST 通过 `--list` 动态获取完整图层名
+- 图层名匹配 SHOULD 优先选择 `(BLAST)` 图层（表示活跃渲染）
+
+---
+
+## P29 — Python 短路求值传 None 给 Qt setEnabled()
+
+| 属性 | 值 |
+|------|------|
+| 严重度 | 中等 |
+| 影响 | UI 初始化崩溃 |
+| 触发条件 | `and` 表达式左侧为 `None` 的结果传给 `setEnabled()` |
+
+### 现象
+
+```
+TypeError: setEnabled(self, a0: bool): argument 1 has unexpected type 'NoneType'
+```
+
+历史面板初始化时崩溃，因为 `_update_action_buttons_state(None)` 调用时计算的 `is_trace` 值为 `None`。
+
+### 根因
+
+Python 的 `and` 短路求值不返回 `bool`，而是返回第一个假值或最后一个值：
+
+```python
+item_data = None
+is_trace = item_data and item_data.get("type") == "trace"
+# is_trace = None，不是 False！
+
+# 后续调用
+btn.setEnabled(is_trace and btn.isEnabled())  # None 传给 setEnabled → TypeError
+```
+
+PyQt6 的 `setEnabled()` 严格要求 `bool` 类型，不接受 `None`。
+
+### 解决方案
+
+用 `bool()` 包装短路求值结果：
+
+```python
+is_trace = bool(item_data and item_data.get("type") == "trace")
+```
+
+### 预防措施
+
+- 传给 Qt API 的布尔参数 MUST 确保为 `bool` 类型，SHOULD 使用 `bool()` 包装含 `and`/`or` 的表达式
+- `None and X` 结果是 `None`，`None or X` 结果是 `X` — 与 `False` 的行为不同
+
+---
+
+## P30 — QWidget 子类 CSS 背景不渲染
+
+| 属性 | 值 |
+|------|------|
+| 严重度 | 中等 |
+| 影响 | 自定义面板透明，内容不可见 |
+| 触发条件 | 自定义 QWidget 子类设置 CSS background 但不覆写 paintEvent |
+
+### 现象
+
+`HistoryPanel(QWidget)` 通过 CSS 设置了深色背景 `background: #313244`，但实际渲染时面板透明，内容与底层 UI 混叠难以阅读。
+
+### 根因
+
+Qt 的 QWidget 基类默认不处理 CSS 样式表中的背景绘制。只有 Qt 内置控件（QPushButton、QLabel 等）或显式覆写了 `paintEvent` 的自定义 QWidget 才能正确渲染 CSS 背景。
+
+### 解决方案
+
+覆写 `paintEvent` 并使用 `QStyleOption`：
+
+```python
+class HistoryPanel(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAutoFillBackground(True)
+
+    def paintEvent(self, event):
+        from PyQt6.QtWidgets import QStyleOption, QStyle
+        from PyQt6.QtGui import QPainter
+        opt = QStyleOption()
+        opt.initFrom(self)
+        p = QPainter(self)
+        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, opt, p, self)
+        p.end()
+```
+
+### 预防措施
+
+- 自定义 QWidget 子类使用 CSS background 时 MUST 覆写 `paintEvent` 或 `setAutoFillBackground(True)` + `QPalette`
+- 此规则适用于所有直接继承 QWidget 的容器面板
+
+---
+
+## P31 — 函数早返回跳过资源清理逻辑
+
+| 属性 | 值 |
+|------|------|
+| 严重度 | 严重 |
+| 影响 | 后台线程泄漏，功能无法停止 |
+| 触发条件 | 停止函数开头的前置条件检查导致清理代码被跳过 |
+
+### 现象
+
+用户点击"停止"按钮后，Perfetto 抓取停止了，但 Jank 监控线程继续运行（FPS 曲线持续刷新）。
+
+### 根因
+
+```python
+def _on_stop(self) -> None:
+    if not self._service or not self._serial:
+        return  # 设备断连时 serial=None，直接返回
+    # ... Jank 停止逻辑在这之后，被跳过了
+    if self._jank_worker:
+        self._stop_jank_monitor()
+```
+
+当设备短暂断连（`self._serial` 被置为 `None`）后，用户点击停止时，前置条件检查让函数提前返回，Jank 工作线程的清理逻辑被完全跳过。
+
+### 解决方案
+
+将资源清理逻辑放在前置条件检查之前：
+
+```python
+def _on_stop(self) -> None:
+    self._set_capturing(False)
+    self._timer.stop()
+
+    if self._jank_worker:
+        self._stop_jank_monitor()  # 无论设备状态如何，先清理线程
+
+    if not self._service or not self._serial:
+        return
+    # ... 后续 Perfetto 停止逻辑
+```
+
+### 预防措施
+
+- 包含资源清理的函数，清理逻辑 MUST 放在前置条件检查之前，确保任何退出路径都不会跳过清理
+- 对于 QThread 等后台资源，停止/释放操作 SHOULD 无条件执行，即使关联的外部状态已变化
+- 函数中的早返回（guard clause）MUST 审查是否会跳过后续的清理/释放/断开连接等副作用操作
+
+## P32 — Bug 修复中用瞬时值替代稳定基准值导致级联回归
+
+**子系统**：Perfetto Capture / Jank 检测  
+**日期**：2026-04-03
+
+### 现象
+
+修复"30fps 游戏在 120Hz 屏幕上误触发 jank 抓取"的 bug 时，将丢帧判定的 vsync 基准从显示器刷新率（120Hz = 8.33ms）直接替换为 `stats.fps`（瞬时 FPS）计算的游戏帧周期。导致：
+
+1. 首次采样 FPS 为 0 时 vsync 计算异常，检测完全失效
+2. FPS 波动时（如游戏加载、场景切换）vsync 基准不稳定，时而误判时而漏判
+3. 连续两次"修了再改"但未跑回归测试，引入更多回归
+
+### 根因
+
+1. **用瞬时值替代稳定基准**：`stats.fps` 是 200ms 批次的瞬时计算值，受帧数波动影响大，不适合做检测阈值的基准
+2. **改动前缺乏影响分析**：没有梳理 vsync_ms 在状态机中的所有使用场景（触发条件、丢帧计数、稳定期判定）
+3. **连续修改无验证**：第一次改坏后又改了一版，仍未通过实际设备验证就部署
+
+### 解决方案
+
+采用**滚动中位数估算游戏目标帧率**：
+- 维护最近 15 次 FPS 采样的历史记录
+- 取中位数作为游戏稳定帧率的估算（抗抖动）
+- 前 5 次采样（约 1 秒）为热身期，不做触发判定，避免启动瞬态误触发
+- `max(game_vsync, display_vsync)` 确保不低于显示器基线
+
+```python
+sorted_fps = sorted(self._fps_history)
+median_fps = sorted_fps[len(sorted_fps) // 2]
+game_vsync = 1000.0 / max(median_fps, 1)
+return max(game_vsync, display_vsync)
+```
+
+### 预防措施
+
+- 修改检测算法的基准值时 MUST 评估该值的稳定性和边界情况（零值、极值、波动）
+- 核心逻辑修改 MUST 先输出影响分析（参见 `.cursor/rules/core-logic-change-gate.mdc`）
+- Bug 修复 MUST NOT 连续多次修改同一段核心逻辑而不跑测试验证
+- 涉及实时数据做基准的场景 SHOULD 使用滚动窗口统计量（中位数/均值）而非瞬时值
+
+## P33 — 技术选型阶段重复造轮子
+
+### 严重程度：严重
+
+### 场景
+
+需要为框架添加 LLM 多 Provider 统一调用能力时，直接从 `agent_chat` 模块中迁移了自建的 `GLMProvider`（手写 JWT + httpx SSE 流解析）和 `ClaudeProvider`（手写 Anthropic Stream 事件解析）。这些代码约 400 行，存在以下问题：
+
+1. **维护成本高**：每新增一个 Provider 需要手写 HTTP 请求、认证、流解析、错误处理
+2. **稳定性风险**：自建的 SSE 解析、JWT 生成、消息格式转换缺少充分测试
+3. **功能缺失**：缺少重试、速率限制、并发控制等生产级能力
+
+### 根因
+
+- 技术选型阶段（speckit research）只确认了"技术栈已在项目中使用"，**没有评估是否存在更好的第三方方案**
+- 从模块迁移代码时惯性思维，未重新审视"是否值得自建"
+
+### 正确做法
+
+引入 **LiteLLM**（`litellm>=1.80.0`），通过 `litellm.acompletion()` 统一所有 Provider 调用：
+
+- GLM: `zai/glm-4-plus` 路由
+- Claude: `claude-sonnet-4-20250514` 路由
+- 新增 Provider: 只需修改 model name，无需写代码
+
+```python
+# 自建（已废弃）— 每个 Provider ~200 行
+class GLMProvider(LLMProvider):
+    def __init__(self, api_key, model):
+        self._token = _generate_jwt(api_key)  # 手动 JWT
+    async def stream_chat(self, messages, ...):
+        resp = await self._client.post(...)  # 手动 HTTP + SSE
+
+# LiteLLM（当前）— 一个类适配所有 Provider
+class LiteLLMProvider(LLMProvider):
+    async def stream_chat(self, messages, ...):
+        async for chunk in await litellm.acompletion(
+            model=self._litellm_model, messages=messages,
+            api_key=self._api_key, stream=True,
+        ):
+            yield self._convert_chunk(chunk)
+```
+
+### 预防措施
+
+- Speckit research 阶段 MUST 评估"是否有成熟的第三方库可以替代自建实现"
+- 评估维度：社区活跃度、依赖重量、API 稳定性、功能覆盖度
+- 从其他模块迁移代码时 MUST 重新审视"迁移 vs 引入第三方"
+- `spec.md` 中的技术选型章节 SHOULD 包含"替代方案评估"小节
+
+## P34 — Pydantic AI + LiteLLM prompt 超出模型上下文限制
+
+### 严重程度：中
+
+### 场景
+
+使用 Pydantic AI 创建 SubAgent，其 system prompt 由以下部分组成：
+1. Agent instructions（SOP 文档内容）
+2. 工具 docstring（pydantic-ai 自动将所有注册工具的 docstring 序列化为 JSON schema 放入 system prompt）
+3. 用户 prompt（trace 路径、分析场景等）
+
+GLM-4-Plus（ZhipuAI）返回 `ZaiException - Prompt exceeds max length`，尽管模型标称 128K 上下文。
+
+### 根因
+
+实际测量后发现，**初始 prompt 仅约 5K token**（远低于 128K 上限），真正的瓶颈是：
+
+- **工具返回值在对话历史中的累积**：每个 pa_* 工具返回的原始数据（丢帧列表、线程统计等）约 5K-20K token/次
+- LLM 连续调用 3-4 个工具后，对话历史中的工具返回值累积超出模型上下文限制
+- 冗余工具（pa_analyze_full、pa_cpu_overview 功能被 pa_analyze_dimension 覆盖）增加了不必要的 schema 占用
+
+早期误判：
+- 最初以为是 SOP 文档过长或工具 docstring 过于详细导致 system prompt 超限
+- 实际上 SOP + 工具 schema + instructions 总计仅 ~5K token
+
+### 解决方案（010-prompt-budget-management）
+
+1. **ToolReturn 压缩工具返回值**：所有 pa_* 工具返回 Pydantic AI 的 `ToolReturn` 对象，`return_value` 为 ResultCompressor 压缩后的摘要（Top-5 + 统计，~300 token），`metadata` 保留原始数据给应用层
+2. **移除冗余工具**：删除 pa_analyze_full 和 pa_cpu_overview（11 → 9 个工具），减少 ~20% 的 schema 占用
+3. **SOP 完整加载**：取消 3000 字符截断限制，通过 SKILL 路由完整加载场景 SOP，提升分析质量
+4. **上下文超限降级**：LLM 调用因上下文超限失败时，不终止分析，降级到 engine 分析并在报告中标注
+
+### 预防措施
+
+- 使用 Pydantic AI 的 `ToolReturn` 控制工具返回值大小，MUST 在 `return_value` 中只放摘要
+- 工具 docstring SHOULD 尽量简短（一行描述）
+- 注册的工具 MUST 无功能重叠，冗余工具及时清理
+- 新增工具时 MUST 评估其返回值大小，超过 1K token 的原始数据 MUST 经过压缩
+- 上下文超限 MUST 有降级方案，不可直接终止用户操作

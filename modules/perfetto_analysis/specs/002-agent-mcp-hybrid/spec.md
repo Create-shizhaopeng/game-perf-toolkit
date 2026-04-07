@@ -1,10 +1,18 @@
 # Feature Specification: Perfetto 分析 Agent 化 — MCP 混合架构
 
-**Feature Branch**: `005-agent-mcp-hybrid`  
+**Feature Branch**: `002-agent-mcp-hybrid`  
 **Spec Location**: `modules/perfetto_analysis/specs/002-agent-mcp-hybrid/`  
 **Created**: 2026-03-31  
 **Status**: Draft  
 **Input**: Perfetto 分析模块 Agent 化改造，采用 MCP 混合架构，支持多性能场景分析
+
+## 目录
+
+- [User Scenarios & Testing](#user-scenarios--testing-mandatory)
+- [Requirements](#requirements-mandatory)
+- [Assumptions](#assumptions)
+- [Clarifications](#clarifications)
+- [Success Criteria](#success-criteria-mandatory)
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -115,6 +123,12 @@ Agent（Cursor LLM）理解用户自然语言意图后，查询 trace 元数据�
 - **FR-003**: 系统 MUST 在分析结果中标注每个维度的数据来源（"mcp"、"engine"、"degraded"）
 - **FR-004**: 系统 MUST 支持通过配置切换分析模式（mcp_preferred / engine_only / mcp_only）
 
+#### Agent 辅助数据准备工具
+
+- **FR-001b**: 系统 MUST 提供 `pa_thread_state_summary(trace_path, process, time_range?)` 工具，返回主线程各状态（Running/S/R/D/R+）的耗时和占比，格式化为结构化输出
+- **FR-001c**: 系统 MUST 提供 `pa_cpu_freq_analysis(trace_path, process, time_range?)` 工具，返回主线程运行的 CPU 核心分布和各核心频率统计（min/max/avg）
+- **FR-001d**: 每个原子工具 MUST 支持 `compact=True` 参数，compact 模式返回摘要（关键指标 + 行数 + 样本），默认 `compact=False` 返回全量数据
+
 #### MCP 集成
 
 - **FR-005**: 系统 MUST 调用 `thread_contention_analyzer` 并传入 jank 时间窗口的 time_range
@@ -141,6 +155,7 @@ Agent（Cursor LLM）理解用户自然语言意图后，查询 trace 元数据�
 - **FR-017**: 现有引擎分析逻辑 MUST NOT 被删除或修改核心算法
 - **FR-018**: 新旧代码路径 MUST 通过 feature flag 隔离，支持运行时切换
 - **FR-019**: feature flag 的默认值 MUST 为 "mcp_preferred"（新行为），可配置回退到 "engine_only"（旧行为）
+- **FR-019a**: 引擎 CLI 输出在检测到 `refresh_rate_switches` 时 MUST 增加 `mixed_refresh_rates: true`、`segments`（含各段 Hz 和 duration_s）和切换时间点信息
 
 #### Agent 编排（P1 阶段）
 
@@ -158,6 +173,10 @@ Agent（Cursor LLM）理解用户自然语言意图后，查询 trace 元数据�
 - **CompressedSummary**: 压缩摘要数据结构，包含基础信息、根因列表、健康度评级
 - **AnalysisScenario**: 分析场景定义（jank, anr, memory, startup 等），包含所需 MCP 工具和引擎维度的映射
 - **AnalysisToolkit**: 原子工具集管理器，暴露 `get_trace_overview` / `detect_jank_frames` / `analyze_dimension` 等工具，统一处理 MCP/引擎路由
+- **ThreadStateSummary**: 主线程状态分布 Pydantic 模型（Running/S/R/D/R+ 各状态耗时和占比）
+- **CpuFreqAnalysis**: CPU 核心分布与频率统计 Pydantic 模型（各核心 min/max/avg 频率）
+- **AnalysisChainStep**: 分析链路单步记录（tool_name / input_params / output_summary / duration_ms / source）
+- **AnalysisChainResult**: 完整分析链路（steps 列表 + 置信度 + 最终结论）
 
 ## Assumptions
 
@@ -239,6 +258,14 @@ Agent（Cursor LLM）理解用户自然语言意图后，查询 trace 元数据�
 1. **Agent 自动确定**（默认）：Agent 调用 `get_trace_overview()` 理解 trace 内容后，结合用户意图自动确定时间范围
 2. **用户显式指定**：用户直接给出时间范围（如"分析 5s 到 10s"）
 3. **Agent 询问用户**：Agent 无法判断时主动询问用户
+
+### Session 2026-04-01
+
+- Q: Agent 编排分析时，线程状态分布、CPU 频率等重复性数据计算应如何处理？ → A: 新增 `pa_thread_state_summary` 和 `pa_cpu_freq_analysis` 原子工具，封装 SQL 查询 + 格式化
+- Q: 原子工具返回结果的 compact 模式如何设计？ → A: 每个原子工具增加 `compact=True` 参数，compact 返回摘要 + 行数 + 样本，全量可选
+- Q: 引擎检测到混合刷新率时应如何处理？ → A: 引擎输出增加 `mixed_refresh_rates` 字段和 `segments` 详情，同时提供刷新率切换时间点
+- Q: 知识文档（SOP/patterns/cases）是否纳入 spec 管理？ → A: 知识文档不纳入 spec（通过 Skill 管理流程维护），封装为工具的代码开发纳入 spec
+- Q: 新增原子工具和引擎改进归属哪个 User Story？ → A: 新原子工具归 US1（原子工具集扩展），引擎输出改进归 US3（Feature Flag）
 
 ## Success Criteria *(mandatory)*
 

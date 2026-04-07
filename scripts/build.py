@@ -40,10 +40,12 @@ def _collect_modules() -> list[tuple[str, str]]:
         dirnames[:] = [d for d in dirnames if d not in skip_dirs]
 
         rel = Path(dirpath).relative_to(ROOT)
-        is_sop_dir = "sops" in Path(dirpath).parts
+        dir_parts = Path(dirpath).parts
+        is_sop_dir = "sops" in dir_parts
+        is_skill_dir = "skills" in dir_parts
         for f in filenames:
             if any(f.endswith(ext) for ext in skip_exts):
-                if f.endswith(".md") and is_sop_dir:
+                if f.endswith(".md") and (is_sop_dir or is_skill_dir):
                     pass
                 else:
                     continue

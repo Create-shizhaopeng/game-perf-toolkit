@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import time
-from typing import Any
-from unittest.mock import MagicMock, patch
+from typing import Any, AsyncIterator
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -14,6 +14,14 @@ from modules.agent_chat.src.models import (
     StreamChunkType,
     ToolDefinition,
 )
+
+
+async def _collect_async(ait: AsyncIterator) -> list:
+    """将异步迭代器收集为列表。"""
+    result = []
+    async for item in ait:
+        result.append(item)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -28,8 +36,8 @@ class TestLLMProviderBase:
 
     def test_default_count_tokens(self):
         class DummyProvider(LLMProvider):
-            def stream_chat(self, messages, tools=None, system_prompt=""):
-                yield from []
+            async def stream_chat(self, messages, tools=None, system_prompt=""):
+                yield StreamChunk(type=StreamChunkType.TEXT, data="")
             def get_available_models(self):
                 return []
             @property
@@ -64,7 +72,7 @@ class TestGLMProvider:
         }
 
     def _make_provider(self, response_json=None, side_effect=None):
-        """创建带 mock httpx 的 GLMProvider 实例。"""
+        """创建带 mock httpx.AsyncClient 的 GLMProvider 实例。"""
         from modules.agent_chat.src.llm.glm_provider import GLMProvider
 
         provider = GLMProvider.__new__(GLMProvider)
@@ -73,22 +81,26 @@ class TestGLMProvider:
         provider._token = "mock_token"
         provider._token_exp = time.time() + 3600
 
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         if side_effect:
             mock_client.post.side_effect = side_effect
         else:
             mock_resp = MagicMock()
             mock_resp.json.return_value = response_json or {}
             mock_resp.raise_for_status.return_value = None
+            mock_resp.status_code = 200
             mock_client.post.return_value = mock_resp
-        provider._client = mock_client
+        provider._async_client = mock_client
         return provider
 
-    def test_stream_text(self):
+    @pytest.mark.asyncio
+    async def test_stream_text(self):
         resp = self._make_api_json(content="你好世界")
         provider = self._make_provider(response_json=resp)
 
-        results = list(provider.stream_chat([{"role": "user", "content": "hi"}]))
+        results = await _collect_async(
+            provider.stream_chat([{"role": "user", "content": "hi"}])
+        )
 
         text_chunks = [r for r in results if r.type == StreamChunkType.TEXT]
         assert len(text_chunks) >= 1
@@ -99,15 +111,19 @@ class TestGLMProvider:
         assert len(usage_chunks) == 1
         assert usage_chunks[0].data["total_tokens"] == 30
 
-    def test_stream_error(self):
+    @pytest.mark.asyncio
+    async def test_stream_error(self):
         provider = self._make_provider(side_effect=Exception("网络超时"))
 
-        results = list(provider.stream_chat([{"role": "user", "content": "hi"}]))
+        results = await _collect_async(
+            provider.stream_chat([{"role": "user", "content": "hi"}])
+        )
         assert len(results) == 1
         assert results[0].type == StreamChunkType.ERROR
         assert "网络超时" in str(results[0].data)
 
-    def test_stream_tool_call(self):
+    @pytest.mark.asyncio
+    async def test_stream_tool_call(self):
         tc_data = {
             "id": "call_abc",
             "type": "function",
@@ -119,10 +135,12 @@ class TestGLMProvider:
         resp = self._make_api_json(content="", tool_calls=[tc_data])
         provider = self._make_provider(response_json=resp)
 
-        results = list(provider.stream_chat(
-            [{"role": "user", "content": "分析"}],
-            tools=[ToolDefinition(name="analyze", description="分析 trace")],
-        ))
+        results = await _collect_async(
+            provider.stream_chat(
+                [{"role": "user", "content": "分析"}],
+                tools=[ToolDefinition(name="analyze", description="分析 trace")],
+            )
+        )
 
         tool_chunks = [r for r in results if r.type == StreamChunkType.TOOL_START]
         assert len(tool_chunks) == 1
@@ -164,12 +182,13 @@ class TestClaudeProvider:
         models = provider.get_available_models()
         assert "claude-sonnet-4-20250514" in models
 
+    @pytest.mark.asyncio
     @patch("modules.agent_chat.src.llm.claude_provider.anthropic", create=True)
-    def test_stream_error(self, mock_mod):
+    async def test_stream_error(self, mock_mod):
         from modules.agent_chat.src.llm.claude_provider import ClaudeProvider
 
         client = MagicMock()
-        mock_mod.Anthropic.return_value = client
+        mock_mod.AsyncAnthropic.return_value = client
         client.messages.stream.side_effect = Exception("API 限流")
 
         with patch.dict("sys.modules", {"anthropic": mock_mod}):
@@ -177,17 +196,20 @@ class TestClaudeProvider:
             provider._client = client
             provider._model = "claude-sonnet-4-20250514"
 
-        results = list(provider.stream_chat([{"role": "user", "content": "hi"}]))
+        results = await _collect_async(
+            provider.stream_chat([{"role": "user", "content": "hi"}])
+        )
         assert len(results) == 1
         assert results[0].type == StreamChunkType.ERROR
 
+    @pytest.mark.asyncio
     @patch("modules.agent_chat.src.llm.claude_provider.anthropic", create=True)
-    def test_stream_text_success(self, mock_mod):
+    async def test_stream_text_success(self, mock_mod):
         """Claude streaming 文本成功路径。"""
         from modules.agent_chat.src.llm.claude_provider import ClaudeProvider
 
         client = MagicMock()
-        mock_mod.Anthropic.return_value = client
+        mock_mod.AsyncAnthropic.return_value = client
 
         msg_start_event = MagicMock()
         msg_start_event.type = "message_start"
@@ -210,20 +232,30 @@ class TestClaudeProvider:
         msg_delta_usage.output_tokens = 10
         msg_delta_event.usage = msg_delta_usage
 
-        stream_ctx = MagicMock()
-        stream_ctx.__enter__ = MagicMock(return_value=stream_ctx)
-        stream_ctx.__exit__ = MagicMock(return_value=False)
-        stream_ctx.__iter__ = MagicMock(
-            return_value=iter([msg_start_event, text_delta_event, msg_delta_event])
-        )
-        client.messages.stream.return_value = stream_ctx
+        events = [msg_start_event, text_delta_event, msg_delta_event]
+
+        class _MockAsyncStream:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                pass
+            def __aiter__(self):
+                return _aiter_events(events)
+
+        async def _aiter_events(items):
+            for e in items:
+                yield e
+
+        client.messages.stream.return_value = _MockAsyncStream()
 
         with patch.dict("sys.modules", {"anthropic": mock_mod}):
             provider = ClaudeProvider.__new__(ClaudeProvider)
             provider._client = client
             provider._model = "claude-sonnet-4-20250514"
 
-        results = list(provider.stream_chat([{"role": "user", "content": "hi"}]))
+        results = await _collect_async(
+            provider.stream_chat([{"role": "user", "content": "hi"}])
+        )
         text_chunks = [r for r in results if r.type == StreamChunkType.TEXT]
         assert len(text_chunks) == 1
         assert text_chunks[0].data == "你好世界"
@@ -232,13 +264,14 @@ class TestClaudeProvider:
         assert len(usage_chunks) == 1
         assert usage_chunks[0].data["prompt_tokens"] == 15
 
+    @pytest.mark.asyncio
     @patch("modules.agent_chat.src.llm.claude_provider.anthropic", create=True)
-    def test_stream_tool_call(self, mock_mod):
+    async def test_stream_tool_call(self, mock_mod):
         """Claude streaming 工具调用路径。"""
         from modules.agent_chat.src.llm.claude_provider import ClaudeProvider
 
         client = MagicMock()
-        mock_mod.Anthropic.return_value = client
+        mock_mod.AsyncAnthropic.return_value = client
 
         block_start = MagicMock()
         block_start.type = "content_block_start"
@@ -258,23 +291,33 @@ class TestClaudeProvider:
         block_stop = MagicMock()
         block_stop.type = "content_block_stop"
 
-        stream_ctx = MagicMock()
-        stream_ctx.__enter__ = MagicMock(return_value=stream_ctx)
-        stream_ctx.__exit__ = MagicMock(return_value=False)
-        stream_ctx.__iter__ = MagicMock(
-            return_value=iter([block_start, input_delta, block_stop])
-        )
-        client.messages.stream.return_value = stream_ctx
+        events = [block_start, input_delta, block_stop]
+
+        class _MockAsyncStream:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                pass
+            def __aiter__(self):
+                return _aiter_events(events)
+
+        async def _aiter_events(items):
+            for e in items:
+                yield e
+
+        client.messages.stream.return_value = _MockAsyncStream()
 
         with patch.dict("sys.modules", {"anthropic": mock_mod}):
             provider = ClaudeProvider.__new__(ClaudeProvider)
             provider._client = client
             provider._model = "claude-sonnet-4-20250514"
 
-        results = list(provider.stream_chat(
-            [{"role": "user", "content": "分析"}],
-            tools=[ToolDefinition(name="pa_analyze", description="分析")],
-        ))
+        results = await _collect_async(
+            provider.stream_chat(
+                [{"role": "user", "content": "分析"}],
+                tools=[ToolDefinition(name="pa_analyze", description="分析")],
+            )
+        )
         tool_chunks = [r for r in results if r.type == StreamChunkType.TOOL_START]
         assert len(tool_chunks) == 1
         assert tool_chunks[0].data["name"] == "pa_analyze"

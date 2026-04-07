@@ -1,4 +1,4 @@
-"""自定义标题栏 — Logo + 设备选择器(居中) + 状态灯 + 主题 + 窗口控制"""
+"""自定义标题栏 — Logo + 设备选择器(居中) + 状态灯 + 设置 + 窗口控制"""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from PyQt6.QtGui import QPainter, QColor, QFont, QPen, QPolygonF
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
+    QMenu,
     QPushButton,
     QWidget,
 )
@@ -102,6 +103,69 @@ class ThemeButton(QPushButton):
                 x2 = cx + 8 * math.cos(angle)
                 y2 = cy + 8 * math.sin(angle)
                 p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+
+        p.end()
+
+
+class SettingsButton(QPushButton):
+    """齿轮设置按钮 — 点击弹出设置菜单（主题切换、LLM 设置）。"""
+
+    theme_toggled = pyqtSignal()
+    llm_settings_requested = pyqtSignal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFixedSize(36, 28)
+        self.setObjectName("settingsBtn")
+        self.setToolTip("设置")
+        self._is_dark = True
+        self._fg = QColor("#a6adc8")
+        self._hover_bg = QColor("#313244")
+        self.clicked.connect(self._show_menu)
+
+    def set_theme(self, theme: str) -> None:
+        self._is_dark = theme == "dark"
+        self._fg = QColor("#a6adc8") if self._is_dark else QColor("#444444")
+        self._hover_bg = QColor("#313244") if self._is_dark else QColor("#ccd0da")
+        self.update()
+
+    def _show_menu(self) -> None:
+        menu = QMenu(self)
+        menu.setObjectName("settingsMenu")
+
+        theme_action = menu.addAction("主题切换")
+        theme_action.triggered.connect(self.theme_toggled.emit)
+
+        llm_action = menu.addAction("LLM 模型设置")
+        llm_action.triggered.connect(self.llm_settings_requested.emit)
+
+        menu.exec(self.mapToGlobal(self.rect().bottomLeft()))
+
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        if self.underMouse():
+            p.fillRect(self.rect(), self._hover_bg)
+
+        cx = self.width() / 2
+        cy = self.height() / 2
+        pen = QPen(self._fg, 1.2)
+        p.setPen(pen)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+
+        r_outer = 7.0
+        r_inner = 4.5
+        r_tooth = 2.0
+        teeth = 6
+        for i in range(teeth):
+            angle = math.radians(i * (360 / teeth))
+            x = cx + r_outer * math.cos(angle)
+            y = cy + r_outer * math.sin(angle)
+            p.drawEllipse(QPointF(x, y), r_tooth, r_tooth)
+
+        p.drawEllipse(QPointF(cx, cy), r_inner, r_inner)
+        p.drawEllipse(QPointF(cx, cy), 2.0, 2.0)
 
         p.end()
 
@@ -216,6 +280,7 @@ class TitleBar(QWidget):
     close_clicked = pyqtSignal()
     device_selected = pyqtSignal(list)
     theme_toggled = pyqtSignal()
+    llm_settings_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -240,9 +305,12 @@ class TitleBar(QWidget):
 
         layout.addStretch(1)
 
-        self._theme_btn = ThemeButton(self)
-        self._theme_btn.clicked.connect(self.theme_toggled.emit)
-        layout.addWidget(self._theme_btn)
+        self._settings_btn = SettingsButton(self)
+        self._settings_btn.theme_toggled.connect(self.theme_toggled.emit)
+        self._settings_btn.llm_settings_requested.connect(
+            self.llm_settings_requested.emit
+        )
+        layout.addWidget(self._settings_btn)
 
         self._ctrl_btns: list[WinCtrlButton] = []
         for icon_type, signal, obj_name in [
@@ -261,7 +329,7 @@ class TitleBar(QWidget):
     def set_theme(self, theme: str) -> None:
         """通知所有子组件切换主题配色。"""
         self._logo.set_theme(theme)
-        self._theme_btn.set_theme(theme)
+        self._settings_btn.set_theme(theme)
         for btn in self._ctrl_btns:
             btn.set_theme(theme)
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Iterator
+from typing import AsyncIterator
 
 from ..models import StreamChunk, ToolDefinition
 
@@ -12,12 +12,12 @@ class LLMProvider(ABC):
     """LLM Provider 接口。所有 Provider 实现此基类。"""
 
     @abstractmethod
-    def stream_chat(
+    async def stream_chat(
         self,
         messages: list[dict],
         tools: list[ToolDefinition] | None = None,
         system_prompt: str = "",
-    ) -> Iterator[StreamChunk]:
+    ) -> AsyncIterator[StreamChunk]:
         """流式对话。
 
         Args:
@@ -29,6 +29,7 @@ class LLMProvider(ABC):
             StreamChunk 流式输出块
         """
         ...
+        yield  # type: ignore[misc]
 
     def count_tokens(self, messages: list[dict]) -> int:
         """估算 token 数量（可选实现）。

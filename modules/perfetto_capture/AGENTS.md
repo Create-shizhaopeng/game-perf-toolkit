@@ -8,6 +8,7 @@
 - [模块特有规则](#模块特有规则)
   - [Buffer 自动估算](#buffer-自动估算)
   - [Trace 输出路径](#trace-输出路径)
+- [历史面板与分析集成](#历史面板与分析集成)
 - [测试要求](#测试要求)
 
 ## 模块概述
@@ -47,6 +48,25 @@
 
 - **开发环境**：Trace 会话导出根目录为 `modules/perfetto_capture/data/output/trace/`（`output` 为配置项 `output_dir`，默认 `"output"`）
 - **打包可执行文件（`sys.frozen`）**：根目录为 **`<exe 所在目录>/output/trace/`**
+
+## 历史面板与分析集成
+
+历史面板（`history_panel.py`）已升级为左右双栏分析管理中心。
+
+| 文件 | 说明 |
+|------|------|
+| `history_panel.py` | 左右双栏布局（QSplitter），左栏上下分割（trace 列表 + 分析历史），右栏 AI 对话 |
+| `analysis_chat.py` | AI 分析对话组件（AnalysisChatWidget + AnalysisWorker） |
+| `drag_drop_area.py` | 拖入区域，接受外部 .perfetto-trace 文件 |
+
+### 关键约束
+
+- 面板最小宽度 600px（左栏 280px + 右栏 320px），覆盖式从右侧滑出
+- `AnalysisWorker(QThread)` 调用 `context["pa_orchestrator"]` 执行分析，MUST NOT 在主线程运行异步分析
+- trace 选中变化时通过 `itemSelectionChanged` 信号更新右栏对话区域
+- 支持 `ExtendedSelection` 多选模式，批量删除前弹出确认对话框
+- 分析完成后通过 `QDesktopServices.openUrl()` 打开 HTML 报告
+- 拖入文件复制到 `user_traces/` 目录后自动刷新列表
 
 ## 测试要求
 

@@ -58,6 +58,21 @@ class ToolRegistry:
     def get_tool_names(self) -> list[str]:
         return list(self._tools.keys())
 
+    def register_mcp_tools(self, mcp_definitions: list[ToolDefinition]) -> int:
+        """批量注册 MCP 桥接工具，返回新增数量。"""
+        count = 0
+        for td in mcp_definitions:
+            self.register(td)
+            count += 1
+        return count
+
+    def unregister_by_prefix(self, prefix: str) -> int:
+        """移除所有名称以 prefix 开头的工具，返回移除数量。"""
+        to_remove = [n for n in self._tools if n.startswith(prefix)]
+        for n in to_remove:
+            del self._tools[n]
+        return len(to_remove)
+
     def _enhance_schema(self, tool: ToolDefinition) -> None:
         """对缺少 parameters 的工具自动生成 JSON Schema。"""
         if tool.parameters or not tool.method:

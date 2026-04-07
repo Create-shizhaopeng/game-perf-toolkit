@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Iterator
+from typing import Any, AsyncIterator
 
 from ..models import (
     StreamChunk,
@@ -31,7 +31,7 @@ class ClaudeProvider(LLMProvider):
                 "anthropic SDK 未安装，请执行: pip install anthropic"
             ) from exc
 
-        self._client = anthropic.Anthropic(api_key=api_key)
+        self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._model = model
 
     @property
@@ -41,12 +41,12 @@ class ClaudeProvider(LLMProvider):
     def get_available_models(self) -> list[str]:
         return list(_PRESET_MODELS)
 
-    def stream_chat(
+    async def stream_chat(
         self,
         messages: list[dict],
         tools: list[ToolDefinition] | None = None,
         system_prompt: str = "",
-    ) -> Iterator[StreamChunk]:
+    ) -> AsyncIterator[StreamChunk]:
         kwargs: dict[str, Any] = {
             "model": self._model,
             "max_tokens": 4096,
@@ -58,11 +58,11 @@ class ClaudeProvider(LLMProvider):
             kwargs["tools"] = [_to_claude_tool(t) for t in tools]
 
         try:
-            with self._client.messages.stream(**kwargs) as stream:
+            async with self._client.messages.stream(**kwargs) as stream:
                 current_tool: dict | None = None
                 usage_data: dict[str, int] = {}
 
-                for event in stream:
+                async for event in stream:
                     event_type = getattr(event, "type", "")
 
                     if event_type == "content_block_start":

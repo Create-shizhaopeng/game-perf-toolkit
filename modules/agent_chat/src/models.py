@@ -24,25 +24,26 @@ from pydantic import BaseModel, Field
 class AgentConfig(BaseModel):
     """Agent 模块配置。"""
 
+    # --- LLM 字段（已迁移至全局 LLMConfig，保留用于向后兼容和降级回退） ---
     provider: str = Field(
         default="glm",
-        description="LLM Provider: glm / claude",
+        description="[deprecated] LLM Provider — 优先使用全局 LLMManager",
     )
     api_key: str = Field(
         default="",
-        description="当前 Provider 的 API Key",
+        description="[deprecated] 当前 Provider 的 API Key",
     )
     model_name: str = Field(
         default="glm-4-plus",
-        description="模型名称",
+        description="[deprecated] 模型名称",
     )
     max_tokens: int = Field(
         default=4096,
-        description="LLM 最大输出 token 数",
+        description="[deprecated] LLM 最大输出 token 数",
     )
     temperature: float = Field(
         default=0.3,
-        description="采样温度",
+        description="[deprecated] 采样温度",
     )
     sop_dir: str = Field(
         default="",
@@ -54,7 +55,7 @@ class AgentConfig(BaseModel):
     )
     smart_switch: bool = Field(
         default=True,
-        description="智能 Provider 切换（复杂任务自动使用 Claude）",
+        description="[deprecated] 智能 Provider 切换 — 优先使用全局 LLMManager",
     )
     max_conversations: int = Field(
         default=50,
@@ -74,11 +75,11 @@ class AgentConfig(BaseModel):
     )
     claude_api_key: str = Field(
         default="",
-        description="Claude 的 API Key（支持双 Key 智能切换）",
+        description="[deprecated] Claude API Key — 优先使用全局 LLMConfig",
     )
     glm_api_key: str = Field(
         default="",
-        description="GLM 的 API Key",
+        description="[deprecated] GLM API Key — 优先使用全局 LLMConfig",
     )
 
 
@@ -253,6 +254,121 @@ class StreamChunk:
 
     type: StreamChunkType
     data: str | dict[str, Any] = ""
+
+
+# ---------------------------------------------------------------------------
+# MCP 管理
+# ---------------------------------------------------------------------------
+
+class MCPServerConfig(BaseModel):
+    """MCP 服务器配置。"""
+
+    name: str
+    command: str
+    args: list[str] = []
+    env: dict[str, str] = {}
+    transport: str = Field(default="stdio", description="stdio | sse")
+    timeout: int = 30
+    enabled: bool = True
+
+
+class MCPConnectionStatus(str, Enum):
+    CONNECTING = "connecting"
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+    ERROR = "error"
+
+
+@dataclass
+class MCPConnection:
+    """MCP 服务器连接状态。"""
+
+    server_name: str = ""
+    status: MCPConnectionStatus = MCPConnectionStatus.DISCONNECTED
+    available_tools: list[str] = field(default_factory=list)
+    last_error: str | None = None
+    connected_at: datetime | None = None
+
+
+# ---------------------------------------------------------------------------
+# Sub-agent 编排
+# ---------------------------------------------------------------------------
+
+
+class SubAgentConfig(BaseModel):
+    """Sub-agent 创建配置。"""
+
+    task_description: str
+    skill_names: list[str] = []
+    tool_filter: list[str] = []
+    provider: str = ""  # 空 = 继承主 Agent
+    model: str = ""
+    max_turns: int = 15
+    timeout: int = 120
+
+
+class SubAgentStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    RETRYING = "retrying"
+
+
+@dataclass
+class SubAgentResult:
+    """Sub-agent 执行结果。"""
+
+    task_id: str = ""
+    status: SubAgentStatus = SubAgentStatus.PENDING
+    summary: str = ""
+    tool_calls_count: int = 0
+    error: str | None = None
+    retries: int = 0
+    elapsed_seconds: float = 0.0
+    raw_response: str = ""
+
+
+class ProviderCapabilities(BaseModel):
+    """LLM Provider 能力边界定义。"""
+
+    name: str
+    max_context_tokens: int = 128_000
+    supports_tools: bool = True
+    supports_vision: bool = False
+    max_output_tokens: int = 4096
+    cost_per_1k_input: float = 0.0
+    cost_per_1k_output: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Skill 管理
+# ---------------------------------------------------------------------------
+
+
+class SkillMetadata(BaseModel):
+    """Skill YAML frontmatter 元数据。"""
+
+    name: str
+    version: str = "1.0.0"
+    description: str = ""
+    author: str = ""
+    tags: list[str] = []
+    triggers: list[str] = []
+    tools: list[str] = []
+    priority: int = 0
+    enabled: bool = True
+
+
+@dataclass
+class SkillContext:
+    """Skill 的运行时上下文。"""
+
+    metadata: SkillMetadata | None = None
+    skill_path: Path = field(default_factory=Path)
+    loaded_content: str = ""
+    loaded_resources: dict[str, str] = field(default_factory=dict)
+    load_level: int = 0  # 0=metadata, 1=SKILL.md, 2=sub-resources
 
 
 # ---------------------------------------------------------------------------

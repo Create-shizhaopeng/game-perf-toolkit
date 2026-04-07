@@ -73,5 +73,8 @@ UI示意图/
 
 # 架构设计文档已迁移至 doc/architecture/（纳入 Git 管理）
 
+# MCP 服务器运行时工作目录
+.playwright-mcp/
+
 # 归档的源代码仓库（含嵌套 .git，不纳入主仓管理）
 _archived_source/

@@ -2,6 +2,7 @@
 """Agent 智能助手 — CLI 子命令（Typer）。"""
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -39,6 +40,15 @@ def ask(
     ] = None,
 ) -> None:
     """向 Agent 发送消息并获取回复。"""
+    asyncio.run(_ask_async(message, sop=sop, provider=provider))
+
+
+async def _ask_async(
+    message: str,
+    sop: str | None = None,
+    provider: str | None = None,
+) -> None:
+    """ask 命令的异步实现。"""
     config = _get_config()
     if not _has_any_key(config):
         console.print("[bold red]错误: 未配置 API Key[/bold red]")
@@ -102,7 +112,7 @@ def ask(
         if sop:
             extra_prompt = f"用户指定 SOP: {sop}"
 
-        response = service.chat(
+        response = await service.chat(
             user_message=message,
             on_chunk=on_chunk,
             system_prompt=extra_prompt,
@@ -117,15 +127,40 @@ def ask(
 
 
 def _create_service(config):
-    """创建 AgentService 和 ConversationStore。可在测试中替换。"""
+    """创建 AgentService 和 ConversationStore。
+
+    集成 PluginManager 工具注册和 SkillsManager。
+    """
     from .memory.conversation import ConversationStore
     from .service import AgentService
+    from .skills.manager import SkillsManager
+    from .tools.registry import ToolRegistry
 
-    data_dir = Path(__file__).resolve().parent.parent / "data"
+    module_dir = Path(__file__).resolve().parent.parent
+    data_dir = module_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 
     store = ConversationStore(data_dir / "agent_chat.db")
-    service = AgentService(config=config, conversation_store=store)
+
+    tool_registry = ToolRegistry()
+    pm = _ac_context.get("plugin_manager") if _ac_context else None
+    if pm:
+        tool_registry.collect_from_plugins(pm)
+
+    skill_search_paths = [
+        module_dir / "skills",
+        module_dir.parent / "perfetto_analysis" / "skills",
+    ]
+    skills_manager = SkillsManager(skill_search_paths)
+    skills_manager.scan()
+    tool_registry.register_many(skills_manager.create_agent_tools())
+
+    service = AgentService(
+        config=config,
+        conversation_store=store,
+        tool_registry=tool_registry,
+        skills_manager=skills_manager,
+    )
     return service, store
 
 
