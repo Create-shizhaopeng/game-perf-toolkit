@@ -110,7 +110,8 @@ class MainWindow(QWidget):
         else:
             self._llm_status = None
 
-        self._status_version = QLabel("v1.0.0")
+        from toolkit import __version__
+        self._status_version = QLabel(f"v{__version__}")
         self._status_version.setObjectName("statusBarText")
         sb_layout.addWidget(self._status_version)
 
