@@ -236,7 +236,7 @@ def create_main_agent(model: Any) -> Agent
 |------|-----|
 | output_type | `AnalysisRouting` (结构化输出) |
 | tools | **无** |
-| instructions | "根据用户意图判断分析场景。场景: jank/anr/memory/startup/cpu/general。输出 scene, sop_name, process_name, reasoning。" |
+| instructions | "根据用户意图判断分析场景。场景: jank/anr/memory/startup/cpu/io/input-latency/response-latency/rotation/general。输出 scene, sop_name, process_name, reasoning。" |
 
 **输入 prompt** (由 orchestrator 构建)：
 
@@ -251,7 +251,7 @@ Trace 路径: {trace_path}
 
 | 字段 | 说明 |
 |------|------|
-| `scene` | 分析场景标识: jank/anr/memory/startup/cpu/general |
+| `scene` | 分析场景标识: jank/anr/memory/startup/cpu/io/input-latency/response-latency/rotation/general |
 | `sop_name` | SOP 文件名，优先用于 SOP 加载（兜底用 scene 查表） |
 | `process_name` | 检测到的目标进程 |
 | `reasoning` | 路由理由 |
@@ -357,7 +357,7 @@ prefix_map = {"glm": "zai/", "claude": ""}
 | 2 | `pa_detect_jank` | trace_path, process_name="" | `service.parse_only()` | 丢帧检测 |
 | 3 | `pa_analyze_dimension` | trace_path, dimension, process_name="", compact=True | `service.analyze_dimensions([dimension])` | 单维度分析 |
 | 4 | `pa_list_dimensions` | (无) | 硬编码 10 维度 | 列出维度 |
-| 5 | `pa_get_history` | limit=20 | `service.get_analysis_history()[:limit]` | 分析历史 |
+| 5 | `pa_get_history` | limit=20 | `service.get_analysis_history(limit=limit)` | 分析历史 |
 | 6 | `pa_find_slices` | trace_path, slice_name, process_name="" | `service.find_slices_tool()` | 搜索 slice |
 | 7 | `pa_execute_sql` | trace_path, sql | `service.execute_sql_tool()` | SQL 查询 |
 | 8 | `pa_analyze_anr` | trace_path, process_name="" | `service.analyze_anr()` / 降级 thread+binder+lock | ANR 分析 |
@@ -439,7 +439,7 @@ _notify_tool_result(tool_name, result)  # 工具完成时：✅/❌ pa_xxx 返�
 
 | 方法 | 说明 |
 |------|------|
-| `get_analysis_history()` | 查询分析记录 (DB + 磁盘扫描合并) |
+| `get_analysis_history(limit=0)` | 查询分析记录 (DB + 磁盘扫描合并，支持分页) |
 | `delete_analysis_record(task_id, trace_path, report_dir)` | 删除记录 |
 | `export_report(trace_path, output_dir, on_progress)` | 导出已有报告 |
 | `regenerate_report(trace_path, on_progress)` | 重新生成报告 (不重新分析) |
@@ -595,14 +595,16 @@ skills/perfetto-analysis/
 | cpu | jank-analysis.md (复用) | 存在 | ✅ 正常 |
 | io | io-block-analysis.md | 存在 | ✅ 正常 (已修正) |
 | general | general-analysis.md | 存在 | ✅ 正常 |
-
-**未映射的 SOP**：`input-latency.md`、`response-latency.md`、`rotation-analysis.md` 已有 SOP 文件但未注册到 `_SCENE_SOP_MAP`。
+| input-latency | input-latency.md | 存在 | ✅ 正常 |
+| response-latency | response-latency.md | 存在 | ✅ 正常 |
+| rotation | rotation-analysis.md | 存在 | ✅ 正常 |
 
 ### 加载机制
 
 ```python
-def load_sop(scene: str) -> str:
-    # 1. 查 _SCENE_SOP_MAP 获取文件名
+def load_sop(scene: str, sop_name: str = "") -> str:
+    # 1. 若 sop_name 非空且文件存在 → 直接加载
+    # 2. 否则查 _SCENE_SOP_MAP 获取文件名
     # 2. 拼路径: skills/perfetto-analysis/sop/{filename}
     # 3. 文件存在 → 读取全文返回 (不截断)
     # 4. 文件不存在 → 返回 "" + 日志警告
@@ -787,8 +789,6 @@ SQLite 存储包名与进程名的映射关系，通过分析学习自动积累�
 | `AnalysisReport` | 分析报告元数据 | task_id, html_path, raw_data_dir, summary, trace_overview, root_causes |
 | `OrchestrationConfig` | Agent 编排配置 | parallel_count, analysis_timeout_sec, auto_open_report |
 | `AnalysisRouting` | MainAgent 输出 | scene, sop_name (优先SOP), process_name, reasoning |
-| `PackageMapping` | 包名映射 | package_name, app_name, process_names, source **(未使用)** |
-| `ConversationMessage` | 对话消息 | id, task_id, role, content **(未使用)** |
 
 ### 服务层模型
 
@@ -814,7 +814,7 @@ SQLite 存储包名与进程名的映射关系，通过分析学习自动积累�
 
 ## 已知问题与不一致
 
-> **更新说明**：以下标记 ✅ 已修复的问题在 2026-04-09 修复。
+> **更新说明**：所有 HIGH/MEDIUM/LOW 问题已在 2026-04-09 修复完毕（M3 保持现状）。
 
 ### 严重问题 (HIGH)
 
