@@ -1,6 +1,7 @@
 ---
 description: 核心逻辑修改管控规则：防止 Bug 修复时未经充分分析就修改核心算法导致回归
-alwaysApply: true
+globs: ["**/src/**", "**/toolkit/**"]
+alwaysApply: false
 ---
 
 # 核心逻辑修改管控

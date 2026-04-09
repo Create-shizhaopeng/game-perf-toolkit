@@ -1,7 +1,7 @@
 ---
 description: Review Gate - Prevent implementation drift from spec
-globs: ["**/*"]
-alwaysApply: true
+globs: ["**/src/**", "**/toolkit/**"]
+alwaysApply: false
 ---
 # 实现 Review 门禁
 

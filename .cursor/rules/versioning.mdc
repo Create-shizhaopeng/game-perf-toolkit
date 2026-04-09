@@ -1,7 +1,7 @@
 ---
 description: 版本号管理与 Git Tag 规范
-globs: ["**/*"]
-alwaysApply: true
+globs: ["scripts/build.py", "toolkit/__init__.py", "**/VERSION"]
+alwaysApply: false
 ---
 # 版本号规范 (SemVer)
 
