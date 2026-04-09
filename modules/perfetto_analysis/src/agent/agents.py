@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 def create_main_agent(model: Any) -> Any:
     """创建 MainAgent: 意图分析 + 场景路由。
 
-    使用 pa_trace_overview 获取 trace 概览后，决定分析场景。
+    基于用户意图和 trace 概览信息（由 orchestrator 预注入 prompt），
+    决定分析场景并输出 AnalysisRouting。
     """
     from pydantic_ai import Agent
 

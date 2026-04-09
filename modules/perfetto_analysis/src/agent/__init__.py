@@ -65,8 +65,8 @@ class AnalysisReport(BaseModel):
     root_causes: list[dict] = Field(default_factory=list)
 
 
-class AnalysisConfig(BaseModel):
-    """分析配置。"""
+class OrchestrationConfig(BaseModel):
+    """Agent 编排配置（区别于 models.py 中服务层的 AnalysisConfig）。"""
 
     parallel_count: int = Field(default=1, ge=1, le=10, description="批量分析并行数")
     analysis_timeout_sec: int = Field(default=300, ge=60, description="单次分析超时（秒）")

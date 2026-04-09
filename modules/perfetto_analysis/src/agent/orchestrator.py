@@ -11,12 +11,12 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from . import (
-    AnalysisConfig,
     AnalysisReport,
     AnalysisRouting,
     AnalysisStatus,
     AnalysisTask,
     AgentRole,
+    OrchestrationConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,13 +35,13 @@ class AnalysisOrchestrator:
         self,
         llm_manager: Any,
         pa_service: Any,
-        config: AnalysisConfig | None = None,
+        config: OrchestrationConfig | None = None,
         output_base: str = "",
         package_db: Any = None,
     ) -> None:
         self._llm_manager = llm_manager
         self._pa_service = pa_service
-        self._config = config or AnalysisConfig()
+        self._config = config or OrchestrationConfig()
         self._output_base = output_base or self._detect_output_base()
         self._abort_flag = False
         self._package_db = package_db
@@ -207,11 +207,32 @@ class AnalysisOrchestrator:
         try:
             from .agents import create_main_agent
 
-            agent = create_main_agent(self._get_model())
+            model = self._get_model()
+            if model is None:
+                raise ImportError("LLM 模型不可用")
+
+            agent = create_main_agent(model)
+
+            trace_info = ""
+            try:
+                overview = self._pa_service.get_trace_overview(trace_path, process_name or None)
+                if overview:
+                    processes = getattr(overview, "processes", []) or []
+                    trace_info = (
+                        f"\nTrace 概览:\n"
+                        f"- 时长: {getattr(overview, 'duration_s', '?')}s\n"
+                        f"- 帧数: {getattr(overview, 'frame_count', '?')}\n"
+                        f"- 刷新率: {getattr(overview, 'refresh_rate_hz', '?')}Hz\n"
+                        f"- 进程列表: {', '.join(processes[:10]) if processes else '未检测到'}\n"
+                    )
+            except Exception as exc:
+                logger.debug("预获取 trace 概览失败: %s", exc)
+
             prompt = (
                 f"用户意图: {user_intent}\n"
                 f"Trace 路径: {trace_path}\n"
                 f"目标进程: {process_name or '未指定'}\n"
+                f"{trace_info}"
                 "请分析用户意图并路由到合适的分析场景。"
             )
             result = await agent.run(prompt)
@@ -254,7 +275,10 @@ class AnalysisOrchestrator:
     ) -> dict:
         """SubAgent: 使用 pa_* 工具执行分析。
 
-        上下文超限时渐进降级到 engine 分析。
+        降级策略:
+        - ImportError (Pydantic AI 不可用): 降级到 engine 分析
+        - UsageLimitExceeded / 上下文超限: 返回部分结论 (llm_partial)
+        - Model 不可用 (None): 降级到 engine 分析
         """
         try:
             from .agents import create_sub_agent
@@ -263,7 +287,7 @@ class AnalysisOrchestrator:
             if on_stream:
                 on_stream("system", f"🔬 正在加载 {routing.scene} 场景 SOP...")
 
-            sop_content = load_sop(routing.scene)
+            sop_content = load_sop(routing.scene, routing.sop_name)
             if not sop_content and on_stream:
                 on_stream("system", "⚠ 未找到匹配的分析 SOP，LLM 将自主分析")
 
@@ -273,8 +297,12 @@ class AnalysisOrchestrator:
             from .tools import set_tool_stream_callback
             set_tool_stream_callback(on_stream)
 
+            model = self._get_model()
+            if model is None:
+                raise ImportError("LLM 模型不可用")
+
             agent = create_sub_agent(
-                self._get_model(), sop_content, self._pa_service, compressor
+                model, sop_content, self._pa_service, compressor
             )
 
             if on_stream:
@@ -309,7 +337,13 @@ class AnalysisOrchestrator:
                 elif isinstance(usage, dict):
                     token_used = usage.get("total_tokens", 0)
 
+            tool_calls_history = self._extract_tool_history(result)
+
             set_tool_stream_callback(None)
+
+            quality_warnings = self._check_conclusion_quality(conclusion)
+            if quality_warnings and on_stream:
+                on_stream("system", f"⚠ 结论质量自检: {'; '.join(quality_warnings)}")
 
             if on_stream and conclusion:
                 preview = conclusion[:600]
@@ -321,6 +355,8 @@ class AnalysisOrchestrator:
                 "conclusion": conclusion,
                 "token_used": token_used,
                 "completion": "llm_complete",
+                "quality_warnings": quality_warnings,
+                "tool_calls": tool_calls_history,
             }
 
         except ImportError:
@@ -380,6 +416,54 @@ class AnalysisOrchestrator:
             conclusion = str(analysis_result)
 
         return {"conclusion": conclusion, "token_used": 0}
+
+    @staticmethod
+    def _extract_tool_history(result: Any) -> list[dict]:
+        """从 Pydantic AI RunResult 提取工具调用历史。"""
+        tool_calls: list[dict] = []
+        try:
+            messages = result.all_messages() if hasattr(result, "all_messages") else []
+            for msg in messages:
+                parts = getattr(msg, "parts", [])
+                for part in parts:
+                    kind = getattr(part, "part_kind", "")
+                    if kind == "tool-call":
+                        tool_calls.append({
+                            "type": "call",
+                            "tool_name": getattr(part, "tool_name", ""),
+                            "args": getattr(part, "args", {}),
+                            "tool_call_id": getattr(part, "tool_call_id", ""),
+                        })
+                    elif kind == "tool-return":
+                        entry: dict[str, Any] = {
+                            "type": "return",
+                            "tool_name": getattr(part, "tool_name", ""),
+                            "content": str(getattr(part, "content", ""))[:500],
+                            "tool_call_id": getattr(part, "tool_call_id", ""),
+                        }
+                        metadata = getattr(part, "metadata", None)
+                        if metadata and isinstance(metadata, dict):
+                            raw = metadata.get("raw")
+                            if raw is not None:
+                                entry["raw_data"] = raw
+                        tool_calls.append(entry)
+        except Exception as exc:
+            logger.debug("提取工具调用历史失败: %s", exc)
+        return tool_calls
+
+    @staticmethod
+    def _check_conclusion_quality(conclusion: str) -> list[str]:
+        """对 SubAgent 结论做轻量规则自检。"""
+        warnings: list[str] = []
+        if not conclusion or len(conclusion.strip()) < 50:
+            warnings.append("结论过短，可能未充分分析")
+        if conclusion and "分析完成" in conclusion and len(conclusion) < 100:
+            warnings.append("结论缺少具体分析内容")
+        expected_sections = ["问题概述", "根因分析", "优化建议"]
+        found = sum(1 for s in expected_sections if s in conclusion)
+        if found == 0 and len(conclusion) > 100:
+            warnings.append("结论缺少结构化章节（问题概述/根因分析/优化建议）")
+        return warnings
 
     @staticmethod
     def _format_dimension(data: Any) -> str:

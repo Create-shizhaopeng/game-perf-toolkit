@@ -64,6 +64,7 @@ Perfetto trace 丢帧解析与多维度卡顿归因分析。支持 9 个分析�
 
 ## 设计文档
 
+- [分析子系统架构详细设计](analysis-architecture.md) — 编排层/Agent层/工具层/引擎层全链路设计、降级策略、已知问题
 - [引擎 vs MCP 对比 Demo 方案](perfetto-engine-vs-mcp-demo.md) — 架构演进方向验证
 - [SmartPerfetto 对比审查](smartperfetto-insights.md) — 可借鉴改进点（待后续迭代）
 

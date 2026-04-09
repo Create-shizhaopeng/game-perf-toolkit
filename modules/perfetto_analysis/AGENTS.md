@@ -19,38 +19,39 @@ Perfetto trace 丢帧解析与多维度卡顿归因分析模块。基于 Android
 
 ## Agent 工具集
 
-本模块注册了 14 个 Agent 工具（`pa_*` 前缀），支持 MCP + 引擎双通道路由。
+本模块为 Pydantic AI SubAgent 注册了 **9 个工具**（`pa_*` 前缀），所有工具返回 `ToolReturn`（压缩摘要给 LLM，原始数据保留在 metadata 中）。
 
 **完整工具文档**：`skills/perfetto-analysis/tool-catalog.md`（含参数、返回值、能力边界、决策树）
 
-### 核心原子工具
+### Pydantic AI 工具（SubAgent 可调用）
 
-| 工具 | 数据源 | 说明 |
-|------|--------|------|
-| `pa_trace_overview` | 引擎 | trace 元数据概览（时长、帧数、进程） |
-| `pa_detect_jank` | 引擎 | 卡顿帧检测（⚠️ 游戏 trace 可能为空，见下文） |
-| `pa_analyze_dimension` | MCP/引擎 | 单维度分析（cpu/thread/binder/hotspot/io/gc/gpu/sf/input/lock/summary） |
-| `pa_cpu_overview` | MCP | 全 trace CPU 概览（线程分布、频率） |
-| `pa_find_slices` | MCP | 按名称搜索 slice |
-| `pa_execute_sql` | MCP | 任意 Perfetto SQL 查询 |
-| `pa_analyze_anr` | MCP | ANR 检测与根因分析 |
-| `pa_analyze_memory` | MCP | 内存泄漏与堆分析 |
-| `pa_compress_results` | 本地 | 结果压缩（占位，需通过 service 调用） |
+| 工具 | 数据源 | 说明 | 压缩策略 |
+|------|--------|------|----------|
+| `pa_trace_overview` | 引擎 | trace 元数据概览（时长、帧数、进程） | 通用截断 |
+| `pa_detect_jank` | 引擎 | 卡顿帧检测（⚠️ 游戏 trace 可能为空，见下文） | Top-5 + 统计摘要 |
+| `pa_analyze_dimension` | MCP/引擎 | 单维度分析（cpu/thread/binder/io/gc/gpu/sf/input/lock/summary） | issues + top 指标 |
+| `pa_list_dimensions` | 本地 | 列出 10 个可用分析维度 | 无（数据量小） |
+| `pa_get_history` | 引擎 | 查询分析历史记录 | 通用截断 |
+| `pa_find_slices` | MCP/引擎 | 按名称搜索 slice | 通用截断 |
+| `pa_execute_sql` | MCP/引擎 | 任意 Perfetto SQL 查询 | 通用截断 |
+| `pa_analyze_anr` | MCP/引擎 | ANR 检测与根因分析（降级: thread+binder+lock） | 通用截断 |
+| `pa_analyze_memory` | MCP/引擎 | 内存泄漏与堆分析（降级: gc 维度） | 通用截断 |
 
-### 传统流水线工具
+### 已移除的工具
 
-| 工具 | 说明 |
-|------|------|
-| `pa_analyze` | 完整 Phase 1+2 分析 + 报告导出 |
-| `pa_parse` | 仅 Phase 1 丢帧解析 |
-| `pa_analyze_dims` | 按维度列表分析 |
-| `pa_list_dims` | 列出可用维度 |
-| `pa_history` | 查询分析历史 |
+以下工具在 010-prompt-budget-management 迭代中移除，其功能由现有工具覆盖：
+
+| 原工具 | 替代方案 |
+|--------|----------|
+| `pa_analyze_full` | `pa_analyze_dimension` 按需调用多个维度 |
+| `pa_cpu_overview` | `pa_analyze_dimension(dimension="cpu")` |
+| `pa_compress_results` | 工具内置 `ResultCompressor` 自动压缩 |
 
 ### 关键注意事项
 
 - **游戏 trace 帧检测**：`pa_detect_jank` 依赖 VSync/FrameTimeline，游戏进程（Unity/Unreal）绕过 Choreographer，此数据为空。引擎的 `frame_boundary.py` 支持通过 `eglSwapBuffers`/`vkQueuePresentKHR` 识别游戏帧边界，但当前未接入 `detect_jank_frames` 主流程。替代方案：`pa_find_slices("eglSwapBuffers")` + `pa_execute_sql` 计算帧间隔
-- **MCP 独有能力**：hotspot（主线程热点）、ANR、内存分析、任意 SQL
+- **ToolReturn 机制**：所有工具返回 `ToolReturn(return_value=压缩摘要, metadata=原始数据)`，LLM 仅看到 ≤300 token 的压缩文本
+- **MCP 独有能力**：hotspot（主线程热点）维度、ANR、内存分析（当前 MCP Client 为桩实现，自动降级到引擎）
 - **引擎独有能力**：io、gc、gpu、sf、input、lock 维度分析
 - **分析模式**：通过 `config.json` 的 `analysis_mode` 控制（mcp_preferred / engine_only / mcp_only）
 - **SOP 文档**：`skills/perfetto-analysis/sop/` 下有卡顿、通用、ANR、内存、IO 阻塞、响应时延、输入时延、启动、转屏分析的标准操作流程
@@ -93,7 +94,7 @@ Perfetto trace 丢帧解析与多维度卡顿归因分析模块。基于 Android
 
 | 文件 | 说明 |
 |------|------|
-| `__init__.py` | 数据模型（AnalysisTask, AnalysisStatus, AnalysisReport, AnalysisRouting, AgentRole, AnalysisConfig） |
+| `__init__.py` | 数据模型（AnalysisTask, AnalysisStatus, AnalysisReport, AnalysisRouting, AgentRole, OrchestrationConfig） |
 | `agents.py` | Pydantic AI Agent 工厂（MainAgent / SubAgent / ReviewAgent） |
 | `orchestrator.py` | 编排器，管理 Main→Sub→Review 流程，支持单条和批量分析 |
 | `tools.py` | 将 PerfettoAnalysisService 的 pa_* 方法封装为 Pydantic AI 工具 |

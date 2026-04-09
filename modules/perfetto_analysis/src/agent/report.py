@@ -19,7 +19,6 @@ _COMPLETION_LABELS = {
     "llm_complete": "LLM 分析完成",
     "llm_partial": "LLM 部分完成（因请求限制）",
     "engine_fallback": "引擎分析（Pydantic AI 不可用）",
-    "engine_degraded": "引擎降级分析（因上下文超限）",
 }
 
 

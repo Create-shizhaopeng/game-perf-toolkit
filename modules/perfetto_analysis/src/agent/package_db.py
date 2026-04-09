@@ -27,8 +27,17 @@ class PackageMappingDB:
 
     def _ensure_table(self) -> None:
         with self._get_conn() as conn:
+            # 迁移旧表名 pe_ → pa_
+            try:
+                conn.execute(
+                    "ALTER TABLE pe_package_mappings RENAME TO pa_package_mappings"
+                )
+                logger.info("已迁移表名 pe_package_mappings → pa_package_mappings")
+            except sqlite3.OperationalError:
+                pass  # 旧表不存在或已迁移
+
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS pe_package_mappings (
+                CREATE TABLE IF NOT EXISTS pa_package_mappings (
                     package_name TEXT NOT NULL,
                     process_name TEXT NOT NULL,
                     app_label TEXT DEFAULT '',
@@ -46,7 +55,7 @@ class PackageMappingDB:
         with self._get_conn() as conn:
             conn.execute(
                 """
-                INSERT INTO pe_package_mappings (package_name, process_name, app_label, hit_count, last_used)
+                INSERT INTO pa_package_mappings (package_name, process_name, app_label, hit_count, last_used)
                 VALUES (?, ?, ?, 1, ?)
                 ON CONFLICT(package_name, process_name) DO UPDATE SET
                     hit_count = hit_count + 1,
@@ -62,7 +71,7 @@ class PackageMappingDB:
         with self._get_conn() as conn:
             rows = conn.execute(
                 """
-                SELECT process_name FROM pe_package_mappings
+                SELECT process_name FROM pa_package_mappings
                 WHERE package_name = ?
                 ORDER BY hit_count DESC
                 """,
@@ -77,7 +86,7 @@ class PackageMappingDB:
             rows = conn.execute(
                 """
                 SELECT package_name, process_name, app_label, hit_count
-                FROM pe_package_mappings
+                FROM pa_package_mappings
                 WHERE package_name LIKE ? OR process_name LIKE ? OR app_label LIKE ?
                 ORDER BY hit_count DESC
                 LIMIT 10
@@ -90,7 +99,7 @@ class PackageMappingDB:
         """导出所有映射到 JSON 文件，返回导出数量。"""
         with self._get_conn() as conn:
             rows = conn.execute(
-                "SELECT package_name, process_name, app_label, hit_count FROM pe_package_mappings"
+                "SELECT package_name, process_name, app_label, hit_count FROM pa_package_mappings"
             ).fetchall()
 
         data = [dict(row) for row in rows]
@@ -121,7 +130,7 @@ class PackageMappingDB:
         """获取所有映射记录。"""
         with self._get_conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM pe_package_mappings ORDER BY hit_count DESC"
+                "SELECT * FROM pa_package_mappings ORDER BY hit_count DESC"
             ).fetchall()
         return [dict(row) for row in rows]
 
@@ -129,7 +138,7 @@ class PackageMappingDB:
         """删除指定映射。"""
         with self._get_conn() as conn:
             cursor = conn.execute(
-                "DELETE FROM pe_package_mappings WHERE package_name = ? AND process_name = ?",
+                "DELETE FROM pa_package_mappings WHERE package_name = ? AND process_name = ?",
                 (package_name, process_name),
             )
             return cursor.rowcount > 0
