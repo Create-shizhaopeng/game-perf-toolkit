@@ -132,9 +132,7 @@ def build_analysis_tools(pa_service: Any, compressor: Any = None) -> list[Callab
         """查询分析历史记录"""
         _notify_tool_call("pa_get_history", {"limit": limit})
         try:
-            result = pa_service.get_analysis_history()
-            if isinstance(result, list) and limit:
-                result = result[:limit]
+            result = pa_service.get_analysis_history(limit=limit)
             _notify_tool_result("pa_get_history", result)
             return _make_tool_return("pa_get_history", result, compressor)
         except Exception as e:

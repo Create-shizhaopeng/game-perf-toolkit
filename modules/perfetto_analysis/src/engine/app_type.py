@@ -66,26 +66,26 @@ def detect_app_type(
 
 def _find_upid(tp: Any, process_name: str) -> int | None:
     """根据进程名/包名查找 upid。同时检查 process.name 和主线程名（tid=pid）。"""
+    safe_name = process_name.replace("'", "''")
     try:
         rows = list(tp.query(
-            f"SELECT upid FROM process WHERE name = '{process_name}' LIMIT 1"
+            f"SELECT upid FROM process WHERE name = '{safe_name}' LIMIT 1"
         ))
         if rows:
             return int(rows[0].upid)
         rows = list(tp.query(
-            f"SELECT upid FROM process WHERE name GLOB '*{process_name}*' LIMIT 1"
+            f"SELECT upid FROM process WHERE name GLOB '*{safe_name}*' LIMIT 1"
         ))
         if rows:
             return int(rows[0].upid)
     except Exception:
         pass
 
-    # 部分 trace 中 process.name 为 NULL，通过主线程名（tid=pid）匹配
     try:
         rows = list(tp.query(f"""
             SELECT p.upid FROM process p
             JOIN thread t ON t.upid = p.upid AND t.tid = p.pid
-            WHERE t.name GLOB '*{process_name}*'
+            WHERE t.name GLOB '*{safe_name}*'
             LIMIT 1
         """))
         if rows:

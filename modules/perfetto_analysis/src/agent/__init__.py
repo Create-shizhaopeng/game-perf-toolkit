@@ -77,29 +77,9 @@ class OrchestrationConfig(BaseModel):
 class AnalysisRouting(BaseModel):
     """MainAgent 的场景路由结果。"""
 
-    scene: str = Field(description="分析场景: jank/anr/memory/startup/cpu/general")
+    scene: str = Field(description="分析场景: jank/anr/memory/startup/cpu/io/input-latency/response-latency/rotation/general")
     sop_name: str = Field(default="", description="SOP 文件名")
     process_name: str = Field(default="", description="检测到的目标进程")
     reasoning: str = Field(default="", description="路由理由")
 
 
-class PackageMapping(BaseModel):
-    """包名映射。"""
-
-    package_name: str
-    app_name: str = ""
-    process_names: list[str] = Field(default_factory=list)
-    source: str = Field(default="auto_learn", description="auto_learn/manual/imported")
-    updated_at: datetime = Field(default_factory=datetime.now)
-
-
-class ConversationMessage(BaseModel):
-    """对话消息。"""
-
-    id: str
-    task_id: str
-    role: str = Field(description="user/assistant/tool/system")
-    content: str = ""
-    tool_name: str = ""
-    tool_result: dict = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.now)

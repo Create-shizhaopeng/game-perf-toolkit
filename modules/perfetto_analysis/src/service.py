@@ -371,19 +371,23 @@ class PerfettoAnalysisService:
         from .engine import dimension_registry
         return dimension_registry.list_dimensions()
 
-    def get_analysis_history(self) -> list[dict[str, Any]]:
+    def get_analysis_history(self, limit: int = 0) -> list[dict[str, Any]]:
         """查询分析历史记录。
 
         合并 DB 记录和磁盘上已存在的报告目录（未入库的旧报告也会显示）。
+
+        Args:
+            limit: 最大返回条数，0 表示不限制。
         """
         db_records: list[dict[str, Any]] = []
         shared_db_ok = False
         if self._db_manager:
             try:
                 conn = self._db_manager.connection
-                cursor = conn.execute(
-                    "SELECT * FROM pa_analysis_tasks ORDER BY created_at DESC",
-                )
+                sql = "SELECT * FROM pa_analysis_tasks ORDER BY created_at DESC"
+                if limit > 0:
+                    sql += f" LIMIT {int(limit)}"
+                cursor = conn.execute(sql)
                 columns = [desc[0] for desc in cursor.description]
                 db_records = [dict(zip(columns, row)) for row in cursor.fetchall()]
                 shared_db_ok = True
@@ -402,6 +406,8 @@ class PerfettoAnalysisService:
         output_dir = Path(self._get_output_dir())
         if output_dir.exists():
             for child in sorted(output_dir.iterdir(), reverse=True):
+                if limit > 0 and len(db_records) >= limit:
+                    break
                 if not child.is_dir():
                     continue
                 resolved = str(child.resolve())

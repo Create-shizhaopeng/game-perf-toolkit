@@ -753,7 +753,7 @@ return any(kw in str(exc).lower() for kw in overflow_keywords)
 
 SQLite 存储包名与进程名的映射关系，通过分析学习自动积累。
 
-**表结构**：`pe_package_mappings` (PK: package_name + process_name)
+**表结构**：`pa_package_mappings` (PK: package_name + process_name)
 
 | 列 | 类型 | 说明 |
 |----|------|------|
@@ -841,12 +841,12 @@ SQLite 存储包名与进程名的映射关系，通过分析学习自动积累�
 
 | # | 问题 | 状态 | 影响 |
 |---|------|------|------|
-| **L1** | `ConversationMessage`、`PackageMapping` 未使用 | 未修复 | 死代码，不影响功能 |
-| **L2** | `pa_get_history` 全量加载后截断 | 未修复 | 历史量大时内存开销 |
-| **L3** | `_pa_compress_results` 是桩 | 未修复 | 通过 plugin 调用 compress 无法工作 |
-| **L4** | SQL f-string 拼接 process | 未修复 | 安全风险低但不规范 |
+| **L1** | `ConversationMessage`、`PackageMapping` 未使用 | ✅ 已修复 | 移除死代码模型 |
+| **L2** | `pa_get_history` 全量加载后截断 | ✅ 已修复 | 服务层支持 `limit` 参数，SQL 加 LIMIT + 文件扫描提前终止 |
+| **L3** | `_pa_compress_results` 是桩 | ✅ 已修复 | 移除桩函数和 plugin 注册（压缩已内置到 ToolReturn） |
+| **L4** | SQL f-string 拼接 process | ✅ 已修复 | `app_type.py` 中 process_name 单引号转义 |
 | **L5** | AGENTS.md 工具清单过时 | ✅ 已修复 | 更新为实际 9 个工具 + ToolReturn 说明 |
-| **L6** | 3 个 SOP 文件未注册映射 | 未修复 | input-latency/response-latency/rotation 场景无法通过路由触发 |
+| **L6** | 3 个 SOP 文件未注册映射 | ✅ 已修复 | 补充 input-latency/response-latency/rotation 到 `_SCENE_SOP_MAP` |
 
 ---
 

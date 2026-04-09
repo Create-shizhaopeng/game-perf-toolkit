@@ -17,6 +17,9 @@ _SCENE_SOP_MAP: dict[str, str] = {
     "cpu": "jank-analysis.md",
     "io": "io-block-analysis.md",
     "general": "general-analysis.md",
+    "input-latency": "input-latency.md",
+    "response-latency": "response-latency.md",
+    "rotation": "rotation-analysis.md",
 }
 
 

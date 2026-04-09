@@ -54,16 +54,6 @@ class PerfettoAnalysisPlugin(BasePlugin):
             trace_path, pattern, process_name,
         )
 
-    def _pa_compress_results(self, trace_path: str) -> dict[str, Any]:
-        return {
-            "placeholder": True,
-            "message": (
-                "描述性注册：实际压缩需传入 trace_overview 与 dimension_results，"
-                "请调用 PerfettoAnalysisService.compress_results。"
-            ),
-            "trace_path": trace_path,
-        }
-
     def _pa_thread_state_summary(
         self,
         trace_path: str,
@@ -244,18 +234,6 @@ class PerfettoAnalysisPlugin(BasePlugin):
                     "required": ["trace_path", "sql"],
                 },
                 "method": self._service.execute_sql_tool,
-            },
-            {
-                "name": "pa_compress_results",
-                "description": "将分析结果压缩为结构化摘要。",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "trace_path": {"type": "string", "description": "占位：trace 路径"},
-                    },
-                    "required": ["trace_path"],
-                },
-                "method": self._pa_compress_results,
             },
             {
                 "name": "pa_thread_state_summary",
