@@ -27,9 +27,10 @@ python scripts/create_module.py <name>  # 创建新模块
 |---------|---------|
 | 架构原则与技术栈 | `.specify/memory/constitution.md` |
 | 开发流程 | `.cursor/rules/spec-workflow.mdc` |
-| 踩坑经验 | `doc/experience/development-pitfalls.md` |
-| 模块开发指南 | `doc/knowledge/module-development-guide.md` |
+| 项目进度 | `docs/PROGRESS.md` |
+| 踩坑经验 | `docs/experience/development-pitfalls.md` |
+| 模块开发指南 | `docs/knowledge/module-development-guide.md` |
 | 特定模块约束 | `modules/<name>/AGENTS.md` |
-| 项目知识库 | `doc/knowledge/README.md` |
-| 跨项目通用知识 | `context/INDEX.md` |
-| 架构设计 | `doc/architecture/architecture-overview.md` |
+| 项目知识库 | `docs/knowledge/README.md` |
+| 团队规范 | `docs/team/` |
+| 架构设计 | `docs/architecture/architecture-overview.md` |

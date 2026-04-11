@@ -4,7 +4,7 @@ Sync Impact Report
 - Modules: device_disguise (dd_), game_perf (gp_), perfetto_capture (pe_)
 - Quality Gates: context 前缀、ADB None 保护、QThread 信号通信
 - Templates: plan/spec/tasks 模板已就绪
-- Pitfalls doc: doc/experience/development-pitfalls.md
+- Pitfalls doc: docs/experience/development-pitfalls.md
 -->
 
 # LV Game Toolkit Constitution
@@ -169,7 +169,7 @@ Agent 在修复 Bug 时 MUST 遵循以下流程：
 - 插件 context 键名 MUST 使用模块前缀命名空间（如 `dd_service`、`gp_adb`），避免跨模块键名冲突
 - ADB 命令输出（stdout/stderr）访问时 MUST 使用 `or ""` 保护，防止 None 拼接异常
 - GUI 后台线程 MUST 通过 `pyqtSignal` 与主线程通信，MUST NOT 直接操作 UI 控件
-- 已知踩坑问题汇总见 `doc/experience/development-pitfalls.md`
+- 已知踩坑问题汇总见 `docs/experience/development-pitfalls.md`
 
 ## Governance
 

@@ -86,9 +86,12 @@ lv-game-toolkit/
 │   ├── commands/           # speckit 命令
 │   ├── skills/             # speckit 技能
 │   └── rules/              # 开发规则
-├── doc/                    # 文档中心
+├── docs/                   # 文档中心
+│   ├── PROGRESS.md        #   项目进度总览
 │   ├── architecture/      #   架构设计文档
-│   └── legacy/            #   旧版文档归档（迁移参考）
+│   ├── knowledge/         #   项目知识库
+│   ├── experience/        #   踩坑经验库
+│   └── team/              #   团队规范
 ├── _archived_source/       # 旧代码归档（迁移参考）
 └── pyproject.toml          # 项目配置
 ```
@@ -125,14 +128,14 @@ specify → clarify → UE/UI design → plan → tasks → analysis → impleme
 
 | 文档 | 说明 |
 |------|------|
-| [架构设计文档](doc/architecture/architecture-overview.md) | 项目完整架构设计（11 章） |
-| [技术决策记录](doc/architecture/technical-decisions.md) | 12 项 ADR 决策记录 |
-| [模块开发指导手册](doc/knowledge/module-development-guide.md) | 端到端开发流程、代码模板、命令速查 |
-| [常见踩坑指南](doc/experience/development-pitfalls.md) | 25 项常见问题及解决方案 |
+| [架构设计文档](docs/architecture/architecture-overview.md) | 项目完整架构设计（11 章） |
+| [技术决策记录](docs/architecture/technical-decisions.md) | 12 项 ADR 决策记录 |
+| [模块开发指导手册](docs/knowledge/module-development-guide.md) | 端到端开发流程、代码模板、命令速查 |
+| [常见踩坑指南](docs/experience/development-pitfalls.md) | 25 项常见问题及解决方案 |
 | [构建脚本文档](scripts/doc/build.md) | PyInstaller 构建流程与产物说明 |
 | [Constitution](.specify/memory/constitution.md) | 项目最高治理文档 |
 | [脚手架说明](scripts/doc/create_module.md) | create_module.py 使用说明 |
-| [文档中心索引](doc/README.md) | 所有文档的结构化索引 |
+| [文档中心索引](docs/README.md) | 所有文档的结构化索引 |
 
 ## 测试
 

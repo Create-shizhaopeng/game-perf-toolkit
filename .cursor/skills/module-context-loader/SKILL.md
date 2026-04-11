@@ -37,9 +37,9 @@ metadata:
 
 1. **MUST** 读取 `modules/<name>/AGENTS.md` — 模块边界约束
 2. **MUST** 读取 `modules/<name>/docs/README.md` — 模块知识入口和相关踩坑索引
-3. **按需** 读取 `doc/knowledge/module-registry.md` — 如涉及跨模块交互
-4. **按需** 读取 `doc/knowledge/toolkit-exceptions.md` — 如涉及框架导入问题
-5. **按需** 从 `doc/experience/development-pitfalls.md` 的"按子系统快速索引"定位相关踩坑条目
+3. **按需** 读取 `docs/knowledge/module-registry.md` — 如涉及跨模块交互
+4. **按需** 读取 `docs/knowledge/toolkit-exceptions.md` — 如涉及框架导入问题
+5. **按需** 从 `docs/experience/development-pitfalls.md` 的"按子系统快速索引"定位相关踩坑条目
 
 ### Step 3: 输出上下文摘要
 

@@ -23,7 +23,7 @@
 > - 中文注释和文档字符串
 > - CLI 输出 SHOULD 支持 JSON 格式（渐进落地）
 > - 插件 context 键名使用 `gp_` 前缀（如 `gp_service`、`gp_adb`、`gp_data_dir`）
-> - 开发前 MUST 阅读 `doc/experience/development-pitfalls.md`
+> - 开发前 MUST 阅读 `docs/experience/development-pitfalls.md`
 
 ## 模块边界约束
 

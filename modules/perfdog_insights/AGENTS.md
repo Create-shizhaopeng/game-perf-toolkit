@@ -17,12 +17,12 @@
 
 ## 继承的全局规则
 
-> 本模块遵循项目全局编码规范（项目根 `.cursor/rules/`、[架构文档 §5.0](../../../doc/architecture/architecture-overview.md#50-代码规则总纲)）
+> 本模块遵循项目全局编码规范（项目根 `.cursor/rules/`、[架构文档 §5.0](../../../docs/architecture/architecture-overview.md#50-代码规则总纲)）
 >
 > - Python 3.12+，公共 API 带类型注解
 > - 业务在 **`service.py`**，**禁止**在 Service 中引入 PyQt6 / Typer
 > - 插件 context 键名使用 **`pdi_` 前缀**（如 **`pdi_service`**）
-> - 开发前 MUST 阅读 `doc/experience/development-pitfalls.md`
+> - 开发前 MUST 阅读 `docs/experience/development-pitfalls.md`
 
 ## 模块边界约束
 

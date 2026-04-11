@@ -36,7 +36,7 @@ Speckit 仅在项目根级维护，模块级 Speckit 已移除（模块约束统
 ## 硬约束
 
 - Constitution（`.specify/memory/constitution.md`）是最高治理文档
-- 新模块开发前 MUST 阅读 `doc/experience/development-pitfalls.md`
+- 新模块开发前 MUST 阅读 `docs/experience/development-pitfalls.md`
 - 当前模块相关的 `AGENTS.md` MUST 在实现前阅读
 - context 键名 MUST 使用模块前缀（如 `dd_service`、`gp_adb`）
 - GUI 后台线程 MUST 通过 `pyqtSignal` 通信

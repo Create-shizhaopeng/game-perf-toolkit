@@ -13,22 +13,26 @@
 ## 文档结构
 
 ```text
-doc/
+docs/
+├── PROGRESS.md                  # 项目进度总览（跨会话锚点）
 ├── README.md                    # 本文件（文档索引）
 ├── architecture/                # 架构设计文档
 │   ├── architecture-overview.md #   完整架构设计（11 章）
 │   ├── technical-decisions.md   #   技术决策记录（ADR）
-│   ├── learning-roadmap.md      #   架构学习路线与材料
-│   ├── 项目重新设计的需求.md       #   重构需求背景
-│   └── 集成agent后缺失的能力.md   #   Agent 集成后能力缺口分析
+│   └── learning-roadmap.md      #   学习路线
 ├── knowledge/                   # 项目知识库（跨模块知识）
 │   ├── README.md                #   知识库索引
 │   ├── module-registry.md       #   模块前缀注册表 + 事件总线
 │   ├── toolkit-exceptions.md    #   框架使用例外清单
 │   └── module-development-guide.md #   新模块开发完整指南
-└── experience/                  # 项目经验库
-    ├── README.md                #   经验库索引
-    └── development-pitfalls.md  #   踩坑指南（25 项 + 子系统快速索引）
+├── experience/                  # 项目经验库
+│   ├── README.md                #   经验库索引
+│   └── development-pitfalls.md  #   踩坑指南（25 项 + 子系统快速索引）
+└── team/                        # 团队规范（原 context/ 内容）
+    ├── git-workflow.md          #   Git 分支策略与提交规范
+    ├── coding-conventions.md    #   跨项目编码规范
+    ├── speckit-multi-module.md  #   多模块 Speckit 使用约定
+    └── cursor-interaction.md    #   Cursor IDE 交互经验
 ```
 
 ## 架构设计文档

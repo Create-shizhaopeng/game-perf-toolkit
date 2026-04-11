@@ -26,10 +26,10 @@ metadata:
 | 知识特征 | 目标位置 | 示例 |
 |---------|---------|------|
 | 特定模块内的经验 | `modules/<name>/docs/` | perfetto_analysis 的 GUI 刷新技巧 |
-| 跨模块的项目知识 | `doc/knowledge/` | 新的模块前缀注册、框架使用例外 |
-| 具体的踩坑经验 | `doc/experience/development-pitfalls.md` | 新的 Pxx 条目 |
-| 跨项目通用经验 | `context/experience/` | Cursor 交互模式、AI 协作技巧 |
-| 团队级通用规范 | `context/team/` | Git 工作流调整、编码规范更新 |
+| 跨模块的项目知识 | `docs/knowledge/` | 新的模块前缀注册、框架使用例外 |
+| 具体的踩坑经验 | `docs/experience/development-pitfalls.md` | 新的 Pxx 条目 |
+| 团队通用经验 | `docs/team/` | Cursor 交互模式、AI 协作技巧 |
+| 团队级通用规范 | `docs/team/` | Git 工作流调整、编码规范更新 |
 
 ### Step 2: 结构化记录
 
@@ -57,10 +57,10 @@ metadata:
 
 经验沉淀后 MUST 更新对应的索引文件：
 
-- 新增 pitfall → 更新 `doc/experience/development-pitfalls.md` 的子系统快速索引
-- 新增项目知识 → 更新 `doc/knowledge/README.md` 的知识清单
+- 新增 pitfall → 更新 `docs/experience/development-pitfalls.md` 的子系统快速索引
+- 新增项目知识 → 更新 `docs/knowledge/README.md` 的知识清单
 - 新增模块知识 → 更新 `modules/<name>/docs/README.md`
-- 新增跨项目经验 → 更新 `context/INDEX.md`
+- 新增团队经验 → 更新 `docs/team/INDEX.md`
 
 ### Step 4: 确认沉淀
 

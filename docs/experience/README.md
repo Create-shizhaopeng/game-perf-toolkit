@@ -23,8 +23,8 @@
     ↓
 判断经验层级
     ├── 模块特定 → modules/<name>/docs/
-    ├── 项目通用 → doc/experience/ 或 doc/knowledge/
-    └── 跨项目通用 → context/experience/
+    ├── 项目通用 → docs/experience/ 或 docs/knowledge/
+    └── 团队通用 → docs/team/
     ↓
 记录格式：现象 → 根因 → 解法 → 预防
     ↓
