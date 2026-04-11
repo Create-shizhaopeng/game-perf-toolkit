@@ -24,17 +24,14 @@ specify → clarify → [UE/UI] → plan → tasks → analysis → implement �
 
 ## Speckit 路由
 
-执行任何 speckit 命令前 MUST 先确定目标（详见 `context/team/speckit-multi-module.md`）：
+Speckit 仅在项目根级维护，模块级 Speckit 已移除（模块约束统一在 `AGENTS.md` 中管理）。
 
 | 目标 | Speckit 路径 | Spec 输出目录 |
 |------|-------------|-------------|
 | toolkit 框架 | `.specify/` | `specs/` |
-| perfetto_analysis | `modules/perfetto_analysis/.specify/` | `modules/perfetto_analysis/specs/` |
-| agent_chat | `modules/agent_chat/.specify/` | `modules/agent_chat/specs/` |
-| device_disguise | `modules/device_disguise/.specify/` | `modules/device_disguise/specs/` |
-| game_perf | `modules/game_perf/.specify/` | `modules/game_perf/specs/` |
-| perfetto_capture | `modules/perfetto_capture/.specify/` | `modules/perfetto_capture/specs/` |
-| perfdog_insights | `modules/perfdog_insights/.specify/` | `modules/perfdog_insights/specs/` |
+| 各模块 | 无独立 Speckit | `modules/<name>/specs/` |
+
+模块开发时的约束和边界以 `modules/<name>/AGENTS.md` 为权威源。
 
 ## 硬约束
 

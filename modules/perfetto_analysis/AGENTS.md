@@ -1,5 +1,7 @@
 # Perfetto 解析分析 — AI 开发规则
 
+> 继承项目根 Constitution（`.specify/memory/constitution.md`），以下为模块级补充约束。
+
 ## 目录
 
 - [模块概述](#模块概述)
@@ -11,6 +13,7 @@
 - [模块特有规则](#模块特有规则)
 - [GUI 开发注意事项](#gui-开发注意事项)
 - [数据库相关规则](#数据库相关规则)
+- [Spec 索引](#spec-索引)
 - [测试要求](#测试要求)
 
 ## 模块概述
@@ -142,6 +145,10 @@ Perfetto trace 丢帧解析与多维度卡顿归因分析模块。基于 Android
 - 迁移脚本位于 `src/migrations/`，按序号命名（001, 002, 003...）
 - 去重策略：`trace_path + mode` 组合唯一，重新分析时 DELETE+INSERT 覆盖
 - 删除记录时检查同一 trace_path 是否还有其他模式记录，据此决定是否清理磁盘文件
+
+## Spec 索引
+
+当前无活跃 Spec。完整索引见 [specs/INDEX.md](specs/INDEX.md)。
 
 ## 测试要求
 

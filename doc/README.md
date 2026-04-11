@@ -9,7 +9,6 @@
 - [PerfDog 分析用户入口](#perfdog-分析用户入口)
 - [Speckit 特性规格](#speckit-特性规格)
 - [开发文档](#开发文档)
-- [旧版文档归档](#旧版文档归档)
 
 ## 文档结构
 
@@ -27,11 +26,9 @@ doc/
 │   ├── module-registry.md       #   模块前缀注册表 + 事件总线
 │   ├── toolkit-exceptions.md    #   框架使用例外清单
 │   └── module-development-guide.md #   新模块开发完整指南
-├── experience/                  # 项目经验库
-│   ├── README.md                #   经验库索引
-│   └── development-pitfalls.md  #   踩坑指南（25 项 + 子系统快速索引）
-└── legacy/                      # 旧版文档归档（重构前）
-    └── ...
+└── experience/                  # 项目经验库
+    ├── README.md                #   经验库索引
+    └── development-pitfalls.md  #   踩坑指南（25 项 + 子系统快速索引）
 ```
 
 ## 架构设计文档
@@ -87,8 +84,3 @@ doc/
 | [create_module.md](../scripts/doc/create_module.md) | 模块脚手架脚本使用说明 |
 | [run_all_tests.md](../scripts/doc/run_all_tests.md) | 统一测试运行脚本说明 |
 
-## 旧版文档归档
-
-`legacy/` 目录保存重构前的单体应用文档，详见 [legacy/README.md](legacy/README.md)。
-这些文档在新架构的 `specs/`、`modules/*/specs/`、`.specify/` 中已被部分或全部替代，
-保留作为迁移参考和历史记录。
