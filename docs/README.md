@@ -19,12 +19,15 @@ docs/
 ├── architecture/                # 架构设计文档
 │   ├── architecture-overview.md #   完整架构设计（11 章）
 │   ├── technical-decisions.md   #   技术决策记录（ADR）
-│   └── learning-roadmap.md      #   学习路线
+│   ├── learning-roadmap.md      #   学习路线
+│   ├── 集成agent后缺失的能力.md #   Agent 集成后能力缺口分析
+│   └── 项目重新设计的需求.md    #   项目重构需求分析
 ├── knowledge/                   # 项目知识库（跨模块知识）
 │   ├── README.md                #   知识库索引
 │   ├── module-registry.md       #   模块前缀注册表 + 事件总线
 │   ├── toolkit-exceptions.md    #   框架使用例外清单
-│   └── module-development-guide.md #   新模块开发完整指南
+│   ├── module-development-guide.md #   新模块开发完整指南
+│   └── 长期记忆其他实践.md      #   AI Agent 长期记忆外部实践参考
 ├── experience/                  # 项目经验库
 │   ├── README.md                #   经验库索引
 │   └── development-pitfalls.md  #   踩坑指南（25 项 + 子系统快速索引）
@@ -43,6 +46,7 @@ docs/
 | [technical-decisions.md](architecture/technical-decisions.md) | 12 项架构决策记录（ADR），包括技术栈、插件系统、仓库管理、数据存储等 |
 | [learning-roadmap.md](architecture/learning-roadmap.md) | 项目涉及的核心概念解析、分阶段学习路线、技术栈学习材料、推荐书籍和参考项目 |
 | [集成agent后缺失的能力.md](architecture/集成agent后缺失的能力.md) | Agent 集成后的能力缺口分析：已实现 vs 待补全（token 显示、Provider 切换、SOP 物化等） |
+| [项目重新设计的需求.md](architecture/项目重新设计的需求.md) | 项目重构需求分析 |
 
 ## 项目知识库
 
@@ -53,6 +57,7 @@ docs/
 | [module-registry.md](knowledge/module-registry.md) | 6 个模块的前缀注册表、EventBus 事件注册表、模块依赖关系 |
 | [toolkit-exceptions.md](knowledge/toolkit-exceptions.md) | 框架使用例外清单（允许的 `toolkit.core` 导入、特殊测试位置） |
 | [module-development-guide.md](knowledge/module-development-guide.md) | 新模块开发完整指南（环境 → 创建 → Spec 工作流 → 实现 → 测试 → 提交） |
+| [长期记忆其他实践.md](knowledge/长期记忆其他实践.md) | AI Agent 长期记忆系统外部实践参考（文档驱动方案对比） |
 
 ## 项目经验库
 
@@ -70,13 +75,19 @@ docs/
 
 仓库根目录 `specs/` 下的主特性文档与 **实现记录** 对照：
 
-| 特性目录 | 状态 | 实现记录 |
-|----------|------|----------|
-| [001-framework-completion](../specs/001-framework-completion/) | Draft | — |
-| [002-core-enhancement](../specs/002-core-enhancement/) | Implemented | — |
-| [003-adb-enhancement](../specs/003-adb-enhancement/) | Implemented | — |
-| [004-perfdog-import-insights](../specs/004-perfdog-import-insights/) | Draft | [plan.md#实现记录](../specs/004-perfdog-import-insights/plan.md#实现记录) |
-| [004-adb-perfetto-support](../specs/004-adb-perfetto-support/) | spec only | — |
+| 特性目录 | 状态 | 说明 |
+|----------|------|------|
+| [001-framework-completion](../specs/001-framework-completion/) | Draft | 框架基础能力补全 |
+| [002-core-enhancement](../specs/002-core-enhancement/) | Implemented | 核心框架增强 |
+| [003-adb-enhancement](../specs/003-adb-enhancement/) | Implemented | ADB 能力增强 |
+| [004-perfdog-import-insights](../specs/004-perfdog-import-insights/) | Draft | PerfDog 数据导入与洞察 |
+| [004-adb-perfetto-support](../specs/004-adb-perfetto-support/) | spec only | ADB Perfetto 支持 |
+| [006-mcp-skills-subagent](../specs/006-mcp-skills-subagent/) | Implemented | MCP Skills SubAgent 编排 |
+| [007-gameperf-config-diff](../specs/007-gameperf-config-diff/) | Implemented | 游戏性能配置对比 |
+| [007-fps-chart-enhancement](../specs/007-fps-chart-enhancement/) | Implemented | FPS 图表增强 |
+| [008-global-settings-llm](../specs/008-global-settings-llm/) | Draft | 全局 LLM 设置 |
+| [009-history-batch-analysis](../specs/009-history-batch-analysis/) | Draft | 历史记录批量分析 |
+| [010-prompt-budget-management](../specs/010-prompt-budget-management/) | Draft | Prompt 预算管理 |
 
 ## 开发文档
 

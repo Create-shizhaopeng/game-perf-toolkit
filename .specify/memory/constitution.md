@@ -58,9 +58,9 @@ Sync Impact Report
 ### VII. Spec-Driven Development（规格驱动开发）
 
 - 新功能开发 MUST 遵循 speckit 工作流：Constitution → Specify → Plan → Tasks → Implement
-- 项目根目录使用主 speckit 管理全局规则和通用组件
-- 各模块 MUST 在模块目录下初始化独立 speckit（`--here --no-git`），继承全局规则
-- 模块开发者 MUST NOT 修改主 speckit 空间的内容
+- 项目仅在根目录维护统一 speckit（`.specify/`），模块不再拥有独立 speckit
+- 模块级约束和开发规则统一记录在各模块的 `AGENTS.md` 中
+- 模块的 spec 文档存放在各模块的 `specs/` 目录下，状态索引见 `specs/INDEX.md`
 - 模块的 `AGENTS.md` MUST 声明模块边界约束和允许/禁止的导入范围
 
 ## Technology Stack Constraints
@@ -81,7 +81,7 @@ Sync Impact Report
 ### 团队协作模式
 
 - 2-5 人小团队，每人负责一个或多个独立模块
-- 每个开发者在自己的模块目录下使用独立 speckit 进行 spec-driven 开发
+- 所有 spec-driven 开发使用根 speckit，模块 spec 文档输出到各模块 `specs/` 目录
 - 通用框架（`toolkit/core/`、`toolkit/sdk/`）修改需主负责人审核
 - Git 分支策略：`main` + `feat/<module>-<feature>` 特性分支
 - 提交规范：`<type>(<scope>): <description>`，scope 为模块名或 core/sdk
@@ -89,13 +89,13 @@ Sync Impact Report
 ### 模块开发标准流程
 
 1. 使用脚手架 `python scripts/create_module.py <name>` 生成模块骨架
-2. 在模块目录执行 `uvx --from git+https://github.com/github/spec-kit.git specify init --here --no-git --ai cursor-agent --script ps`
-3. 按 speckit 工作流开发（见下方「Spec-Driven 标准开发流程」）
+2. 在模块 `AGENTS.md` 中声明模块边界约束
+3. 按根 speckit 工作流开发（见下方「Spec-Driven 标准开发流程」），spec 文档输出到模块 `specs/` 目录
 4. 模块内测试 MUST 通过后才可提交 PR
 
 ### Spec-Driven 标准开发流程
 
-以下流程对主 spec（根 speckit）和子 spec（模块 speckit）均 MUST 生效：
+以下流程 MUST 生效（统一使用根 speckit）：
 
 | 步骤 | 动作 | 说明 |
 |------|------|------|
@@ -179,4 +179,4 @@ Agent 在修复 Bug 时 MUST 遵循以下流程：
 - 所有 PR 和代码审查 MUST 验证是否符合 Constitution 原则
 - 复杂度增加 MUST 有合理理由，优先选择简单方案
 
-**Version**: 1.3.0 | **Ratified**: 2026-03-20 | **Last Amended**: 2026-03-21
+**Version**: 1.4.0 | **Ratified**: 2026-03-20 | **Last Amended**: 2026-04-09
