@@ -660,9 +660,9 @@ class PerfettoCaptureTab(BaseTab):
             process_name = ""
             user_intent = ""
             if hasattr(self, "_analysis_worker") and self._analysis_worker:
-                trace_path = self._analysis_worker._trace_path
-                process_name = self._analysis_worker._process_name
-                user_intent = self._analysis_worker._user_intent
+                trace_path = str(self._analysis_worker._trace_path)
+                process_name = str(self._analysis_worker._process_name or "")
+                user_intent = str(self._analysis_worker._user_intent or "")
 
             storage.create_analysis_task(
                 task_id=task_id,
