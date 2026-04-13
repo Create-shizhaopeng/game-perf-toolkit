@@ -65,6 +65,9 @@ Perfetto trace 丢帧解析与多维度卡顿归因分析。支持 9 个分析�
 ## 设计文档
 
 - [分析子系统架构详细设计](analysis-architecture.md) — 编排层/Agent层/工具层/引擎层全链路设计、降级策略、已知问题
+- [时间窗口分析技术实现](time-window-analysis.md) — CPU/GPU 维度的时间区域分析机制、SQL 查询、调用链
+- [Agent 记忆与经验演进设计](agent-memory-evolution.md) — 参考 OpenClaw 的经验沉淀/案例注入/淘汰晋升方案（G0-G6）
+- [Agent 记忆系统架构总览](agent-memory-architecture.md) — 架构图 + 组件交互矩阵 + 数据模型 + 一致性检查
 - [引擎 vs MCP 对比 Demo 方案](perfetto-engine-vs-mcp-demo.md) — 架构演进方向验证
 - [SmartPerfetto 对比审查](smartperfetto-insights.md) — 可借鉴改进点（待后续迭代）
 

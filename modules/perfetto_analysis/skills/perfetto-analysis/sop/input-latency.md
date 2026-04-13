@@ -1,3 +1,14 @@
+---
+scene: input-latency
+display_name: 输入时延分析
+priority_dims: [input, thread]
+secondary_dims: [cpu, binder]
+optional_dims: [sf, gpu]
+prefetch:
+  - tool: trace_overview
+    inject_as: trace_info
+---
+
 # 输入时延分析 SOP
 
 ## 目录
@@ -105,3 +116,9 @@ ORDER BY c.ts
 - **笔写预测**：应用层预测笔迹轨迹，减少感知延迟
 - **RenderThread 优化**：减少绘制耗时，控制在 1 VSync 周期内
 - **CPU 提频**：确保绘制期间 CPU 频率足够
+
+## 深入分析资源
+
+分析过程中需要深入了解时，调用 `pa_read_knowledge` 获取知识资产:
+- 根因模式库: `pa_read_knowledge("patterns/root-cause-patterns.md")`
+- SQL 查询模板: `pa_read_knowledge("sql-patterns.md")`

@@ -38,6 +38,27 @@ class PerfettoAnalysisService:
         self._root_dir = Path(root_dir) if root_dir else None
         self._cfg = load_config()
         self._check_perfetto_available()
+        self._analysis_cache: dict[str, Any] = {}
+
+    # ------------------------------------------------------------------
+    # 分析缓存 — 避免重复查询同一 trace 的同一工具
+    # ------------------------------------------------------------------
+
+    def cache_key(self, trace_path: str, tool: str, **kwargs: Any) -> str:
+        """生成缓存键：trace_path + tool + 排序后的参数。"""
+        parts = [trace_path, tool]
+        for k in sorted(kwargs):
+            parts.append(f"{k}={kwargs[k]}")
+        return "|".join(parts)
+
+    def get_cached(self, key: str) -> Any | None:
+        return self._analysis_cache.get(key)
+
+    def set_cached(self, key: str, value: Any) -> None:
+        self._analysis_cache[key] = value
+
+    def clear_cache(self) -> None:
+        self._analysis_cache.clear()
 
     # ------------------------------------------------------------------
     # 公共 API

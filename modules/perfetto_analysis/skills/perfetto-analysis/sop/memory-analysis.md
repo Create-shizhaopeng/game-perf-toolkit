@@ -1,3 +1,14 @@
+---
+scene: memory
+display_name: 内存分析
+priority_dims: [gc]
+secondary_dims: [cpu, thread]
+optional_dims: [io]
+prefetch:
+  - tool: trace_overview
+    inject_as: trace_info
+---
+
 # 内存分析 SOP
 
 ## 目录
@@ -33,3 +44,8 @@
 - `memory_leaks` 为 null 表示 trace 不包含 heap graph 数据
 - `heap_dominator` 展示内存占用最大的对象及其引用链
 - 关注 retained size 最大的对象，它们是优化内存的首要目标
+
+## 深入分析资源
+
+分析过程中需要深入了解时，调用 `pa_read_knowledge` 获取知识资产:
+- SQL 查询模板: `pa_read_knowledge("sql-patterns.md")`

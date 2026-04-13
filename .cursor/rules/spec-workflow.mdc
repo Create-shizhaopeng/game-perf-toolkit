@@ -17,19 +17,23 @@ specify → clarify → [UE/UI] → plan → tasks → analysis → implement �
 
 ## Bug 修复
 
-- 简单 Bug：task → implement → analysis
-- 需求变更：clarify → [UE/UI] → plan → task → analysis → implement → analysis
 - MUST 先分析根因再修复，MUST NOT 盲目尝试
-- 涉及流程/逻辑变更时 MUST 同步更新 spec 文档
+- BUG修复完成后 MUST 同步更新 spec 文档
+
+## 需求变更
+
+- 需求变更：clarify → [UE/UI] → plan → task → analysis → implement → analysis
+- 变更内容 MUST 同步更新 spec 文档
 
 ## Speckit 路由
 
-Speckit 仅在项目根级维护，模块级 Speckit 已移除（模块约束统一在 `AGENTS.md` 中管理）。
+Speckit 仅在项目根级维护，所有新 spec 统一输出到根 `specs/` 目录。
 
 | 目标 | Speckit 路径 | Spec 输出目录 |
 |------|-------------|-------------|
-| toolkit 框架 | `.specify/` | `specs/` |
-| 各模块 | 无独立 Speckit | `modules/<name>/specs/` |
+| 所有模块（统一） | `.specify/` | `specs/` |
+
+> 历史遗留的 `modules/<name>/specs/` 不做迁移，但新 spec 一律在根 `specs/` 下创建。
 
 模块开发时的约束和边界以 `modules/<name>/AGENTS.md` 为权威源。
 

@@ -1,3 +1,14 @@
+---
+scene: rotation
+display_name: 转屏分析
+priority_dims: [thread, sf]
+secondary_dims: [cpu, gpu]
+optional_dims: [binder, input]
+prefetch:
+  - tool: trace_overview
+    inject_as: trace_info
+---
+
 # 转屏/配置变更分析 SOP
 
 ## 目录
@@ -108,3 +119,9 @@ ORDER BY s.ts
 | CPU 频率不足 | 转屏期间 CPU 未提频 | 尝试拉满 CPU 频率验证 |
 | 传感器延迟 | sensorservice 到 updateGlobalConfiguration 间隔大 | 硬件/驱动层 |
 | 多窗口模式 | 多个应用需要同时处理 configchange | 系统架构限制 |
+
+## 深入分析资源
+
+分析过程中需要深入了解时，调用 `pa_read_knowledge` 获取知识资产:
+- 根因模式库: `pa_read_knowledge("patterns/root-cause-patterns.md")`
+- SQL 查询模板: `pa_read_knowledge("sql-patterns.md")`

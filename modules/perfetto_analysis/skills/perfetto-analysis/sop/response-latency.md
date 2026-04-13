@@ -1,3 +1,14 @@
+---
+scene: response-latency
+display_name: 响应时延分析
+priority_dims: [thread, cpu]
+secondary_dims: [binder, io]
+optional_dims: [input, sf, gpu]
+prefetch:
+  - tool: trace_overview
+    inject_as: trace_info
+---
+
 # 响应时延分析 SOP
 
 ## 目录
@@ -130,3 +141,9 @@ startAnimation ← onTransactionReady ← finishDrawing ← 桌面activityResume
 | binder 阻塞 | 任一阶段间的 binder 调用耗时 > 5ms | binder 维度分析 |
 | BlockIO 阻塞 | D-State 出现在关键路径上 | io 维度分析 |
 | 双 activity 启动 | 目标 app 含多个 activity，无法使用 startingwindow | 应用侧，无法优化 |
+
+## 深入分析资源
+
+分析过程中需要深入了解时，调用 `pa_read_knowledge` 获取知识资产:
+- 根因模式库: `pa_read_knowledge("patterns/root-cause-patterns.md")`
+- SQL 查询模板: `pa_read_knowledge("sql-patterns.md")`

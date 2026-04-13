@@ -22,11 +22,23 @@ class _MockPaService:
             ]
         }
 
-    def analyze_dimensions(self, trace_path, process_name, dimensions, compact=True):
+    def analyze_dimensions(self, trace_path, process_name, dimensions, on_progress=None):
         return {
             dim: {"issues": [{"description": f"{dim} 问题"}], "metrics": {}}
             for dim in dimensions
         }
+
+    def cache_key(self, trace_path, tool, **kwargs):
+        parts = [trace_path, tool]
+        for k in sorted(kwargs):
+            parts.append(f"{k}={kwargs[k]}")
+        return "|".join(parts)
+
+    def get_cached(self, key):
+        return None
+
+    def set_cached(self, key, value):
+        pass
 
     def get_analysis_history(self, limit=20):
         return [{"id": 1, "trace": "test.perfetto-trace", "scene": "jank"}]
@@ -60,8 +72,8 @@ class TestToolReturnFormat(unittest.TestCase):
         self.assertIsInstance(result.metadata, dict)
 
     def test_tool_count(self):
-        """验证工具数量为 9（移除了 pa_analyze_full 和 pa_cpu_overview）。"""
-        self.assertEqual(len(self.tools), 9)
+        """验证工具数量为 10（含 G5 新增 pa_read_knowledge）。"""
+        self.assertEqual(len(self.tools), 10)
 
     def test_pa_trace_overview(self):
         result = self.tool_map["pa_trace_overview"]("test.trace")
@@ -71,7 +83,7 @@ class TestToolReturnFormat(unittest.TestCase):
     def test_pa_detect_jank(self):
         result = self.tool_map["pa_detect_jank"]("test.trace")
         self._assert_tool_return(result)
-        self.assertIn("Jank", result.return_value)
+        self.assertIn("jank_frames", result.return_value)
 
     def test_pa_analyze_dimension(self):
         result = self.tool_map["pa_analyze_dimension"]("test.trace", "cpu")
@@ -103,8 +115,8 @@ class TestToolReturnFormat(unittest.TestCase):
         self._assert_tool_return(result)
 
     def test_return_value_within_budget(self):
-        """每个工具返回值不超过 300 token (~750 字符)。"""
-        max_chars = int(300 * 2.5) + 20
+        """每个工具返回值不超过压缩策略预算。"""
+        max_chars = int(2000 * 2.5) + 20
         for name, tool in self.tool_map.items():
             if name == "pa_list_dimensions":
                 result = tool()
@@ -127,6 +139,9 @@ class TestToolReturnFormat(unittest.TestCase):
         """工具异常时返回 ToolReturn 格式的错误信息。"""
         service = MagicMock()
         service.get_trace_overview.side_effect = RuntimeError("连接失败")
+        service.cache_key.return_value = "test_key"
+        service.get_cached.return_value = None
+        service.set_cached.return_value = None
         tools = build_analysis_tools(service, self.compressor)
         tool_map = {t.__name__: t for t in tools}
 

@@ -21,6 +21,7 @@
 | [coding-conventions.md](coding-conventions.md) | Python 编码规范、类型注解、文档字符串 |
 | [speckit-multi-module.md](speckit-multi-module.md) | 多模块项目中 Speckit 的路由与治理约定 |
 | [cursor-interaction.md](cursor-interaction.md) | Cursor IDE 与 AI Agent 交互的经验积累 |
+| [progress-reporting.md](progress-reporting.md) | 项目进度汇报流程（技术进度 → 飞书业务汇报） |
 
 ## 使用说明
 

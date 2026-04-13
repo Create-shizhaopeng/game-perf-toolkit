@@ -1,3 +1,14 @@
+---
+scene: io
+display_name: IO阻塞分析
+priority_dims: [io, thread]
+secondary_dims: [binder, cpu]
+optional_dims: [lock]
+prefetch:
+  - tool: trace_overview
+    inject_as: trace_info
+---
+
 # IO Block 分析 SOP
 
 ## 目录
@@ -127,3 +138,10 @@ GROUP BY ts.state
 | 存储硬件/驱动慢 | waker 线程 Running 正常，IO 时间仍长 | 排除软件因素后，对比不同设备的 IO 延迟 |
 
 > **常见解决方案**：将高频读取的系统文件加入 pinner 白名单，`mlock` 到内存防止被回收。
+
+## 深入分析资源
+
+分析过程中需要深入了解时，调用 `pa_read_knowledge` 获取知识资产:
+- IO Block — 文件未 pin 到内存: `pa_read_knowledge("patterns/root-cause-patterns.md#io-block--文件未-pin-到内存")`
+- IO Block — IO 竞争: `pa_read_knowledge("patterns/root-cause-patterns.md#io-block--io-竞争")`
+- SQL 查询模板: `pa_read_knowledge("sql-patterns.md")`

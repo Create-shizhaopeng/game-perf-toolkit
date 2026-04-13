@@ -1,3 +1,16 @@
+---
+scene: jank
+display_name: 卡顿分析
+priority_dims: [cpu, thread, binder]
+secondary_dims: [gpu, sf, io]
+optional_dims: [gc, input, lock]
+prefetch:
+  - tool: detect_jank
+    inject_as: jank_frames
+  - tool: trace_overview
+    inject_as: trace_info
+---
+
 # 卡顿分析 SOP
 
 ## 目录
@@ -103,3 +116,9 @@ SQL 查询见 [sql-patterns.md — CPU 频率查询](../sql-patterns.md#cpu-频�
 | HWC 超时 | sf 维度异常 + HWC binder 耗时高 | sf | [HWC 模式](../patterns/root-cause-patterns.md#hwc-binder-超时) |
 | 输入延迟 | input 维度显示输入处理慢 | input | |
 | CPU 抢占 | 目标线程被高优线程抢占 | cpu, thread | [CPU 抢占模式](../patterns/root-cause-patterns.md#cpu-调度抢占) |
+
+## 深入分析资源
+
+分析过程中需要深入了解时，调用 `pa_read_knowledge` 获取知识资产:
+- 根因模式库: `pa_read_knowledge("patterns/root-cause-patterns.md")`（卡顿相关章节含 VSync 检测全误报、IO Block（文件未 pin / IO 竞争）、HWC Binder 超时、CPU 调度抢占）
+- SQL 查询模板: `pa_read_knowledge("sql-patterns.md")`

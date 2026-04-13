@@ -360,12 +360,16 @@ class PerfettoAnalysisPlugin(BasePlugin):
         if llm_manager:
             try:
                 from .agent.orchestrator import AnalysisOrchestrator
+                from .agent.package_db import PackageMappingDB
 
+                package_db = PackageMappingDB(data_dir / "package_mappings.db")
                 orchestrator = AnalysisOrchestrator(
                     llm_manager=llm_manager,
                     pa_service=self._service,
+                    package_db=package_db,
                 )
                 context["pa_orchestrator"] = orchestrator
+                context["pa_package_db"] = package_db
             except Exception as exc:
                 import sys
                 print(

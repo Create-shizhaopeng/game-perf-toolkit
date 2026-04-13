@@ -1,3 +1,14 @@
+---
+scene: startup
+display_name: 启动分析
+priority_dims: [thread, cpu]
+secondary_dims: [io, binder]
+optional_dims: [gc, lock]
+prefetch:
+  - tool: trace_overview
+    inject_as: trace_info
+---
+
 # 启动分析 SOP
 
 ## 目录
@@ -123,3 +134,9 @@ SQL 查询见 [sql-patterns.md — CPU 频率查询](../sql-patterns.md#cpu-频�
 | 桌面 getResources 竞争 | launcher-loader 与 startActivity 同时读 apk | 桌面侧改用缓存图标 |
 | 重启初始化未完成 | onBootCompleted 前解锁被阻塞 | 延迟 2s 解锁可规避 |
 | 桌面 widget 加载慢 | launcher 主线程初始化耗时长 | 减少 widget 数量 |
+
+## 深入分析资源
+
+分析过程中需要深入了解时，调用 `pa_read_knowledge` 获取知识资产:
+- 根因模式库: `pa_read_knowledge("patterns/root-cause-patterns.md")`
+- SQL 查询模板: `pa_read_knowledge("sql-patterns.md")`

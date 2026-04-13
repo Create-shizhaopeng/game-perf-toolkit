@@ -1,3 +1,14 @@
+---
+scene: anr
+display_name: ANR分析
+priority_dims: [thread, binder, lock]
+secondary_dims: [cpu, io]
+optional_dims: [gc, input]
+prefetch:
+  - tool: trace_overview
+    inject_as: trace_info
+---
+
 # ANR 分析 SOP
 
 ## 目录
@@ -187,3 +198,9 @@ ORDER BY last_ts_s DESC
 - 包含 `android.monitor_contention` 数据源
 - 包含 `linux.ftrace` 的 `sched_blocked_reason` 事件
 - 采集时长覆盖 ANR 前后各 10s
+
+## 深入分析资源
+
+分析过程中需要深入了解时，调用 `pa_read_knowledge` 获取知识资产:
+- 根因模式库: `pa_read_knowledge("patterns/root-cause-patterns.md")`
+- SQL 查询模板: `pa_read_knowledge("sql-patterns.md")`

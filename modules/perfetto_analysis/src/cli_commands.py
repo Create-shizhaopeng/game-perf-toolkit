@@ -2,6 +2,7 @@
 """Perfetto 解析分析 — CLI 子命令（Typer）。"""
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -257,6 +258,97 @@ def report_cmd(
             console.print("✅ 导出完成" if result else "[red]导出失败[/red]")
     except Exception as e:
         console.print(f"[red]导出失败: {e}[/red]")
+
+
+@analysis_app.command("review-learnings")
+def review_learnings_cmd(
+    as_json: Annotated[bool, typer.Option("--json", help="JSON 格式输出")] = False,
+) -> None:
+    """手动触发经验库整理（淘汰低价值 + LLM 晋升评审）。"""
+    svc = _get_service()
+    db = svc._db_manager
+    conn = getattr(db, "conn", None) or getattr(db, "_conn", None)
+    if conn is None:
+        console.print("[red]无法获取数据库连接[/red]")
+        raise typer.Exit(1)
+
+    from .agent.learnings_manager import (
+        evict_low_score_learnings,
+        memory_score,
+        promote_learnings,
+        record_maintenance_telemetry,
+    )
+    from datetime import datetime
+
+    console.print("[bold]经验库整理[/bold]\n")
+
+    rows = conn.execute(
+        "SELECT id, scene, root_cause_tags, insight, confidence, "
+        "       hit_count, last_used, created_at, promoted, archived "
+        "FROM pa_learnings ORDER BY confidence DESC"
+    ).fetchall()
+
+    if not rows:
+        if as_json:
+            console.print_json(json.dumps({"message": "无经验记录"}, ensure_ascii=False))
+        else:
+            console.print("[dim]无候选条目[/dim]")
+        return
+
+    now = datetime.now()
+    scored = [(dict(r), memory_score(dict(r), now)) for r in rows]
+    scored.sort(key=lambda x: x[1], reverse=True)
+
+    if not as_json:
+        table = Table(title=f"经验评分排名 (共 {len(scored)} 条)")
+        table.add_column("ID", style="cyan")
+        table.add_column("场景")
+        table.add_column("标签", max_width=20)
+        table.add_column("置信度", justify="right")
+        table.add_column("命中", justify="right")
+        table.add_column("Score", justify="right")
+        table.add_column("状态")
+        for r, score in scored[:30]:
+            status = "已验证" if r.get("promoted") else ("归档" if r.get("archived") else "活跃")
+            table.add_row(
+                str(r["id"]), r.get("scene", ""),
+                (r.get("root_cause_tags", ""))[:20],
+                f"{r.get('confidence', 0):.2f}",
+                str(r.get("hit_count", 0)),
+                f"{score:.4f}",
+                status,
+            )
+        console.print(table)
+
+    console.print("\n[bold]执行淘汰...[/bold]")
+    evict_result = evict_low_score_learnings(conn, now)
+    console.print(f"  淘汰: {evict_result['archived']} 条, 剩余: {evict_result['remaining']} 条")
+
+    console.print("\n[bold]执行 LLM 晋升评审...[/bold]")
+    try:
+        from ..src.agent.orchestrator import AnalysisOrchestrator
+        llm_mgr = getattr(svc, "_llm_manager", None)
+        if llm_mgr:
+            promote_result = asyncio.run(promote_learnings(conn, llm_mgr))
+        else:
+            promote_result = {"promoted": 0, "merged": 0, "archived": 0, "skipped": True}
+            console.print("  [dim]未配置 LLM，跳过晋升[/dim]")
+    except Exception as exc:
+        promote_result = {"promoted": 0, "merged": 0, "archived": 0, "error": str(exc)}
+        console.print(f"  [yellow]LLM 晋升失败: {exc}[/yellow]")
+
+    record_maintenance_telemetry(conn, "manual", evict_result, promote_result)
+
+    if as_json:
+        console.print_json(json.dumps({
+            "evict": evict_result,
+            "promote": promote_result,
+        }, ensure_ascii=False))
+    else:
+        console.print(f"\n[green]完成![/green]")
+        console.print(f"  晋升: {promote_result.get('promoted', 0)} 条")
+        console.print(f"  合并: {promote_result.get('merged', 0)} 条")
+        console.print(f"  归档: {promote_result.get('archived', 0)} 条")
 
 
 @analysis_app.command("history")

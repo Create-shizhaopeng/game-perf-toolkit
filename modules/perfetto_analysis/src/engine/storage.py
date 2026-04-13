@@ -113,6 +113,9 @@ def init_db(conn: sqlite3.Connection) -> None:
     _migrate_trace_summary_columns(conn)
     _migrate_jank_record_columns(conn)
     _create_phase2_tables(conn)
+    _create_telemetry_table(conn)
+    _create_learnings_table(conn)
+    _create_learning_embeddings_table(conn)
     conn.commit()
 
 
@@ -269,6 +272,86 @@ def insert_trace_summary(
     conn.commit()
 
 
+def _create_learning_embeddings_table(conn: sqlite3.Connection) -> None:
+    """创建 G2 经验 embedding 虚拟表（需要 sqlite-vec 扩展）。"""
+    try:
+        import sqlite_vec
+        sqlite_vec.load(conn)
+        conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS pa_learning_embeddings USING vec0(
+                learning_id INTEGER PRIMARY KEY,
+                embedding FLOAT[384]
+            )
+        """)
+        conn.commit()
+    except (ImportError, Exception):
+        pass
+
+
+def insert_learning_embedding(
+    conn: sqlite3.Connection,
+    learning_id: int,
+    embedding_blob: bytes,
+) -> None:
+    """写入一条经验 embedding 记录。embedding_blob 是序列化后的向量。"""
+    conn.execute(
+        "INSERT INTO pa_learning_embeddings (learning_id, embedding) VALUES (?, ?)",
+        (learning_id, embedding_blob),
+    )
+    conn.commit()
+
+
+def _create_learnings_table(conn: sqlite3.Connection) -> None:
+    """创建 G1 经验表 pa_learnings。"""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pa_learnings (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id         TEXT,
+            trace_id        TEXT NOT NULL,
+            scene           TEXT NOT NULL,
+            device_model    TEXT,
+            process_name    TEXT,
+            root_cause_tags TEXT NOT NULL,
+            insight         TEXT NOT NULL,
+            key_metrics     TEXT,
+            confidence      REAL DEFAULT 0.5,
+            hit_count       INTEGER DEFAULT 0,
+            last_used       TEXT,
+            created_at      TEXT NOT NULL,
+            promoted        INTEGER DEFAULT 0,
+            archived        INTEGER DEFAULT 0
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_learnings_scene ON pa_learnings(scene)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_learnings_tags ON pa_learnings(root_cause_tags)"
+    )
+    conn.commit()
+
+
+def _create_telemetry_table(conn: sqlite3.Connection) -> None:
+    """创建 G0 遥测表 pa_telemetry。"""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pa_telemetry (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id                 TEXT,
+            trace_id                TEXT,
+            scene                   TEXT,
+            model_name              TEXT,
+            tool_call_count         INTEGER,
+            tool_calls_detail       TEXT,
+            total_prompt_tokens     INTEGER,
+            total_completion_tokens INTEGER,
+            conclusion_quality      TEXT,
+            elapsed_sec             REAL,
+            created_at              TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+
+
 def _create_phase2_tables(conn: sqlite3.Connection) -> None:
     """创建 Phase 2 新增表（cpu_topology + analysis_report）。"""
     conn.execute("""
@@ -343,6 +426,69 @@ def insert_analysis_report(
     )
     conn.commit()
     return id_
+
+
+def insert_telemetry(
+    conn: sqlite3.Connection,
+    task_id: str,
+    trace_id: str,
+    scene: str,
+    model_name: str,
+    tool_call_count: int,
+    tool_calls_detail: str,
+    total_prompt_tokens: int,
+    total_completion_tokens: int,
+    conclusion_quality: str,
+    elapsed_sec: float,
+) -> None:
+    """写入一条分析遥测记录。"""
+    from datetime import datetime
+
+    conn.execute(
+        """INSERT INTO pa_telemetry
+           (task_id, trace_id, scene, model_name, tool_call_count,
+            tool_calls_detail, total_prompt_tokens, total_completion_tokens,
+            conclusion_quality, elapsed_sec, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            task_id, trace_id, scene, model_name, tool_call_count,
+            tool_calls_detail, total_prompt_tokens, total_completion_tokens,
+            conclusion_quality, elapsed_sec,
+            datetime.now().isoformat(),
+        ),
+    )
+    conn.commit()
+
+
+def insert_learning(
+    conn: sqlite3.Connection,
+    task_id: str,
+    trace_id: str,
+    scene: str,
+    root_cause_tags: str,
+    insight: str,
+    device_model: str | None = None,
+    process_name: str | None = None,
+    key_metrics: str | None = None,
+    confidence: float = 0.5,
+) -> int:
+    """写入一条分析经验记录，返回自增 id。"""
+    from datetime import datetime
+
+    cursor = conn.execute(
+        """INSERT INTO pa_learnings
+           (task_id, trace_id, scene, device_model, process_name,
+            root_cause_tags, insight, key_metrics, confidence,
+            hit_count, last_used, created_at, promoted, archived)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, 0, 0)""",
+        (
+            task_id, trace_id, scene, device_model, process_name,
+            root_cause_tags, insight, key_metrics, confidence,
+            datetime.now().isoformat(),
+        ),
+    )
+    conn.commit()
+    return cursor.lastrowid or 0
 
 
 def get_connection(db_path: str) -> sqlite3.Connection:

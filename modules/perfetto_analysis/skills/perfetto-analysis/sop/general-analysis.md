@@ -1,3 +1,14 @@
+---
+scene: general
+display_name: 通用分析
+priority_dims: [cpu, thread]
+secondary_dims: [gpu, sf, binder]
+optional_dims: [io, gc, input, lock]
+prefetch:
+  - tool: trace_overview
+    inject_as: trace_info
+---
+
 # 通用分析 SOP
 
 ## 目录
@@ -43,4 +54,12 @@
 3. 调用 `pa_detect_jank` 检查是否有卡顿
 4. 对最可能相关的 2-3 个维度调用 `pa_analyze_dimension`
 5. 基于工具返回的压缩摘要归纳结论，建议下一步分析方向
+
+## 深入分析资源
+
+分析过程中需要深入了解时，调用 `pa_read_knowledge` 获取知识资产:
+- 根因模式库: `pa_read_knowledge("patterns/root-cause-patterns.md")`
+- SQL 查询模板: `pa_read_knowledge("sql-patterns.md")`
+- 案例 face-unlock 音频卡顿: `pa_read_knowledge("cases/face-unlock-audio-stutter.md")`
+- 案例 LoLM 误报: `pa_read_knowledge("cases/2026-04-01-lolm-false-positive.md")`
 

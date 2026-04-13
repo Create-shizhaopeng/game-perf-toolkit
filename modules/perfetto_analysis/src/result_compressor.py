@@ -202,6 +202,7 @@ class ResultCompressor:
         tool_name: str,
         raw_output: Any,
         token_budget: int = 300,
+        strategy_name: str = "",
     ) -> str:
         """将工具原始返回值压缩为 LLM 可消费的文本摘要。
 
@@ -209,6 +210,7 @@ class ResultCompressor:
             tool_name: 工具名称，用于选择压缩策略
             raw_output: 工具原始返回值
             token_budget: token 预算上限
+            strategy_name: 显式指定压缩策略名 (degraded_aware/jank_records/keep_all/truncate)
 
         Returns:
             压缩后的文本摘要
@@ -220,12 +222,22 @@ class ResultCompressor:
         if not raw_output:
             return "工具未返回数据"
 
-        strategy = self._COMPRESS_STRATEGIES.get(tool_name)
+        strategy_dispatch = {
+            "degraded_aware": self._compress_degraded_aware,
+            "jank_records": self._compress_jank_records,
+            "keep_all": lambda data, budget: self._compress_generic(data, max(budget, 2000)),
+            "truncate": self._compress_generic,
+        }
+
         try:
-            if strategy:
-                result = strategy(self, raw_output, token_budget)
+            if strategy_name and strategy_name in strategy_dispatch:
+                result = strategy_dispatch[strategy_name](raw_output, token_budget)
             else:
-                result = self._compress_generic(raw_output, token_budget)
+                legacy = self._COMPRESS_STRATEGIES.get(tool_name)
+                if legacy:
+                    result = legacy(self, raw_output, token_budget)
+                else:
+                    result = self._compress_generic(raw_output, token_budget)
         except Exception as exc:
             logger.warning("压缩工具 %s 输出失败: %s", tool_name, exc)
             result = self._compress_generic(raw_output, token_budget)
@@ -340,6 +352,68 @@ class ResultCompressor:
         "pa_detect_jank": _compress_jank,
         "pa_analyze_dimension": _compress_dimension,
     }
+
+    def _compress_degraded_aware(self, data: Any, token_budget: int) -> str:
+        """degraded_aware: degraded=True 的维度完整保留，其余精简为摘要。"""
+        if not isinstance(data, dict):
+            return self._compress_generic(data, token_budget)
+
+        parts: list[str] = []
+        for dim_name, dim_data in data.items():
+            if not isinstance(dim_data, dict):
+                parts.append(f"[{dim_name}] {str(dim_data)[:100]}")
+                continue
+
+            is_degraded = dim_data.get("degraded", False)
+            if is_degraded:
+                detail = json.dumps(dim_data, ensure_ascii=False, default=str)
+                parts.append(f"[{dim_name}] DEGRADED（完整数据）:\n{detail}")
+            else:
+                anomalies = dim_data.get("anomalies", [])
+                issues = dim_data.get("issues", [])
+                flags = anomalies or issues
+                if flags:
+                    flag_summary = "; ".join(
+                        str(f.get("description", f) if isinstance(f, dict) else f)[:80]
+                        for f in flags[:3]
+                    )
+                    parts.append(f"[{dim_name}] {len(flags)} 个异常: {flag_summary}")
+                else:
+                    stats = {k: v for k, v in list(dim_data.items())[:5]
+                             if not isinstance(v, (list, dict)) or (isinstance(v, list) and len(v) <= 3)}
+                    summary = ", ".join(f"{k}={v}" for k, v in stats.items())
+                    parts.append(f"[{dim_name}] 正常 — {summary}")
+
+        return "\n".join(parts) if parts else self._compress_generic(data, token_budget)
+
+    def _compress_jank_records(self, data: Any, token_budget: int) -> str:
+        """jank_records: 完整保留 jank/parse_result 记录，精简其余大数据。"""
+        if not isinstance(data, dict):
+            return self._compress_generic(data, token_budget)
+
+        jank_keys = ["jank_frames", "parse_result", "jank_records", "frames"]
+        preserved: dict[str, Any] = {}
+        summarized: dict[str, str] = {}
+
+        for k, v in data.items():
+            if k in jank_keys:
+                preserved[k] = v
+            elif k in ("jank_times", "frame_count", "detected_process", "jank_count", "big_jank_count"):
+                preserved[k] = v
+            elif isinstance(v, list) and len(v) > 10:
+                summarized[k] = f"[{len(v)} 项，已精简]"
+            elif isinstance(v, dict) and len(json.dumps(v, default=str)) > 500:
+                summarized[k] = f"[{len(v)} 字段，已精简]"
+            else:
+                preserved[k] = v
+
+        result_parts: list[str] = []
+        if preserved:
+            result_parts.append(json.dumps(preserved, ensure_ascii=False, default=str))
+        if summarized:
+            result_parts.append("精简字段: " + ", ".join(f"{k}: {v}" for k, v in summarized.items()))
+
+        return "\n".join(result_parts)
 
     @staticmethod
     def _build_data_completeness(
