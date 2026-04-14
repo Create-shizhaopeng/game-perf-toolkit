@@ -59,6 +59,10 @@ ICONS = {
     "layout-panel-off": "\uec01",
     "layout-sidebar-right": "\uebf4",
     "layout-sidebar-right-off": "\uec00",
+    # 折叠/展开
+    "chevron-down": "\ueab4",
+    "chevron-right": "\ueab6",
+    "chevron-up": "\ueab5",
     # 日志面板
     "clear-all": "\ueabf",
     "filter": "\uea91",

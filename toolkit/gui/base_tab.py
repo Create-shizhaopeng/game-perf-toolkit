@@ -61,8 +61,23 @@ class BaseTab(QWidget):
             mgr.log(self.tab_title, msg, level=level)
 
     def right_panel_widget(self) -> "QWidget | None":
-        """返回右侧面板内容 widget。子类重写此方法提供模块专属右侧面板。"""
+        """已废弃，请使用 history_widget()。保留兼容。"""
         return None
+
+    def history_widget(self) -> "QWidget | None":
+        """返回左侧历史面板 widget。子类重写此方法提供模块专属历史面板。"""
+        return self.right_panel_widget()
+
+    def history_widgets(self) -> "list[tuple[str, QWidget]]":
+        """返回多个 (tab_title, widget) 用于历史面板多 Tab 注册。
+
+        默认实现将 history_widget() 包装为单元素列表。
+        子类可重写以提供多个历史 Tab。
+        """
+        hw = self.history_widget()
+        if hw is not None:
+            return [(self.tab_title, hw)]
+        return []
 
     def require_device(self) -> bool:
         """检查设备是否可用。不可用时弹出提示，返回 False。

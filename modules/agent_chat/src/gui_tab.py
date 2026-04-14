@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QSize, QThread, QTimer, Qt, pyqtSignal
+from PyQt6.QtCore import QThread, QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QKeyEvent, QTextCharFormat
 from PyQt6.QtWidgets import (
     QApplication,
@@ -26,16 +26,14 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
     QMenu,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QSlider,
     QSpinBox,
-    QSplitter,
     QStackedWidget,
+    QTabBar,
     QTabWidget,
     QTextEdit,
     QTreeWidget,
@@ -71,7 +69,7 @@ class _UserMessageWidget(QFrame):
     def __init__(self, text: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(60, 4, 8, 4)
+        layout.setContentsMargins(30, 4, 8, 4)
         layout.addStretch()
 
         bubble = QLabel(text)
@@ -92,7 +90,7 @@ class _AgentTextWidget(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 60, 4)
+        layout.setContentsMargins(8, 4, 30, 4)
 
         self._label = QLabel()
         self._label.setWordWrap(True)
@@ -497,6 +495,23 @@ class _AgentWorker(QThread):
 # ---------------------------------------------------------------------------
 # T020: 自适应高度输入框
 # ---------------------------------------------------------------------------
+
+
+class _ScrollableTabBar(QTabBar):
+    """支持滚轮切换 Tab 的 QTabBar。"""
+
+    def wheelEvent(self, event) -> None:
+        delta = event.angleDelta().y()
+        if delta > 0:
+            new_idx = self.currentIndex() - 1
+        elif delta < 0:
+            new_idx = self.currentIndex() + 1
+        else:
+            return
+        if 0 <= new_idx < self.count():
+            self.setCurrentIndex(new_idx)
+            self.tabBarClicked.emit(new_idx)
+        event.accept()
 
 
 class _ChatInput(QTextEdit):
@@ -938,52 +953,47 @@ class AgentTab(BaseTab):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setChildrenCollapsible(False)
+        conv_bar = self._build_conv_bar()
+        root.addWidget(conv_bar)
 
-        left_panel = self._build_left_panel()
-        left_panel.setFixedWidth(220)
-        splitter.addWidget(left_panel)
+        chat_panel = self._build_chat_panel()
+        root.addWidget(chat_panel, 1)
 
-        right_panel = self._build_right_panel()
-        splitter.addWidget(right_panel)
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
+    def _build_conv_bar(self) -> QWidget:
+        """构建顶部会话 Tab 栏。"""
+        bar_widget = QWidget()
+        bar_widget.setObjectName("agentConvBar")
+        bar_widget.setFixedHeight(32)
+        bar_layout = QHBoxLayout(bar_widget)
+        bar_layout.setContentsMargins(4, 0, 4, 0)
+        bar_layout.setSpacing(0)
 
-        root.addWidget(splitter)
+        self._conv_tab_bar = _ScrollableTabBar()
+        self._conv_tab_bar.setObjectName("agentConvTabBar")
+        self._conv_tab_bar.setDrawBase(False)
+        self._conv_tab_bar.setExpanding(False)
+        self._conv_tab_bar.setElideMode(Qt.TextElideMode.ElideRight)
+        self._conv_tab_bar.setTabsClosable(False)
+        self._conv_tab_bar.setUsesScrollButtons(False)
+        self._conv_tab_bar.tabBarClicked.connect(self._on_conv_tab_changed)
+        self._conv_tab_bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._conv_tab_bar.customContextMenuRequested.connect(self._on_conv_context_menu)
+        bar_layout.addWidget(self._conv_tab_bar, 1)
 
-    def _build_left_panel(self) -> QWidget:
-        panel = QWidget()
-        panel.setObjectName("agentLeftPanel")
-        self._left_panel = panel
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(4)
-
-        # T021: 会话历史
-        hist_header = QHBoxLayout()
-        hist_label = QLabel("会话历史")
-        hist_label.setObjectName("agentHistLabel")
-        self._btn_new_conv = QPushButton("+ 新建")
+        self._btn_new_conv = QPushButton("+")
         self._btn_new_conv.setObjectName("agentBtnNewConv")
-        self._btn_new_conv.setFixedHeight(26)
-        self._btn_new_conv.setMinimumWidth(60)
+        self._btn_new_conv.setFixedSize(28, 24)
+        self._btn_new_conv.setToolTip("新建会话")
         self._btn_new_conv.clicked.connect(self._on_new_conversation)
-        hist_header.addWidget(hist_label)
-        hist_header.addStretch()
-        hist_header.addWidget(self._btn_new_conv)
-        layout.addLayout(hist_header)
+        bar_layout.addWidget(self._btn_new_conv)
 
-        self._conv_list = QListWidget()
-        self._conv_list.setObjectName("agentConvList")
-        self._conv_list.itemClicked.connect(self._on_conv_selected)
-        self._conv_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._conv_list.customContextMenuRequested.connect(self._on_conv_context_menu)
-        layout.addWidget(self._conv_list, 1)
+        self._conv_ids: list[str] = []
+        self._refreshing_tabs = False
+        self._new_conv_mode = False
 
-        return panel
+        return bar_widget
 
-    def _build_right_panel(self) -> QWidget:
+    def _build_chat_panel(self) -> QWidget:
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1049,9 +1059,9 @@ class AgentTab(BaseTab):
         self._welcome_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         center.addWidget(self._welcome_subtitle)
 
-        btn_grid = QHBoxLayout()
-        btn_grid.setSpacing(12)
-        btn_grid.addStretch()
+        btn_grid = QVBoxLayout()
+        btn_grid.setSpacing(8)
+        btn_grid.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         shortcuts = [
             ("🔍 Trace 分析", "帮我分析 Perfetto trace 文件中的卡顿问题"),
             ("📊 PerfDog 分析", "帮我分析 PerfDog 导出的性能数据"),
@@ -1062,11 +1072,12 @@ class AgentTab(BaseTab):
         for label, prompt in shortcuts:
             btn = QPushButton(label)
             btn.setObjectName("agentShortcutBtn")
-            btn.setFixedSize(140, 36)
+            btn.setFixedHeight(36)
+            btn.setMinimumWidth(180)
+            btn.setMaximumWidth(240)
             btn.clicked.connect(lambda checked, p=prompt: self._quick_send(p))
             btn_grid.addWidget(btn)
             self._shortcut_btns.append(btn)
-        btn_grid.addStretch()
         center.addLayout(btn_grid)
 
         self._welcome_hint = QLabel("💡 提示: 你也可以直接描述需求，无需选择具体分析类型")
@@ -1089,8 +1100,9 @@ class AgentTab(BaseTab):
         self._msg_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self._msg_container = QWidget()
+        self._msg_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self._msg_layout = QVBoxLayout(self._msg_container)
-        self._msg_layout.setContentsMargins(8, 8, 8, 8)
+        self._msg_layout.setContentsMargins(4, 8, 4, 8)
         self._msg_layout.setSpacing(2)
         self._msg_layout.addStretch()
 
@@ -1199,99 +1211,112 @@ class AgentTab(BaseTab):
     # ── 会话历史管理 (T021) ──────────────────────────────────────────────
 
     def _refresh_conv_list(self) -> None:
-        self._conv_list.clear()
-        if not self._store:
+        self._refreshing_tabs = True
+        try:
+            while self._conv_tab_bar.count() > 0:
+                self._conv_tab_bar.removeTab(0)
+            self._conv_ids.clear()
+
+            if not self._store:
+                logger.debug("_refresh_conv_list: store 未初始化")
+                return
+
+            convs = self._store.list_conversations()
+            active_idx = -1
+            logger.debug("_refresh_conv_list: %d 个会话, current=%s", len(convs), self._current_conv_id)
+
+            for c in convs:
+                title = c.get("title") or "新对话"
+                if len(title) > 16:
+                    title = title[:16] + "…"
+                idx = self._conv_tab_bar.addTab(title)
+                self._conv_tab_bar.setTabToolTip(idx, c.get("title") or "新对话")
+                self._conv_ids.append(c["id"])
+                self._add_tab_close_btn(idx)
+                if c["id"] == self._current_conv_id:
+                    active_idx = idx
+
+            if active_idx >= 0 and not self._new_conv_mode:
+                self._conv_tab_bar.setCurrentIndex(active_idx)
+            else:
+                new_idx = self._conv_tab_bar.insertTab(0, "新对话")
+                self._conv_ids.insert(0, "__new__")
+                self._add_tab_close_btn(0)
+                self._conv_tab_bar.setCurrentIndex(0)
+                self._new_conv_mode = True
+            logger.debug("_refresh_conv_list: active_idx=%d, tab_count=%d", active_idx, self._conv_tab_bar.count())
+        finally:
+            self._refreshing_tabs = False
+
+    def _add_tab_close_btn(self, tab_idx: int) -> None:
+        """为指定 Tab 添加自定义 Codicon 关闭按钮。"""
+        btn = QPushButton()
+        btn.setFixedSize(16, 16)
+        cf = codicon_font(10)
+        if cf:
+            btn.setFont(cf)
+            btn.setText(icon_char("close"))
+        else:
+            btn.setText("×")
+        hover_bg = _DARK.get("hover", "rgba(255,255,255,0.1)")
+        fg = _DARK.get("fg", "#cdd6f4")
+        btn.setStyleSheet(
+            f"QPushButton {{ background: transparent; border: none; padding: 0; margin: 0; color: {fg}; }}"
+            f"QPushButton:hover {{ background-color: {hover_bg}; border-radius: 3px; }}"
+        )
+
+        def _find_and_close():
+            for i in range(self._conv_tab_bar.count()):
+                if self._conv_tab_bar.tabButton(i, QTabBar.ButtonPosition.RightSide) is btn:
+                    self._on_conv_tab_close(i)
+                    return
+
+        btn.clicked.connect(_find_and_close)
+        self._conv_tab_bar.setTabButton(
+            tab_idx, QTabBar.ButtonPosition.RightSide, btn
+        )
+
+    def _on_conv_tab_changed(self, index: int) -> None:
+        """用户点击 Tab 时加载对应会话。"""
+        logger.debug("_on_conv_tab_changed: index=%d", index)
+        if index < 0 or index >= len(self._conv_ids):
             return
 
-        convs = self._store.list_conversations()
-        today = datetime.date.today()
-        yesterday = today - datetime.timedelta(days=1)
+        conv_id = self._conv_ids[index]
+        if conv_id == "__new__":
+            self._new_conv_mode = True
+            self._current_conv_id = None
+            self._clear_messages()
+            self._content_stack.setCurrentIndex(0)
+            return
+        if conv_id == self._current_conv_id:
+            return
 
-        groups: dict[str, list[dict]] = {}
-        for c in convs:
-            try:
-                dt = datetime.datetime.strptime(c["updated_at"], "%Y-%m-%dT%H:%M:%S")
-                d = dt.date()
-            except (ValueError, KeyError):
-                d = today
-            if d == today:
-                key = "● 今天"
-            elif d == yesterday:
-                key = "● 昨天"
-            else:
-                key = f"● {d.strftime('%m月%d日')}"
-            groups.setdefault(key, []).append(c)
+        if self._is_running:
+            ok = confirm_dialog(
+                self, "切换会话",
+                "当前有任务在执行中，切换会话将停止当前任务。是否继续？",
+            )
+            if not ok:
+                old_idx = self._conv_ids.index(self._current_conv_id) if self._current_conv_id in self._conv_ids else -1
+                if old_idx >= 0:
+                    self._conv_tab_bar.setCurrentIndex(old_idx)
+                return
+            self._on_stop()
 
-        for group_name, items in groups.items():
-            header = QListWidgetItem(group_name)
-            header.setFlags(Qt.ItemFlag.NoItemFlags)
-            header.setForeground(QColor(_DARK["fg_dim"]))
-            font = header.font()
-            font.setBold(True)
-            font.setPointSize(9)
-            header.setFont(font)
-            self._conv_list.addItem(header)
+        self._new_conv_mode = False
+        self._current_conv_id = conv_id
+        self._load_conversation_messages(conv_id)
 
-            for c in items:
-                title = c.get("title") or "新对话"
-                if len(title) > 24:
-                    title = title[:24] + "…"
-                is_active = c["id"] == self._current_conv_id
-                conv_id = c["id"]
-
-                row_h = 30
-
-                row_widget = QWidget()
-                row_widget.setFixedHeight(row_h)
-                row_layout = QHBoxLayout(row_widget)
-                row_layout.setContentsMargins(8, 0, 4, 0)
-                row_layout.setSpacing(2)
-
-                lbl = QLabel(title)
-                lbl.setAlignment(
-                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
-                )
-                lbl.setStyleSheet(
-                    f"font-weight: {'bold' if is_active else 'normal'};"
-                    f"color: {_DARK['accent'] if is_active else _DARK['fg']};"
-                    "font-size: 12px; background: transparent;"
-                )
-                row_layout.addWidget(lbl, 1)
-
-                if not is_active:
-                    btn_del = QPushButton()
-                    btn_del.setFixedSize(20, 20)
-                    _cf = codicon_font(12)
-                    if _cf:
-                        btn_del.setFont(_cf)
-                        btn_del.setText(icon_char("close"))
-                    else:
-                        btn_del.setText("\u00D7")
-                    btn_del.setStyleSheet(
-                        f"QPushButton {{ background: transparent; border: none;"
-                        f"padding: 0; margin: 0; color: {_DARK['fg_dim']}; }}"
-                        f"QPushButton:hover {{ color: {_DARK['error']};"
-                        f"background: {_DARK['border']}; border-radius: 3px; }}"
-                    )
-                    btn_del.setToolTip("删除会话")
-                    btn_del.clicked.connect(
-                        lambda checked, cid=conv_id: self._on_delete_conv(cid)
-                    )
-                    row_layout.addWidget(btn_del)
-
-                if is_active:
-                    row_widget.setStyleSheet(
-                        f"background-color: {_DARK['card_bg']}; border-radius: 4px;"
-                    )
-
-                item = QListWidgetItem()
-                item.setData(Qt.ItemDataRole.UserRole, conv_id)
-                item.setSizeHint(QSize(0, row_h))
-                self._conv_list.addItem(item)
-                self._conv_list.setItemWidget(item, row_widget)
-
-    def _on_delete_conv(self, conv_id: str) -> None:
-        """直接删除指定会话。"""
+    def _on_conv_tab_close(self, index: int) -> None:
+        """Tab 关闭按钮 — 删除会话。"""
+        if index < 0 or index >= len(self._conv_ids):
+            return
+        conv_id = self._conv_ids[index]
+        if conv_id == "__new__":
+            self._new_conv_mode = False
+            self._refresh_conv_list()
+            return
         ok = confirm_dialog(
             self, "删除对话", "确认删除该对话？",
             confirm_text="删除", danger=True,
@@ -1304,37 +1329,17 @@ class AgentTab(BaseTab):
                 self._content_stack.setCurrentIndex(0)
             self._refresh_conv_list()
 
-    def _on_conv_selected(self, item: QListWidgetItem) -> None:
-        conv_id = item.data(Qt.ItemDataRole.UserRole)
-        if not conv_id:
-            return
-
-        if self._is_running:
-            ok = confirm_dialog(
-                self, "切换会话",
-                "当前有任务在执行中，切换会话将停止当前任务。是否继续？",
-            )
-            if not ok:
-                return
-            self._on_stop()
-
-        self._current_conv_id = conv_id
-        self._load_conversation_messages(conv_id)
-        self._refresh_conv_list()
-
     def _on_conv_context_menu(self, pos) -> None:
-        item = self._conv_list.itemAt(pos)
-        if not item:
+        index = self._conv_tab_bar.tabAt(pos)
+        if index < 0 or index >= len(self._conv_ids):
             return
-        conv_id = item.data(Qt.ItemDataRole.UserRole)
-        if not conv_id:
-            return
+        conv_id = self._conv_ids[index]
 
         menu = QMenu(self)
         action_rename = menu.addAction("重命名")
         action_delete = menu.addAction("删除")
 
-        action = menu.exec(self._conv_list.mapToGlobal(pos))
+        action = menu.exec(self._conv_tab_bar.mapToGlobal(pos))
         if action == action_rename:
             new_name, ok = input_dialog(self, "重命名对话", "新名称:")
             if ok and new_name.strip() and self._store:
@@ -1354,6 +1359,8 @@ class AgentTab(BaseTab):
                 self._refresh_conv_list()
 
     def _on_new_conversation(self) -> None:
+        logger.debug("_on_new_conversation")
+        self._new_conv_mode = True
         if self._is_running:
             ok = confirm_dialog(
                 self, "新建对话",
@@ -1480,6 +1487,7 @@ class AgentTab(BaseTab):
             warning_dialog(self, "Agent 未就绪", "API Key 未配置或无效，请在设置中检查。")
             return
 
+        self._new_conv_mode = False
         self._content_stack.setCurrentIndex(1)
         self._chat_input.clear()
 

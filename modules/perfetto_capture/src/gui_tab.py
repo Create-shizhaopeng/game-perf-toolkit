@@ -356,16 +356,27 @@ class PerfettoCaptureTab(BaseTab):
 
         root.addWidget(bottom_widget)
 
-        # 右侧面板容器（HistoryPanel 延迟初始化后填入）
         self._history_container = QWidget()
         self._history_container_layout = QVBoxLayout(self._history_container)
         self._history_container_layout.setContentsMargins(0, 0, 0, 0)
+
+        self._analysis_container = QWidget()
+        self._analysis_container_layout = QVBoxLayout(self._analysis_container)
+        self._analysis_container_layout.setContentsMargins(0, 0, 0, 0)
+
         self._history_panel = None
         self._history_service = None
+        self._ensure_history_panel()
 
-    def right_panel_widget(self) -> QWidget | None:
-        """返回右侧面板内容（历史记录面板容器）。"""
+    def history_widget(self) -> QWidget | None:
         return self._history_container
+
+    def history_widgets(self) -> list[tuple[str, QWidget]]:
+        """返回抓取历史和分析历史两个 Tab。"""
+        return [
+            ("抓取历史", self._history_container),
+            ("分析历史", self._analysis_container),
+        ]
 
     def _ensure_history_panel(self) -> None:
         """确保历史面板已初始化。"""
@@ -389,6 +400,9 @@ class PerfettoCaptureTab(BaseTab):
         self._history_panel._analysis_history_tree.open_report_requested.connect(
             self._open_analysis_report
         )
+        self._history_panel._analysis_history_tree.delete_analysis_requested.connect(
+            self._delete_analysis_task
+        )
 
         # AI 对话组件
         self._analysis_chat = AnalysisChatWidget()
@@ -410,7 +424,19 @@ class PerfettoCaptureTab(BaseTab):
         analysis_available = self._is_analysis_module_available()
         self._history_panel.set_analysis_available(bool(analysis_available))
 
-        self._history_container_layout.addWidget(self._history_panel)
+        # 抓取历史：只保留 session tree
+        session_tree = self._history_panel._session_tree
+        session_tree.setParent(None)
+        self._history_container_layout.addWidget(session_tree)
+
+        # 分析历史：只保留 analysis history tree
+        analysis_tree = self._history_panel._analysis_history_tree
+        analysis_tree.setParent(None)
+        self._analysis_container_layout.addWidget(analysis_tree)
+
+        self._history_panel.show()
+
+        self._refresh_history()
 
     def _get_output_dir(self) -> Path:
         """获取输出目录。"""
@@ -431,14 +457,12 @@ class PerfettoCaptureTab(BaseTab):
             return False
 
     def _on_history_close(self) -> None:
-        """历史面板关闭按钮 — 通知框架隐藏右侧面板。"""
-        hide_fn = self.context.get("hide_right_panel")
-        if hide_fn:
-            hide_fn()
+        """历史面板关闭按钮 — 保留兼容，当前无操作。"""
 
     def _refresh_history(self) -> None:
         """刷新历史记录和分析历史。"""
         if not self._history_service:
+            logger.warning("_refresh_history: history_service 未初始化")
             return
 
         sessions = self._history_service.scan_sessions()
@@ -659,6 +683,20 @@ class PerfettoCaptureTab(BaseTab):
         else:
             self._log(f"删除失败: {trace_path.name}", "error")
         self._refresh_history()
+
+    def _delete_analysis_task(self, task_id: str) -> None:
+        """删除分析任务记录。"""
+        if not self._history_service:
+            return
+        try:
+            storage = self._history_service.storage
+            if storage.delete_analysis_task(task_id):
+                self._log("已删除分析记录", "success")
+            else:
+                self._log("删除分析记录失败", "error")
+            self._refresh_history()
+        except Exception as e:
+            self._log(f"删除分析记录失败: {e}", "error")
 
     def _log(self, msg: str, level: str = "info") -> None:
         """兼容旧接口的位置参数 level 调用。"""

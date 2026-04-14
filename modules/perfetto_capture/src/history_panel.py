@@ -277,15 +277,8 @@ class AnalysisHistoryTree(QTreeWidget):
             }
         """)
         self.itemDoubleClicked.connect(self._on_double_click)
-
-        header_item = QTreeWidgetItem()
-        header_item.setText(0, "📊 分析历史")
-        self.setHeaderItem(header_item)
-        self.setHeaderHidden(False)
-        self.header().setStyleSheet(
-            "QHeaderView::section { background: transparent; color: #a6adc8; "
-            "border: none; padding: 4px; font-size: 12px; }"
-        )
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._on_context_menu)
 
     def refresh(self, tasks: list[dict]) -> None:
         """刷新分析任务列表。"""
@@ -318,6 +311,39 @@ class AnalysisHistoryTree(QTreeWidget):
         if result_dir:
             report_path = str(Path(result_dir) / "report.html")
             self.open_report_requested.emit(report_path)
+
+    def _on_context_menu(self, pos) -> None:
+        item = self.itemAt(pos)
+        if not item:
+            return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+
+        from PyQt6.QtWidgets import QMenu
+        menu = QMenu(self)
+        result_dir = data.get("result_dir", "")
+        if result_dir:
+            action_open = menu.addAction("📂 打开所在目录")
+        else:
+            action_open = None
+        action_delete = menu.addAction("🗑 删除")
+
+        action = menu.exec(self.viewport().mapToGlobal(pos))
+        if action and action == action_open and result_dir:
+            import subprocess, sys
+            dir_path = Path(result_dir)
+            if dir_path.exists():
+                if sys.platform == "win32":
+                    subprocess.run(["explorer", str(dir_path)], check=False)
+                else:
+                    from PyQt6.QtGui import QDesktopServices
+                    from PyQt6.QtCore import QUrl
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(str(dir_path)))
+        elif action and action == action_delete:
+            task_id = data.get("id", "")
+            if task_id:
+                self.delete_analysis_requested.emit(task_id)
 
 
 class HistoryPanel(QWidget):

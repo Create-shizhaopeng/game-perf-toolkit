@@ -259,12 +259,20 @@ QMenu#modelSwitchMenu::item:selected {
 }
 
 /* Splitter 拖拽手柄 */
-QSplitter#bodySplitter::handle {
+QSplitter#bodySplitter::handle:horizontal {
     background-color: #313244;
-    width: 2px;
+    width: 4px;
 }
-
-QSplitter#bodySplitter::handle:hover {
+QSplitter#bodySplitter::handle:horizontal:hover,
+QSplitter#bodySplitter::handle:horizontal:pressed {
+    background-color: #cba6f7;
+}
+QSplitter#centerSplitter::handle:vertical {
+    background-color: #313244;
+    height: 4px;
+}
+QSplitter#centerSplitter::handle:vertical:hover,
+QSplitter#centerSplitter::handle:vertical:pressed {
     background-color: #cba6f7;
 }
 
@@ -718,9 +726,44 @@ QScrollArea {
 }
 
 /* ── Agent 智能助手模块 ── */
-QWidget#agentLeftPanel {
-    background-color: #1e1e2e;
-    border-right: 1px solid #45475a;
+QWidget#agentConvBar {
+    background-color: #181825;
+    border-bottom: 1px solid #313244;
+}
+QTabBar#agentConvTabBar {
+    background: transparent;
+    border: none;
+}
+QTabBar#agentConvTabBar::tab {
+    background: transparent;
+    color: #a6adc8;
+    padding: 4px 12px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 12px;
+    max-width: 140px;
+}
+QTabBar#agentConvTabBar::tab:selected {
+    color: #cdd6f4;
+    border-bottom: 2px solid #cba6f7;
+}
+QTabBar#agentConvTabBar::tab:hover {
+    color: #cdd6f4;
+    background-color: #313244;
+}
+QPushButton#agentBtnNewConv {
+    background: transparent;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    color: #cdd6f4;
+    font-size: 16px;
+    font-weight: bold;
+    padding: 0px;
+}
+QPushButton#agentBtnNewConv:hover {
+    color: #cba6f7;
+    background-color: #313244;
+    border-color: #cba6f7;
 }
 QWidget#agentToolbar {
     background-color: #1e1e2e;
@@ -735,32 +778,12 @@ QLabel#agentLblTitle {
 QWidget#agentInputBar {
     border-top: 1px solid #45475a;
 }
-QPushButton#agentBtnNewConv {
-    color: #cba6f7;
-    border: 1px solid #45475a;
-    border-radius: 4px;
-    font-size: 11px;
-}
 QPushButton#agentBtnSend {
     background-color: #cba6f7;
     color: #1e1e2e;
     border-radius: 8px;
     font-weight: bold;
     border: none;
-}
-QListWidget#agentConvList {
-    background-color: transparent;
-    border: none;
-}
-QListWidget#agentConvList::item {
-    padding: 2px 0px;
-    border-radius: 4px;
-}
-QListWidget#agentConvList::item:selected {
-    background-color: transparent;
-}
-QListWidget#agentConvList::item:hover {
-    background-color: transparent;
 }
 QScrollArea#agentMsgScroll {
     border: none;
@@ -790,11 +813,6 @@ QPushButton#agentShortcutBtn {
     border: 1px solid #45475a;
     border-radius: 8px;
     font-size: 12px;
-}
-QLabel#agentHistLabel {
-    font-weight: bold;
-    font-size: 12px;
-    background: transparent;
 }
 QTextEdit#agentChatInput {
     background-color: #313244;
@@ -1015,14 +1033,71 @@ QTextEdit#bottomPanelLog {
     font-size: 11px;
 }
 
-/* ── 右侧面板 ── */
+/* ── 右侧面板 (Overlay) ── */
 QWidget#rightPanel {
     background-color: #1e1e2e;
     border-left: 1px solid #45475a;
 }
+QWidget#rightPanelResizeHandle {
+    background-color: transparent;
+}
+QWidget#rightPanelResizeHandle:hover {
+    background-color: #89b4fa;
+}
 QLabel#rightPanelPlaceholder {
     color: #6c7086;
     font-size: 12px;
+}
+
+/* ── 左侧面板 — 历史区域 ── */
+QWidget#leftPanel {
+    background-color: #1e1e2e;
+}
+QWidget#historyArea {
+    background-color: #1e1e2e;
+}
+QWidget#historyAreaHeader {
+    background-color: #181825;
+    border-top: 1px solid #313244;
+    border-bottom: 1px solid #313244;
+}
+QLabel#historyAreaTitle {
+    color: #a6adc8;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+QTabBar#historyTabBar {
+    background: transparent;
+    border: none;
+}
+QTabBar#historyTabBar::tab {
+    background: transparent;
+    color: #a6adc8;
+    padding: 4px 12px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 12px;
+}
+QTabBar#historyTabBar::tab:selected {
+    color: #cdd6f4;
+    border-bottom: 2px solid #cba6f7;
+}
+QTabBar#historyTabBar::tab:hover {
+    color: #cdd6f4;
+    background-color: #313244;
+}
+QLabel#historyPlaceholder {
+    color: #6c7086;
+    font-size: 12px;
+}
+QSplitter#leftSplitter::handle:vertical {
+    background-color: #313244;
+    height: 4px;
+}
+QSplitter#leftSplitter::handle:vertical:hover,
+QSplitter#leftSplitter::handle:vertical:pressed {
+    background-color: #cba6f7;
 }
 """
 
@@ -1284,12 +1359,20 @@ QMenu#modelSwitchMenu::item:selected {
 }
 
 /* Splitter 拖拽手柄 */
-QSplitter#bodySplitter::handle {
+QSplitter#bodySplitter::handle:horizontal {
     background-color: #ccd0da;
-    width: 2px;
+    width: 4px;
 }
-
-QSplitter#bodySplitter::handle:hover {
+QSplitter#bodySplitter::handle:horizontal:hover,
+QSplitter#bodySplitter::handle:horizontal:pressed {
+    background-color: #8839ef;
+}
+QSplitter#centerSplitter::handle:vertical {
+    background-color: #ccd0da;
+    height: 4px;
+}
+QSplitter#centerSplitter::handle:vertical:hover,
+QSplitter#centerSplitter::handle:vertical:pressed {
     background-color: #8839ef;
 }
 
@@ -1743,9 +1826,44 @@ QScrollArea {
 }
 
 /* ── Agent 智能助手模块 ── */
-QWidget#agentLeftPanel {
-    background-color: #eff1f5;
-    border-right: 1px solid #ccd0da;
+QWidget#agentConvBar {
+    background-color: #e6e9ef;
+    border-bottom: 1px solid #ccd0da;
+}
+QTabBar#agentConvTabBar {
+    background: transparent;
+    border: none;
+}
+QTabBar#agentConvTabBar::tab {
+    background: transparent;
+    color: #5c5f77;
+    padding: 4px 12px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 12px;
+    max-width: 140px;
+}
+QTabBar#agentConvTabBar::tab:selected {
+    color: #4c4f69;
+    border-bottom: 2px solid #8839ef;
+}
+QTabBar#agentConvTabBar::tab:hover {
+    color: #4c4f69;
+    background-color: #dce0e8;
+}
+QPushButton#agentBtnNewConv {
+    background: transparent;
+    border: 1px solid #ccd0da;
+    border-radius: 4px;
+    color: #4c4f69;
+    font-size: 16px;
+    font-weight: bold;
+    padding: 0px;
+}
+QPushButton#agentBtnNewConv:hover {
+    color: #8839ef;
+    background-color: #dce0e8;
+    border-color: #8839ef;
 }
 QWidget#agentToolbar {
     background-color: #eff1f5;
@@ -1760,32 +1878,12 @@ QLabel#agentLblTitle {
 QWidget#agentInputBar {
     border-top: 1px solid #ccd0da;
 }
-QPushButton#agentBtnNewConv {
-    color: #8839ef;
-    border: 1px solid #ccd0da;
-    border-radius: 4px;
-    font-size: 11px;
-}
 QPushButton#agentBtnSend {
     background-color: #8839ef;
     color: #ffffff;
     border-radius: 8px;
     font-weight: bold;
     border: none;
-}
-QListWidget#agentConvList {
-    background-color: transparent;
-    border: none;
-}
-QListWidget#agentConvList::item {
-    padding: 2px 0px;
-    border-radius: 4px;
-}
-QListWidget#agentConvList::item:selected {
-    background-color: transparent;
-}
-QListWidget#agentConvList::item:hover {
-    background-color: transparent;
 }
 QScrollArea#agentMsgScroll {
     border: none;
@@ -1815,11 +1913,6 @@ QPushButton#agentShortcutBtn {
     border: 1px solid #ccd0da;
     border-radius: 8px;
     font-size: 12px;
-}
-QLabel#agentHistLabel {
-    font-weight: bold;
-    font-size: 12px;
-    background: transparent;
 }
 QTextEdit#agentChatInput {
     background-color: #e6e9ef;
@@ -2040,14 +2133,71 @@ QTextEdit#bottomPanelLog {
     font-size: 11px;
 }
 
-/* ── 右侧面板 ── */
+/* ── 右侧面板 (Overlay) ── */
 QWidget#rightPanel {
     background-color: #eff1f5;
     border-left: 1px solid #ccd0da;
 }
+QWidget#rightPanelResizeHandle {
+    background-color: transparent;
+}
+QWidget#rightPanelResizeHandle:hover {
+    background-color: #1e66f5;
+}
 QLabel#rightPanelPlaceholder {
     color: #9ca0b0;
     font-size: 12px;
+}
+
+/* ── 左侧面板 — 历史区域 ── */
+QWidget#leftPanel {
+    background-color: #eff1f5;
+}
+QWidget#historyArea {
+    background-color: #eff1f5;
+}
+QWidget#historyAreaHeader {
+    background-color: #e6e9ef;
+    border-top: 1px solid #ccd0da;
+    border-bottom: 1px solid #ccd0da;
+}
+QLabel#historyAreaTitle {
+    color: #5c5f77;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+QTabBar#historyTabBar {
+    background: transparent;
+    border: none;
+}
+QTabBar#historyTabBar::tab {
+    background: transparent;
+    color: #5c5f77;
+    padding: 4px 12px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 12px;
+}
+QTabBar#historyTabBar::tab:selected {
+    color: #4c4f69;
+    border-bottom: 2px solid #8839ef;
+}
+QTabBar#historyTabBar::tab:hover {
+    color: #4c4f69;
+    background-color: #dce0e8;
+}
+QLabel#historyPlaceholder {
+    color: #9ca0b0;
+    font-size: 12px;
+}
+QSplitter#leftSplitter::handle:vertical {
+    background-color: #ccd0da;
+    height: 4px;
+}
+QSplitter#leftSplitter::handle:vertical:hover,
+QSplitter#leftSplitter::handle:vertical:pressed {
+    background-color: #8839ef;
 }
 """
 
