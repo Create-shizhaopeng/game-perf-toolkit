@@ -45,6 +45,26 @@ RIGHT_COL_MIN_WIDTH = 320
 ANIMATION_DURATION_MS = 250
 
 
+def build_trace_send_payload(path: str) -> dict:
+    p = Path(path)
+    return {
+        "file_path": path,
+        "file_name": p.name,
+        "context_type": "trace",
+        "missing": not p.exists(),
+    }
+
+
+def build_analysis_send_payload(path: str) -> dict:
+    p = Path(path)
+    return {
+        "file_path": path,
+        "file_name": p.name,
+        "context_type": "analysis",
+        "missing": not p.exists(),
+    }
+
+
 class OverlayMask(QWidget):
     """半透明遮罩层，点击关闭面板。"""
 
@@ -80,6 +100,7 @@ class SessionTreeWidget(QTreeWidget):
     analyze_trace_requested = pyqtSignal(Path)
     delete_session_requested = pyqtSignal(str)
     delete_trace_requested = pyqtSignal(Path)
+    send_to_agent_requested = pyqtSignal(dict)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -186,6 +207,11 @@ class SessionTreeWidget(QTreeWidget):
         act_open.triggered.connect(self._ctx_open_directory)
         menu.addAction(act_open)
 
+        if len(items) == 1:
+            act_send = QAction("📤 发送到 Agent 对话", self)
+            act_send.triggered.connect(self._ctx_send_to_agent)
+            menu.addAction(act_send)
+
         menu.addSeparator()
 
         count = len(items)
@@ -243,12 +269,32 @@ class SessionTreeWidget(QTreeWidget):
             if path:
                 self.delete_trace_requested.emit(Path(path))
 
+    def _ctx_send_to_agent(self) -> None:
+        """将选中历史项发送到 Agent 对话。"""
+        items = self.selectedItems()
+        if not items:
+            return
+        data = items[0].data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        if data.get("type") != "trace":
+            return
+        path = str(data.get("path") or "")
+        if not path:
+            return
+        payload = self._build_send_payload(path)
+        self.send_to_agent_requested.emit(payload)
+
+    def _build_send_payload(self, path: str) -> dict:
+        return build_trace_send_payload(path)
+
 
 class AnalysisHistoryTree(QTreeWidget):
     """分析历史记录树形列表。"""
 
     open_report_requested = pyqtSignal(str)
     delete_analysis_requested = pyqtSignal(str)
+    send_to_agent_requested = pyqtSignal(dict)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -327,6 +373,7 @@ class AnalysisHistoryTree(QTreeWidget):
             action_open = menu.addAction("📂 打开所在目录")
         else:
             action_open = None
+        action_send = menu.addAction("📤 发送到 Agent 对话")
         action_delete = menu.addAction("🗑 删除")
 
         action = menu.exec(self.viewport().mapToGlobal(pos))
@@ -340,10 +387,18 @@ class AnalysisHistoryTree(QTreeWidget):
                     from PyQt6.QtGui import QDesktopServices
                     from PyQt6.QtCore import QUrl
                     QDesktopServices.openUrl(QUrl.fromLocalFile(str(dir_path)))
+        elif action and action == action_send:
+            target = str(result_dir or data.get("trace_path") or "")
+            if target:
+                payload = self._build_send_payload(target)
+                self.send_to_agent_requested.emit(payload)
         elif action and action == action_delete:
             task_id = data.get("id", "")
             if task_id:
                 self.delete_analysis_requested.emit(task_id)
+
+    def _build_send_payload(self, path: str) -> dict:
+        return build_analysis_send_payload(path)
 
 
 class HistoryPanel(QWidget):
@@ -358,6 +413,7 @@ class HistoryPanel(QWidget):
     analyze_trace_requested = pyqtSignal(Path)
     delete_session_requested = pyqtSignal(str)
     delete_trace_requested = pyqtSignal(Path)
+    send_to_agent_requested = pyqtSignal(dict)
     file_dropped = pyqtSignal(Path)
     import_package_db = pyqtSignal()
     export_package_db = pyqtSignal()
@@ -445,6 +501,7 @@ class HistoryPanel(QWidget):
         self._session_tree.open_directory_requested.connect(self.open_directory_requested.emit)
         self._session_tree.delete_session_requested.connect(self.delete_session_requested.emit)
         self._session_tree.delete_trace_requested.connect(self.delete_trace_requested.emit)
+        self._session_tree.send_to_agent_requested.connect(self.send_to_agent_requested.emit)
         left_layout.addWidget(self._session_tree, 1)
 
         # 操作按钮已集成到右键菜单，此处仅保留统计和清理
@@ -489,6 +546,9 @@ class HistoryPanel(QWidget):
         self._left_splitter.addWidget(upper_widget)
 
         self._analysis_history_tree = AnalysisHistoryTree()
+        self._analysis_history_tree.send_to_agent_requested.connect(
+            self.send_to_agent_requested.emit
+        )
         self._left_splitter.addWidget(self._analysis_history_tree)
         self._left_splitter.setSizes([300, 150])
 

@@ -38,6 +38,8 @@ from PyQt6.QtWidgets import (
     QTextEdit,
     QTreeWidget,
     QTreeWidgetItem,
+    QListWidget,
+    QListWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -54,8 +56,25 @@ from toolkit.gui.toolkit_dialog import (
 )
 
 logger = logging.getLogger(__name__)
+HISTORY_SEND_TO_AGENT_EVENT = "history.send_to_agent"
 
 _DARK = _THEMES["dark"]
+
+
+def compose_message_with_context(text: str, contexts: list[dict[str, Any]]) -> str:
+    if not contexts:
+        return text
+    unique_paths: list[str] = []
+    seen = set()
+    for ctx in contexts:
+        p = str(ctx.get("file_path") or "").strip()
+        if p and p not in seen:
+            seen.add(p)
+            unique_paths.append(p)
+    if not unique_paths:
+        return text
+    extra = "\n".join(f"- {p}" for p in unique_paths)
+    return f"{text}\n\n[文件上下文]\n{extra}"
 
 
 # ---------------------------------------------------------------------------
@@ -943,8 +962,13 @@ class AgentTab(BaseTab):
         self._last_usage: dict[str, int] = {}
         self._is_running = False
         self._scroll_pending = False
+        self._history_event_bound = False
+        self._pending_history_payloads: list[dict[str, Any]] = []
+        self._conv_contexts: dict[str, list[dict[str, Any]]] = {}
+        self._draft_contexts: list[dict[str, Any]] = []
 
         self._init_ui()
+        self._bind_history_event()
 
     # ── UI 初始化 ──────────────────────────────────────────────────────────
 
@@ -1022,6 +1046,9 @@ class AgentTab(BaseTab):
 
         layout.addWidget(self._content_stack, 1)
 
+        self._context_bar = self._build_context_bar()
+        layout.addWidget(self._context_bar)
+
         # 输入区域
         self._input_bar = QWidget()
         self._input_bar.setObjectName("agentInputBar")
@@ -1040,6 +1067,28 @@ class AgentTab(BaseTab):
 
         layout.addWidget(self._input_bar)
         return panel
+
+    def _build_context_bar(self) -> QWidget:
+        bar = QWidget()
+        bar.setObjectName("agentContextBar")
+        bar.setVisible(False)
+        layout = QVBoxLayout(bar)
+        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setSpacing(4)
+
+        title = QLabel("上下文区域")
+        title.setObjectName("agentContextTitle")
+        layout.addWidget(title)
+
+        self._context_list = QListWidget()
+        self._context_list.setObjectName("agentContextList")
+        self._context_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self._context_list.setMaximumHeight(90)
+        self._context_list.setToolTip("选中后可按 Backspace/Delete 删除")
+        self._context_list.installEventFilter(self)
+        self._context_list.itemSelectionChanged.connect(self._on_context_selection_changed)
+        layout.addWidget(self._context_list)
+        return bar
 
     def _build_welcome_page(self) -> QWidget:
         page = QWidget()
@@ -1115,9 +1164,11 @@ class AgentTab(BaseTab):
     def on_activated(self) -> None:
         if self.context:
             self._config = self.context.get("ac_config")
+        self._bind_history_event()
         self._ensure_service()
         self._refresh_conv_list()
         self._refresh_skill_tree()
+        self._flush_pending_history_payloads()
 
         has_key = False
         if self._config:
@@ -1191,6 +1242,24 @@ class AgentTab(BaseTab):
             skills_manager=self._skills_manager,
             llm_manager=llm_manager,
         )
+        self._flush_pending_history_payloads()
+
+    def _bind_history_event(self) -> None:
+        if self._history_event_bound or not self.context:
+            return
+        bus = self.context.get("event_bus")
+        if not bus:
+            return
+        bus.on(HISTORY_SEND_TO_AGENT_EVENT, self._on_history_send_to_agent)
+        self._history_event_bound = True
+
+    def _flush_pending_history_payloads(self) -> None:
+        if not self._store or not self._pending_history_payloads:
+            return
+        payloads = list(self._pending_history_payloads)
+        self._pending_history_payloads.clear()
+        for payload in payloads:
+            self._apply_history_payload(payload)
 
     def _reinit_service(self) -> None:
         """配置变更后重新初始化 service。"""
@@ -1288,6 +1357,7 @@ class AgentTab(BaseTab):
             self._current_conv_id = None
             self._clear_messages()
             self._content_stack.setCurrentIndex(0)
+            self._refresh_context_ui()
             return
         if conv_id == self._current_conv_id:
             return
@@ -1307,6 +1377,7 @@ class AgentTab(BaseTab):
         self._new_conv_mode = False
         self._current_conv_id = conv_id
         self._load_conversation_messages(conv_id)
+        self._refresh_context_ui()
 
     def _on_conv_tab_close(self, index: int) -> None:
         """Tab 关闭按钮 — 删除会话。"""
@@ -1323,10 +1394,12 @@ class AgentTab(BaseTab):
         )
         if ok and self._store:
             self._store.delete_conversation(conv_id)
+            self._conv_contexts.pop(conv_id, None)
             if self._current_conv_id == conv_id:
                 self._current_conv_id = None
                 self._clear_messages()
                 self._content_stack.setCurrentIndex(0)
+                self._refresh_context_ui()
             self._refresh_conv_list()
 
     def _on_conv_context_menu(self, pos) -> None:
@@ -1352,10 +1425,12 @@ class AgentTab(BaseTab):
             )
             if ok and self._store:
                 self._store.delete_conversation(conv_id)
+                self._conv_contexts.pop(conv_id, None)
                 if self._current_conv_id == conv_id:
                     self._current_conv_id = None
                     self._clear_messages()
                     self._content_stack.setCurrentIndex(0)
+                    self._refresh_context_ui()
                 self._refresh_conv_list()
 
     def _on_new_conversation(self) -> None:
@@ -1371,8 +1446,10 @@ class AgentTab(BaseTab):
             self._on_stop()
 
         self._current_conv_id = None
+        self._draft_contexts = []
         self._clear_messages()
         self._content_stack.setCurrentIndex(0)
+        self._refresh_context_ui()
         self._refresh_conv_list()
 
     def _load_conversation_messages(self, conv_id: str) -> None:
@@ -1499,9 +1576,10 @@ class AgentTab(BaseTab):
 
         self._set_running(True)
 
+        message_with_context = self._compose_message_with_context(text)
         self._worker = _AgentWorker(
             service=self._service,
-            message=text,
+            message=message_with_context,
             conversation_id=self._current_conv_id,
             parent=self,
         )
@@ -1597,6 +1675,16 @@ class AgentTab(BaseTab):
             self._set_running(False)
             if conv_id:
                 self._current_conv_id = conv_id
+                if self._draft_contexts:
+                    self._conv_contexts.setdefault(conv_id, [])
+                    existing = {str(it.get("file_path")) for it in self._conv_contexts[conv_id]}
+                    for item in self._draft_contexts:
+                        p = str(item.get("file_path") or "")
+                        if p and p not in existing:
+                            self._conv_contexts[conv_id].append(item)
+                            existing.add(p)
+                    self._draft_contexts = []
+                    self._refresh_context_ui()
 
             if self._last_usage:
                 self._insert_message_widget(_TokenUsageLabel(self._last_usage))
@@ -1675,6 +1763,116 @@ class AgentTab(BaseTab):
         self._current_agent_widget = None
         self._current_tool_cards.clear()
 
+    def _on_history_send_to_agent(self, **payload: Any) -> None:
+        """接收历史模块发送的文件上下文。"""
+        data = self._parse_history_payload(payload)
+        if not data["file_path"] or not data["file_name"] or not data["context_type"]:
+            return
+        if not self._store:
+            self._pending_history_payloads.append(data)
+            return
+        self._apply_history_payload(data)
+
+    def _parse_history_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """统一解析 history.send_to_agent payload。"""
+        return {
+            "file_path": str(payload.get("file_path") or "").strip(),
+            "file_name": str(payload.get("file_name") or "").strip(),
+            "context_type": str(payload.get("context_type") or "").strip(),
+            "missing": bool(payload.get("missing", False)),
+        }
+
+    def _apply_history_payload(self, data: dict[str, Any]) -> None:
+        """将历史 payload 写入当前会话上下文。"""
+        show_right = self.context.get("show_right_panel") if self.context else None
+        if callable(show_right):
+            show_right()
+
+        if self._current_conv_id is None and self._new_conv_mode:
+            exists = {str(it.get("file_path")) for it in self._draft_contexts}
+            if data["file_path"] not in exists:
+                data["context_id"] = f"ctx_draft_{len(self._draft_contexts)+1}_{int(time.time()*1000)}"
+                self._draft_contexts.append(data)
+            self._refresh_context_ui()
+            self._chat_input.setFocus()
+            return
+        if not self._current_conv_id:
+            return
+
+        items = self._conv_contexts.setdefault(self._current_conv_id, [])
+        existing = {str(it.get("file_path")): it for it in items}
+        if data["file_path"] not in existing:
+            data["context_id"] = f"ctx_{len(items)+1}_{int(time.time()*1000)}"
+            items.append(data)
+        self._refresh_context_ui()
+        self._chat_input.setFocus()
+
+    def _refresh_context_ui(self) -> None:
+        """刷新当前会话上下文区域。"""
+        self._context_list.clear()
+        if not self._current_conv_id:
+            contexts = self._draft_contexts if self._new_conv_mode else []
+        else:
+            contexts = self._conv_contexts.get(self._current_conv_id, [])
+        if not contexts:
+            self._context_bar.setVisible(False)
+            return
+        for ctx in contexts:
+            suffix = " [文件不存在]" if ctx.get("missing") else ""
+            text = f"{ctx.get('file_name')} — {ctx.get('file_path')}{suffix}"
+            item = QListWidgetItem(text)
+            item.setData(Qt.ItemDataRole.UserRole, ctx.get("file_path"))
+            self._context_list.addItem(item)
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(6)
+            lbl = QLabel(text)
+            lbl.setObjectName("agentContextItemLabel")
+            lbl.setWordWrap(False)
+            row_layout.addWidget(lbl, 1)
+            btn = QPushButton("×")
+            btn.setObjectName("agentContextRemoveBtn")
+            btn.setFixedSize(18, 18)
+            btn.clicked.connect(lambda checked=False, p=str(ctx.get("file_path") or ""): self._remove_context_by_path(p))
+            row_layout.addWidget(btn)
+            self._context_list.setItemWidget(item, row)
+        self._context_bar.setVisible(True)
+
+    def _on_context_selection_changed(self) -> None:
+        self._context_list.setFocus()
+
+    def _remove_selected_context(self) -> None:
+        item = self._context_list.currentItem()
+        if not item:
+            return
+        path = str(item.data(Qt.ItemDataRole.UserRole) or "")
+        if not path:
+            return
+        self._remove_context_by_path(path)
+
+    def _remove_context_by_path(self, path: str) -> None:
+        if not path:
+            return
+        if self._current_conv_id:
+            items = self._conv_contexts.get(self._current_conv_id, [])
+            self._conv_contexts[self._current_conv_id] = [
+                it for it in items if str(it.get("file_path")) != path
+            ]
+        elif self._new_conv_mode:
+            self._draft_contexts = [
+                it for it in self._draft_contexts if str(it.get("file_path")) != path
+            ]
+        self._refresh_context_ui()
+
+    def _compose_message_with_context(self, text: str) -> str:
+        contexts = (
+            self._conv_contexts.get(self._current_conv_id, [])
+            if self._current_conv_id
+            else (self._draft_contexts if self._new_conv_mode else [])
+        )
+        return compose_message_with_context(text, contexts)
+
     def _scroll_to_bottom(self) -> None:
         if self._scroll_pending:
             return
@@ -1713,6 +1911,13 @@ class AgentTab(BaseTab):
             self._btn_send.clicked.disconnect()
             self._btn_send.clicked.connect(self._on_send)
 
+    def eventFilter(self, obj, event):  # noqa: N802
+        if obj is getattr(self, "_context_list", None) and hasattr(event, "key"):
+            if event.key() in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete):
+                self._remove_selected_context()
+                return True
+        return super().eventFilter(obj, event)
+
     def _cleanup_worker(self) -> None:
         """QThread.finished 信号回调 — 线程已完全退出后安全清理。"""
         logger.debug("[DIAG] _cleanup_worker: 开始")
@@ -1728,6 +1933,11 @@ class AgentTab(BaseTab):
         logger.debug("[DIAG] _cleanup_worker: 完成")
 
     def closeEvent(self, event) -> None:
+        if self.context:
+            bus = self.context.get("event_bus")
+            if bus and self._history_event_bound:
+                bus.off(HISTORY_SEND_TO_AGENT_EVENT, self._on_history_send_to_agent)
+                self._history_event_bound = False
         worker = self._worker
         if worker is not None:
             worker.cancel()

@@ -76,6 +76,7 @@ from toolkit.gui.base_tab import BaseTab
 from toolkit.gui.theme_colors import THEMES as _THEME_COLORS
 
 logger = logging.getLogger(__name__)
+HISTORY_SEND_TO_AGENT_EVENT = "history.send_to_agent"
 
 
 class _CaptureWorker(QThread):
@@ -396,6 +397,7 @@ class PerfettoCaptureTab(BaseTab):
         self._history_panel.analyze_trace_requested.connect(self._analyze_history_trace)
         self._history_panel.delete_session_requested.connect(self._delete_history_session)
         self._history_panel.delete_trace_requested.connect(self._delete_history_trace)
+        self._history_panel.send_to_agent_requested.connect(self._on_send_to_agent)
         self._history_panel.file_dropped.connect(self._on_trace_file_dropped)
         self._history_panel._analysis_history_tree.open_report_requested.connect(
             self._open_analysis_report
@@ -434,8 +436,6 @@ class PerfettoCaptureTab(BaseTab):
         analysis_tree.setParent(None)
         self._analysis_container_layout.addWidget(analysis_tree)
 
-        self._history_panel.show()
-
         self._refresh_history()
 
     def _get_output_dir(self) -> Path:
@@ -458,6 +458,25 @@ class PerfettoCaptureTab(BaseTab):
 
     def _on_history_close(self) -> None:
         """历史面板关闭按钮 — 保留兼容，当前无操作。"""
+
+    def _on_send_to_agent(self, payload: dict) -> None:
+        """将历史文件上下文发送给 Agent Chat。"""
+        if not self.context:
+            return
+        bus = self.context.get("event_bus")
+        if not bus:
+            return
+        try:
+            show_right = self.context.get("show_right_panel")
+            if callable(show_right):
+                show_right()
+            bus.emit(HISTORY_SEND_TO_AGENT_EVENT, **payload)
+            self._log(
+                f"已发送到 Agent: {payload.get('file_name', '')}",
+                "success",
+            )
+        except Exception as exc:
+            self._log(f"发送到 Agent 失败: {exc}", "error")
 
     def _refresh_history(self) -> None:
         """刷新历史记录和分析历史。"""
