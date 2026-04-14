@@ -113,6 +113,13 @@ def run_gui() -> None:
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
 
+    from toolkit.gui.codicons import load_codicons
+    codicons_family = load_codicons()
+    if codicons_family:
+        logger.info("Codicons 字体已加载: %s", codicons_family)
+    else:
+        logger.warning("Codicons 字体加载失败，将使用 fallback 图标")
+
     context = _build_context()
     _init_llm_manager(context)
     pm = _load_plugins(context)

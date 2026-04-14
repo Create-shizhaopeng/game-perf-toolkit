@@ -18,7 +18,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSplitter,
@@ -31,6 +30,11 @@ from PyQt6.QtWidgets import (
 )
 
 from toolkit.gui.base_tab import BaseTab
+from toolkit.gui.toolkit_dialog import (
+    confirm_dialog,
+    info_dialog,
+    warning_dialog,
+)
 
 from .gameperf_diff_errors import DiffValidationError, GamePerfDevicePullError
 from .gameperf_diff_models import DiffItem
@@ -383,7 +387,7 @@ class WorkspaceToolsTab(BaseTab):
         if not path:
             return
         if not is_valid_gameperf_config_filename(os.path.basename(path)):
-            QMessageBox.warning(self.window(), "文件名无效", "须为文件名包含 gameperfconfig 的 .xml")
+            warning_dialog(self.window(), "文件名无效", "须为文件名包含 gameperfconfig 的 .xml")
             return
         try:
             self._gp_svc.load_session(path)
@@ -393,14 +397,14 @@ class WorkspaceToolsTab(BaseTab):
             self._last_items.clear()
             self._append_log(f"已载入基准：{path}")
         except Exception as e:
-            QMessageBox.warning(self.window(), "载入失败", str(e))
+            warning_dialog(self.window(), "载入失败", str(e))
         self._refresh_comparator_ui()
 
     def _on_add_comparator(self) -> None:
         if not self._gp_svc:
             return
         if self._gp_svc.get_session() is None:
-            QMessageBox.information(self.window(), "提示", "请先选择基准文件。")
+            info_dialog(self.window(), "提示", "请先选择基准文件。")
             return
         path, _ = QFileDialog.getOpenFileName(
             self.window(),
@@ -413,7 +417,7 @@ class WorkspaceToolsTab(BaseTab):
 
     def _on_drop_comparator(self, path: str) -> None:
         if not self._gp_svc or self._gp_svc.get_session() is None:
-            QMessageBox.information(self.window(), "提示", "请先选择基准文件。")
+            info_dialog(self.window(), "提示", "请先选择基准文件。")
             return
         self._add_comparator_path(path)
 
@@ -434,7 +438,7 @@ class WorkspaceToolsTab(BaseTab):
         try:
             self._gp_svc.remove_comparator(row)
         except DiffValidationError as e:
-            QMessageBox.warning(self.window(), "移除失败", str(e))
+            warning_dialog(self.window(), "移除失败", str(e))
         self._diff_tree.clear()
         self._summary_list.clear()
         self._refresh_comparator_ui()
@@ -444,14 +448,14 @@ class WorkspaceToolsTab(BaseTab):
             return
         row = self._cmp_list.currentRow()
         if row < 0:
-            QMessageBox.information(self.window(), "提示", "请先在列表中选中一个对比文件。")
+            info_dialog(self.window(), "提示", "请先在列表中选中一个对比文件。")
             return
         try:
             self._gp_svc.set_baseline_from_comparator(row)
             self._baseline_edit.setText(self._gp_svc.get_session().baseline_path if self._gp_svc.get_session() else "")
             self._append_log("已将该对比文件设为基准，对比列表已清空。")
         except Exception as e:
-            QMessageBox.warning(self.window(), "操作失败", str(e))
+            warning_dialog(self.window(), "操作失败", str(e))
         self._diff_tree.clear()
         self._summary_list.clear()
         self._refresh_comparator_ui()
@@ -498,7 +502,7 @@ class WorkspaceToolsTab(BaseTab):
 
     def _on_diff_err(self, msg: str) -> None:
         self._append_log(f"对比失败：{msg}")
-        QMessageBox.warning(self.window(), "对比失败", msg)
+        warning_dialog(self.window(), "对比失败", msg)
 
     def _on_diff_thread_finished(self) -> None:
         self._btn_cancel_diff.setEnabled(False)
@@ -523,12 +527,12 @@ class WorkspaceToolsTab(BaseTab):
             return
         twi = self._diff_tree.currentItem()
         if twi is None:
-            QMessageBox.information(self.window(), "提示", "请在差异树中选择一行。")
+            info_dialog(self.window(), "提示", "请在差异树中选择一行。")
             return
         did = twi.data(0, Qt.ItemDataRole.UserRole)
         mergeable = twi.data(0, Qt.ItemDataRole.UserRole + 1)
         if not did or not mergeable:
-            QMessageBox.information(self.window(), "提示", "该项不可一键采纳。")
+            info_dialog(self.window(), "提示", "该项不可一键采纳。")
             return
         ci = self._active_combo.currentData()
         if ci is None:
@@ -537,7 +541,7 @@ class WorkspaceToolsTab(BaseTab):
             self._gp_svc.apply_merge(str(did), side, int(ci))
             self._append_log(f"已采纳：{side} ← {twi.text(0)}")
         except Exception as e:
-            QMessageBox.warning(self.window(), "采纳失败", str(e))
+            warning_dialog(self.window(), "采纳失败", str(e))
 
     def _on_undo(self) -> None:
         if not self._gp_svc:
@@ -570,7 +574,7 @@ class WorkspaceToolsTab(BaseTab):
         if not path:
             return
         if not is_valid_gameperf_config_filename(os.path.basename(path)):
-            QMessageBox.warning(self.window(), "文件名无效", "建议文件名包含 gameperfconfig 且为 .xml")
+            warning_dialog(self.window(), "文件名无效", "建议文件名包含 gameperfconfig 且为 .xml")
             return
         initial_stat = None
         if os.path.isfile(path):
@@ -582,7 +586,7 @@ class WorkspaceToolsTab(BaseTab):
             f"合并脏状态（相对基准已修改）：{'是' if dirty else '否'}\n\n"
             f"确认保存？"
         )
-        if QMessageBox.question(self.window(), "确认保存", msg) != QMessageBox.StandardButton.Yes:
+        if not confirm_dialog(self.window(), "确认保存", msg):
             return
         if initial_stat is not None:
             now_stat = GamePerfConfigDiffService.stat_path(path)
@@ -590,31 +594,27 @@ class WorkspaceToolsTab(BaseTab):
                 now_stat.st_mtime != initial_stat.st_mtime
                 or now_stat.st_size != initial_stat.st_size
             ):
-                r = QMessageBox.question(
-                    self.window(),
-                    "文件已变化",
+                if not confirm_dialog(
+                    self.window(), "文件已变化",
                     "目标文件在操作过程中已被外部修改，仍要覆盖写入吗？",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if r != QMessageBox.StandardButton.Yes:
+                ):
                     return
         try:
             self._gp_svc.save_merged_as(path, atomic=True)
             self._append_log(f"已保存：{path}")
-            QMessageBox.information(self.window(), "完成", "保存成功。")
+            info_dialog(self.window(), "完成", "保存成功。")
         except Exception as e:
-            QMessageBox.warning(self.window(), "保存失败", str(e))
+            warning_dialog(self.window(), "保存失败", str(e))
 
     def _on_pull_device(self) -> None:
         if not self.require_device() or not self._gp_svc:
             return
         if self._gp_svc.get_session() is None:
-            QMessageBox.information(self.window(), "提示", "请先选择基准文件。")
+            info_dialog(self.window(), "提示", "请先选择基准文件。")
             return
         serial = self._devices[0] if self._devices else ""
         if not serial:
-            QMessageBox.warning(self.window(), "设备", "无当前设备序列号。")
+            warning_dialog(self.window(), "设备", "无当前设备序列号。")
             return
         self._pull_cancel.clear()
         self._pull_thread = _PullThread(self._gp_svc, serial, self._pull_cancel)
@@ -636,7 +636,7 @@ class WorkspaceToolsTab(BaseTab):
 
     def _on_pull_err(self, msg: str) -> None:
         self._append_log(f"拉取失败：{msg}")
-        QMessageBox.warning(self.window(), "拉取失败", msg)
+        warning_dialog(self.window(), "拉取失败", msg)
 
     def _on_pull_finished(self) -> None:
         self._btn_cancel_pull.setEnabled(False)

@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QComboBox, QLabel,
-    QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
+    QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
     QFrame, QLineEdit, QGridLayout, QTextEdit, QProgressBar,
     QScrollArea, QSplitter, QTabWidget, QDialog, QDialogButtonBox,
 )
@@ -17,6 +17,11 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QTextCursor, QColor, QTextCharFormat, QFont, QDragEnterEvent, QDropEvent
 
 from toolkit.gui.base_tab import BaseTab
+from toolkit.gui.toolkit_dialog import (
+    confirm_dialog,
+    info_dialog,
+    warning_dialog,
+)
 
 from .models import GamePerfDocumentOrigin
 from .parser import GamePerfParser
@@ -341,12 +346,12 @@ class GamePerfTab(BaseTab):
         try:
             self.parser = GamePerfParser(path)
         except Exception as e:
-            QMessageBox.warning(self.window(), "解析失败", f"解析 XML 失败: {e}")
+            warning_dialog(self.window(), "解析失败", f"解析 XML 失败: {e}")
             return
 
         if not self.parser.freq_rows:
             self._update_policy_version_label()
-            QMessageBox.warning(self.window(), "解析失败", "未解析到有效配置数据！")
+            warning_dialog(self.window(), "解析失败", "未解析到有效配置数据！")
             return
 
         self._document_origin = document_origin
@@ -773,7 +778,7 @@ class GamePerfTab(BaseTab):
                 if t < 0 or t > 200:
                     raise ValueError
             except ValueError:
-                QMessageBox.warning(self.window(), "格式错误", "触发温度请填写 0～200 的整数")
+                warning_dialog(self.window(), "格式错误", "触发温度请填写 0～200 的整数")
                 self._refresh_table()
                 return
             self.parser.update_temperature(global_idx, str(t))
@@ -781,7 +786,7 @@ class GamePerfTab(BaseTab):
             self._refresh_table()
         elif col in (4, 7, 10):
             if "_" not in new_val:
-                QMessageBox.warning(self.window(), "格式错误", "索引须为 start_end 格式（如 2_8）")
+                warning_dialog(self.window(), "格式错误", "索引须为 start_end 格式（如 2_8）")
                 self._refresh_table()
                 return
             cluster = {4: "Gold", 7: "Prime", 10: "Gpu"}[col]
@@ -793,7 +798,7 @@ class GamePerfTab(BaseTab):
             cur_n = GamePerfParser.format_freq_index_str(cur_idx)
             new_n = GamePerfParser.format_freq_index_str(new_val)
             if new_n is None:
-                QMessageBox.warning(self.window(), "格式错误", "索引须为 start_end 格式（如 2_8）")
+                warning_dialog(self.window(), "格式错误", "索引须为 start_end 格式（如 2_8）")
                 self._refresh_table()
                 return
             if new_n == cur_n:
@@ -851,24 +856,22 @@ class GamePerfTab(BaseTab):
     def _on_bindcore_remove_row(self, child_el) -> None:
         if not self.parser:
             return
-        r = QMessageBox.question(
-            self.window(),
-            "确认删除",
-            "确定删除该绑核子项？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        ok = confirm_dialog(
+            self.window(), "确认删除", "确定删除该绑核子项？",
+            confirm_text="删除", danger=True,
         )
-        if r != QMessageBox.StandardButton.Yes:
+        if not ok:
             return
         if self.parser.remove_bindcore_child(child_el):
             self._document_dirty = True
             self._refresh_strategy()
 
     def _on_remove_subtree(self, element):
-        r = QMessageBox.question(
+        ok = confirm_dialog(
             self.window(), "确认删除", "确定删除该节点及其所有子项？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            confirm_text="删除", danger=True,
         )
-        if r == QMessageBox.StandardButton.Yes and self.parser:
+        if ok and self.parser:
             if self.parser.remove_subtree(element):
                 self._document_dirty = True
                 self._refresh()
@@ -880,7 +883,7 @@ class GamePerfTab(BaseTab):
             self.window(), "另存为", "", "XML文件 (*.xml)"
         )
         if path and self.parser.save_as(path):
-            QMessageBox.information(self.window(), "保存成功", f"已保存到：\n{path}")
+            info_dialog(self.window(), "保存成功", f"已保存到：\n{path}")
 
     # ------------------------------------------------------------------
     # 推送/清除/还原
@@ -888,37 +891,44 @@ class GamePerfTab(BaseTab):
 
     def _prompt_mandatory_push_notes(self) -> str | None:
         """Start 前强制填写备注。确定返回非空字符串；取消返回 None。"""
-        dlg = QDialog(self.window())
-        dlg.setWindowTitle("填写推送备注")
-        layout = QVBoxLayout(dlg)
-        layout.addWidget(
-            QLabel("推送前必须填写备注，将写入推送记录。请简要说明本次变更目的：")
-        )
+        from toolkit.gui.toolkit_dialog import ToolkitDialog
+
+        dlg = ToolkitDialog("填写推送备注", self.window(), min_width=420)
+        lbl = QLabel("推送前必须填写备注，将写入推送记录。请简要说明本次变更目的：")
+        lbl.setWordWrap(True)
+        lbl.setStyleSheet("font-size: 13px;")
+        dlg.content_layout.addWidget(lbl)
+
         edit = QLineEdit()
         edit.setText(self._push_notes_cache)
         edit.setPlaceholderText("必填，例如：修复 XX 游戏温控策略")
-        edit.setMinimumWidth(360)
-        layout.addWidget(edit)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(dlg.accept)
-        buttons.rejected.connect(dlg.reject)
-        layout.addWidget(buttons)
-        ok_btn = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        dlg.content_layout.addWidget(edit)
+
+        from PyQt6.QtWidgets import QHBoxLayout as _HBox
+        btn_row = _HBox()
+        btn_row.addStretch()
+
+        btn_cancel = QPushButton("取消")
+        btn_cancel.setObjectName("secondaryBtn")
+        btn_cancel.setFixedWidth(80)
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_row.addWidget(btn_cancel)
+
+        ok_btn = QPushButton("确定")
+        ok_btn.setObjectName("primaryBtn")
+        ok_btn.setFixedWidth(80)
         ok_btn.setEnabled(bool(edit.text().strip()))
+        ok_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(ok_btn)
 
-        def _sync_ok(text: str) -> None:
-            ok_btn.setEnabled(bool(text.strip()))
+        edit.textChanged.connect(lambda t: ok_btn.setEnabled(bool(t.strip())))
+        dlg.content_layout.addLayout(btn_row)
 
-        edit.textChanged.connect(_sync_ok)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return None
         notes = edit.text().strip()
         if not notes:
-            QMessageBox.warning(
-                self.window(), "备注为空", "请填写非空备注后再推送。"
-            )
+            warning_dialog(self.window(), "备注为空", "请填写非空备注后再推送。")
             return None
         self._push_notes_cache = notes
         return notes
@@ -931,10 +941,10 @@ class GamePerfTab(BaseTab):
             return
         filepath = self._file_input.text().strip()
         if not filepath:
-            QMessageBox.warning(self.window(), "未选择文件", "请先选择要推送的配置文件")
+            warning_dialog(self.window(), "未选择文件", "请先选择要推送的配置文件")
             return
         if not os.path.isfile(filepath):
-            QMessageBox.warning(self.window(), "文件不存在", f"找不到文件:\n{filepath}")
+            warning_dialog(self.window(), "文件不存在", f"找不到文件:\n{filepath}")
             return
 
         notes = self._prompt_mandatory_push_notes()
@@ -1101,18 +1111,13 @@ class GamePerfTab(BaseTab):
 
     def _confirm_discard_local_for_device_pull(self) -> bool:
         """用户确认放弃本地未保存修改并从设备载入。True 表示继续拉取。"""
-        box = QMessageBox(self.window())
-        box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle("未保存的修改")
-        box.setText(
-            "当前配置有未保存的修改。是否放弃修改并从设备重新载入 gameperfconfig.xml？"
+        return confirm_dialog(
+            self.window(),
+            "未保存的修改",
+            "当前配置有未保存的修改。是否放弃修改并从设备重新载入 gameperfconfig.xml？",
+            confirm_text="放弃并载入",
+            danger=True,
         )
-        btn_discard = box.addButton(
-            "放弃并从设备载入", QMessageBox.ButtonRole.DestructiveRole
-        )
-        box.addButton("保留本地", QMessageBox.ButtonRole.RejectRole)
-        box.exec()
-        return box.clickedButton() == btn_discard
 
     def _maybe_auto_pull_from_device(self) -> None:
         """设备可用时从 /system/etc/gameperfconfig.xml 拉取并加载（US6 / T027）。"""

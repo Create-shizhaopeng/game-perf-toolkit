@@ -24,7 +24,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
-    QMessageBox,
     QPushButton,
     QSplitter,
     QTreeWidget,
@@ -32,6 +31,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from toolkit.gui.toolkit_dialog import confirm_dialog
 
 from .models import HistorySession, HistoryStats
 
@@ -250,14 +251,12 @@ class SessionTreeWidget(QTreeWidget):
             parts.append(f"{len(traces)} 个 trace")
         summary = "、".join(parts)
 
-        reply = QMessageBox.question(
-            self,
-            "确认删除",
+        ok = confirm_dialog(
+            self, "确认删除",
             f"确定要删除 {summary} 吗？\n此操作不可撤销。",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            confirm_text="删除", danger=True,
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        if not ok:
             return
 
         for s in sessions:
@@ -347,7 +346,9 @@ class AnalysisHistoryTree(QTreeWidget):
 
 
 class HistoryPanel(QWidget):
-    """历史记录面板（覆盖式右侧滑出）。"""
+    """历史记录面板（覆盖式右侧滑出，支持左边缘拖动调整宽度）。"""
+
+    _RESIZE_MARGIN = 6
 
     close_requested = pyqtSignal()
     refresh_requested = pyqtSignal()
@@ -365,7 +366,11 @@ class HistoryPanel(QWidget):
         self.setMinimumWidth(PANEL_MIN_WIDTH)
         self._panel_width = PANEL_MIN_WIDTH
         self.setAutoFillBackground(True)
+        self.setMouseTracking(True)
         self._chat_widget: QWidget | None = None
+        self._resizing = False
+        self._resize_start_global_x = 0
+        self._resize_start_width = 0
         self._setup_ui()
         self._setup_animation()
         self._setup_search_debounce()
@@ -387,7 +392,7 @@ class HistoryPanel(QWidget):
         self.setStyleSheet(f"""
             HistoryPanel {{
                 background: {colors['panel_bg']};
-                border-left: 1px solid {colors['border']};
+                border-left: 3px solid {colors['border']};
             }}
             QLabel {{
                 color: {colors['fg']};
@@ -600,6 +605,48 @@ class HistoryPanel(QWidget):
         """动画完成回调。"""
         if self._is_hiding:
             self.hide()
+
+    # ── 左边缘拖动调整宽度 ──────────────────────────
+
+    def mousePressEvent(self, event) -> None:
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and event.pos().x() <= self._RESIZE_MARGIN
+        ):
+            self._resizing = True
+            self._resize_start_global_x = event.globalPosition().toPoint().x()
+            self._resize_start_width = self.width()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._resizing and event.buttons() & Qt.MouseButton.LeftButton:
+            delta_x = self._resize_start_global_x - event.globalPosition().toPoint().x()
+            new_width = max(PANEL_MIN_WIDTH, self._resize_start_width + delta_x)
+            parent = self.parent()
+            if parent:
+                max_width = int(parent.width() * 0.9)
+                new_width = min(new_width, max_width)
+                self.setFixedWidth(new_width)
+                self.move(parent.width() - new_width, 0)
+            self._panel_width = new_width
+            event.accept()
+            return
+        if not self._resizing:
+            if event.pos().x() <= self._RESIZE_MARGIN:
+                self.setCursor(Qt.CursorShape.SizeHorCursor)
+            else:
+                self.unsetCursor()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if self._resizing:
+            self._resizing = False
+            self.unsetCursor()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
     def refresh(self, sessions: list[HistorySession]) -> None:
         """刷新会话列表。"""

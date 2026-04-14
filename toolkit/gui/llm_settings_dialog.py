@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""LLM 模型设置对话框 — Provider / API Key / 模型 / 参数配置。"""
+"""LLM 模型设置对话框 — 无边框风格，与应用整体主题一致。"""
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, QPointF, Qt
+from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -23,6 +24,41 @@ from toolkit.sdk.models import LLMConfig
 
 _GLM_MODELS = ["glm-4-plus", "glm-4-flash", "glm-4-long"]
 _CLAUDE_MODELS = ["claude-sonnet-4-20250514", "claude-3-5-haiku-20241022"]
+
+
+class _DialogCloseButton(QPushButton):
+    """对话框关闭按钮 — Codicons 或 fallback 矢量 X 图标。"""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFixedSize(28, 28)
+        self.setObjectName("llmDialogCloseBtn")
+
+    def paintEvent(self, event) -> None:
+        from toolkit.gui.codicons import codicon_font, icon_char
+
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        if self.underMouse():
+            p.fillRect(self.rect(), QColor("#f38ba8"))
+            icon_color = QColor("#1e1e2e")
+        else:
+            icon_color = QColor("#a6adc8")
+
+        font = codicon_font(14)
+        if font:
+            p.setPen(icon_color)
+            p.setFont(font)
+            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, icon_char("close"))
+        else:
+            cx = self.width() / 2
+            cy = self.height() / 2
+            p.setPen(QPen(icon_color, 1.2))
+            p.drawLine(QPointF(cx - 4, cy - 4), QPointF(cx + 4, cy + 4))
+            p.drawLine(QPointF(cx + 4, cy - 4), QPointF(cx - 4, cy + 4))
+
+        p.end()
 
 
 class _ApiKeyRow(QWidget):
@@ -62,7 +98,7 @@ class _ApiKeyRow(QWidget):
 
 
 class LLMSettingsDialog(QDialog):
-    """LLM 模型配置对话框。"""
+    """LLM 模型配置对话框 — 无边框，自定义标题栏。"""
 
     def __init__(
         self,
@@ -72,17 +108,49 @@ class LLMSettingsDialog(QDialog):
         super().__init__(parent)
         self._llm_manager = llm_manager
         self._config: LLMConfig = llm_manager.get_config()  # type: ignore[union-attr]
-        self.setWindowTitle("LLM 模型设置")
         self.setObjectName("llmSettingsDialog")
         self.setMinimumWidth(440)
         self.setModal(True)
+        self.setWindowFlags(
+            Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint
+        )
+        self._drag_pos: QPoint | None = None
         self._setup_ui()
         self._load_config()
 
     def _setup_ui(self) -> None:
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # ── 自定义标题栏 ──
+        title_bar = QWidget()
+        title_bar.setObjectName("llmDialogTitleBar")
+        title_bar.setFixedHeight(36)
+        title_layout = QHBoxLayout(title_bar)
+        title_layout.setContentsMargins(16, 0, 4, 0)
+
+        title_label = QLabel("⚙ LLM 模型设置")
+        title_label.setObjectName("llmDialogTitle")
+        title_layout.addWidget(title_label)
+        title_layout.addStretch()
+
+        close_btn = _DialogCloseButton()
+        close_btn.clicked.connect(self.reject)
+        title_layout.addWidget(close_btn)
+
+        outer.addWidget(title_bar)
+
+        sep = QWidget()
+        sep.setObjectName("llmDialogSeparator")
+        sep.setFixedHeight(1)
+        outer.addWidget(sep)
+
+        # ── 内容区 ──
+        content = QWidget()
+        root = QVBoxLayout(content)
         root.setSpacing(16)
-        root.setContentsMargins(24, 20, 24, 20)
+        root.setContentsMargins(24, 16, 24, 20)
 
         # --- Provider 选择 ---
         provider_row = QHBoxLayout()
@@ -200,6 +268,7 @@ class LLMSettingsDialog(QDialog):
         btn_row.addWidget(self._cancel_btn)
 
         root.addLayout(btn_row)
+        outer.addWidget(content, 1)
 
     def _load_config(self) -> None:
         c = self._config
@@ -247,3 +316,23 @@ class LLMSettingsDialog(QDialog):
         )
         self._llm_manager.update_config(new_config)  # type: ignore[union-attr]
         self.accept()
+
+    # ── 标题栏拖动 ──
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and event.pos().y() < 36:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        self._drag_pos = None
+        super().mouseReleaseEvent(event)
