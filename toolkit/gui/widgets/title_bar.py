@@ -376,10 +376,49 @@ class DeviceComboBox(QComboBox):
         p.end()
 
 
+class _LayoutToggleButton(_CodiconButton):
+    """布局面板切换按钮 — 带激活态的 Codicon 按钮。"""
+
+    def __init__(
+        self,
+        icon_on: str,
+        icon_off: str,
+        obj_name: str,
+        tooltip: str,
+        active: bool = True,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(icon_on, obj_name, size=(36, 28), font_size=10, parent=parent)
+        self._icon_on = icon_on
+        self._icon_off = icon_off
+        self._active = active
+        self.setToolTip(tooltip)
+        self._update_icon()
+        self.clicked.connect(self._toggle)
+
+    def _toggle(self) -> None:
+        self._active = not self._active
+        self._update_icon()
+
+    def _update_icon(self) -> None:
+        name = self._icon_on if self._active else self._icon_off
+        self._icon_char = icon_char(name)
+        self.update()
+
+    @property
+    def active(self) -> bool:
+        return self._active
+
+    @active.setter
+    def active(self, value: bool) -> None:
+        self._active = value
+        self._update_icon()
+
+
 class TitleBar(QWidget):
     """自定义标题栏，VS Code 风格。
 
-    布局：[Logo] --- [设备选择器(绝对居中)] --- [主题切换] [设置] [最小化] [最大化] [关闭]
+    布局：[Logo] --- [设备选择器(绝对居中)] --- [面板切换x3] [设置] [最小化] [最大化] [关闭]
     """
 
     minimize_clicked = pyqtSignal()
@@ -389,6 +428,9 @@ class TitleBar(QWidget):
     theme_toggled = pyqtSignal()
     llm_settings_requested = pyqtSignal()
     agent_settings_requested = pyqtSignal()
+    toggle_nav_panel = pyqtSignal(bool)
+    toggle_bottom_panel = pyqtSignal(bool)
+    toggle_right_panel = pyqtSignal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -404,6 +446,33 @@ class TitleBar(QWidget):
         layout.addWidget(self._logo)
 
         layout.addStretch(1)
+
+        self._nav_toggle = _LayoutToggleButton(
+            "layout-sidebar-left", "layout-sidebar-left-off",
+            "navToggleBtn", "左侧导航", active=True, parent=self,
+        )
+        self._nav_toggle.clicked.connect(
+            lambda: self.toggle_nav_panel.emit(self._nav_toggle.active)
+        )
+        layout.addWidget(self._nav_toggle)
+
+        self._bottom_toggle = _LayoutToggleButton(
+            "layout-panel", "layout-panel-off",
+            "bottomToggleBtn", "底部面板", active=False, parent=self,
+        )
+        self._bottom_toggle.clicked.connect(
+            lambda: self.toggle_bottom_panel.emit(self._bottom_toggle.active)
+        )
+        layout.addWidget(self._bottom_toggle)
+
+        self._right_toggle = _LayoutToggleButton(
+            "layout-sidebar-right", "layout-sidebar-right-off",
+            "rightToggleBtn", "右侧面板", active=False, parent=self,
+        )
+        self._right_toggle.clicked.connect(
+            lambda: self.toggle_right_panel.emit(self._right_toggle.active)
+        )
+        layout.addWidget(self._right_toggle)
 
         self._settings_btn = SettingsButton(self)
         self._settings_btn.theme_toggled.connect(self.theme_toggled.emit)
@@ -438,6 +507,9 @@ class TitleBar(QWidget):
     def set_theme(self, theme: str) -> None:
         """通知所有子组件切换主题配色。"""
         self._logo.set_theme(theme)
+        self._nav_toggle.set_theme(theme)
+        self._bottom_toggle.set_theme(theme)
+        self._right_toggle.set_theme(theme)
         self._settings_btn.set_theme(theme)
         for btn in self._ctrl_btns:
             btn.set_theme(theme)
@@ -447,6 +519,17 @@ class TitleBar(QWidget):
         for btn in self._ctrl_btns:
             if btn._icon_name == "chrome-maximize":
                 btn.set_maximized(maximized)
+
+    def set_panel_active(self, panel: str, active: bool) -> None:
+        """外部同步面板按钮状态（如自动弹出时）。"""
+        btn_map = {
+            "nav": self._nav_toggle,
+            "bottom": self._bottom_toggle,
+            "right": self._right_toggle,
+        }
+        btn = btn_map.get(panel)
+        if btn:
+            btn.active = active
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)

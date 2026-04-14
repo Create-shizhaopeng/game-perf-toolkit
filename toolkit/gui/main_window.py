@@ -1,4 +1,4 @@
-"""主窗口 — 自定义标题栏 + 左侧导航 + 内容区"""
+"""主窗口 — 自定义标题栏 + 左侧导航 + 内容区 + 底部日志 + 右侧面板"""
 
 from __future__ import annotations
 
@@ -19,6 +19,9 @@ from toolkit.core.adb_manager import AdbManager
 from toolkit.gui.base_tab import BaseTab
 from toolkit.gui.device_monitor import DeviceMonitor
 from toolkit.gui.home_tab import HomeTab
+from toolkit.gui.log_manager import LogManager
+from toolkit.gui.panels.bottom_panel import BottomPanel
+from toolkit.gui.panels.right_panel import RightPanel
 from toolkit.gui.styles import get_theme_stylesheet
 from toolkit.gui.widgets.nav_panel import NavPanel
 from toolkit.gui.widgets.title_bar import TitleBar
@@ -57,6 +60,11 @@ class MainWindow(QWidget):
         )
         self._root_layout.setSpacing(0)
 
+        self._log_manager = LogManager(self)
+        self.context["log_manager"] = self._log_manager
+        self.context["show_right_panel"] = self._show_right_panel
+        self.context["hide_right_panel"] = self._hide_right_panel
+
         self._title_bar = TitleBar(self)
         self._title_bar.minimize_clicked.connect(self.showMinimized)
         self._title_bar.maximize_clicked.connect(self._toggle_maximize)
@@ -64,6 +72,9 @@ class MainWindow(QWidget):
         self._title_bar.theme_toggled.connect(self._toggle_theme)
         self._title_bar.llm_settings_requested.connect(self._open_llm_settings)
         self._title_bar.agent_settings_requested.connect(self._open_agent_settings)
+        self._title_bar.toggle_nav_panel.connect(self._on_toggle_nav)
+        self._title_bar.toggle_bottom_panel.connect(self._on_toggle_bottom)
+        self._title_bar.toggle_right_panel.connect(self._on_toggle_right)
         self._root_layout.addWidget(self._title_bar)
 
         self._nav_panel = NavPanel(self)
@@ -73,15 +84,37 @@ class MainWindow(QWidget):
 
         self._content_stack = QStackedWidget()
 
+        self._bottom_panel = BottomPanel(self._log_manager, self)
+        self._right_panel = RightPanel(self)
+
+        self._center_splitter = QSplitter(Qt.Orientation.Vertical)
+        self._center_splitter.setObjectName("centerSplitter")
+        self._center_splitter.setChildrenCollapsible(False)
+        self._center_splitter.addWidget(self._content_stack)
+        self._center_splitter.addWidget(self._bottom_panel)
+        self._center_splitter.setStretchFactor(0, 1)
+        self._center_splitter.setStretchFactor(1, 0)
+        self._center_splitter.setHandleWidth(2)
+
         self._splitter = QSplitter(Qt.Orientation.Horizontal)
         self._splitter.setObjectName("bodySplitter")
         self._splitter.setChildrenCollapsible(False)
         self._splitter.addWidget(self._nav_panel)
-        self._splitter.addWidget(self._content_stack)
+        self._splitter.addWidget(self._center_splitter)
+        self._splitter.addWidget(self._right_panel)
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)
-        self._splitter.setSizes([180, 1020])
+        self._splitter.setStretchFactor(2, 0)
+        self._splitter.setSizes([180, 820, 0])
         self._splitter.setHandleWidth(2)
+
+        self._bottom_panel.hide()
+        self._right_panel.hide()
+        self._nav_saved_width = 180
+        self._bottom_saved_height = 200
+        self._right_saved_width = 350
+
+        self._log_manager.error_logged.connect(self._on_error_logged)
 
         self._root_layout.addWidget(self._splitter)
 
@@ -145,11 +178,16 @@ class MainWindow(QWidget):
 
     def add_tab(self, tab: BaseTab) -> None:
         """添加一个模块页面到内容区。"""
+        tab_index = len(self._tabs)
         self._tabs.append(tab)
         self._content_stack.addWidget(tab)
         self._nav_panel.add_tab_button(tab.tab_title, tab.tab_icon)
-        if hasattr(tab, "set_theme"):
-            tab.set_theme(self._current_theme)
+        tab.set_theme(self._current_theme)
+
+        rp_widget = tab.right_panel_widget()
+        if rp_widget is not None:
+            self._right_panel.register_widget(tab_index, rp_widget)
+
         logger.info("注册 GUI Tab: %s", tab.tab_title)
 
     def set_module_info(self, modules: list[dict]) -> None:
@@ -183,6 +221,7 @@ class MainWindow(QWidget):
                 self._tabs[old_index].on_deactivated()
             self._content_stack.setCurrentIndex(index)
             self._tabs[index].on_activated()
+            self._right_panel.switch_to_tab(index)
 
     def _on_devices_changed(self, devices: list[str]) -> None:
         self._devices = devices
@@ -305,6 +344,65 @@ class MainWindow(QWidget):
             self.setCursor(Qt.CursorShape.ArrowCursor)
         super().leaveEvent(event)
 
+    def _on_toggle_nav(self, visible: bool) -> None:
+        """切换左侧导航面板可见性。"""
+        if visible:
+            self._nav_panel.show()
+            sizes = self._splitter.sizes()
+            sizes[0] = self._nav_saved_width
+            self._splitter.setSizes(sizes)
+        else:
+            self._nav_saved_width = max(self._splitter.sizes()[0], 120)
+            self._nav_panel.hide()
+
+    def _on_toggle_bottom(self, visible: bool) -> None:
+        """切换底部日志面板可见性。"""
+        if visible:
+            self._bottom_panel.show()
+            sizes = self._center_splitter.sizes()
+            total = sum(sizes)
+            h = min(self._bottom_saved_height, total // 2)
+            self._center_splitter.setSizes([total - h, h])
+        else:
+            sizes = self._center_splitter.sizes()
+            if sizes[1] > 0:
+                self._bottom_saved_height = sizes[1]
+            self._bottom_panel.hide()
+
+    def _on_toggle_right(self, visible: bool) -> None:
+        """切换右侧面板可见性。"""
+        if visible:
+            self._right_panel.show()
+            sizes = self._splitter.sizes()
+            total = sum(sizes)
+            w = min(self._right_saved_width, total // 3)
+            sizes[2] = w
+            sizes[1] = total - sizes[0] - w
+            self._splitter.setSizes(sizes)
+        else:
+            sizes = self._splitter.sizes()
+            if sizes[2] > 0:
+                self._right_saved_width = sizes[2]
+            self._right_panel.hide()
+
+    def _show_right_panel(self) -> None:
+        """供模块调用：显示右侧面板。"""
+        if not self._right_panel.isVisible():
+            self._title_bar.set_panel_active("right", True)
+            self._on_toggle_right(True)
+
+    def _hide_right_panel(self) -> None:
+        """供模块调用：隐藏右侧面板。"""
+        if self._right_panel.isVisible():
+            self._title_bar.set_panel_active("right", False)
+            self._on_toggle_right(False)
+
+    def _on_error_logged(self) -> None:
+        """error/warning 日志自动弹出底部面板。"""
+        if not self._bottom_panel.isVisible():
+            self._title_bar.set_panel_active("bottom", True)
+            self._on_toggle_bottom(True)
+
     def _toggle_theme(self) -> None:
         self._current_theme = "light" if self._current_theme == "dark" else "dark"
 
@@ -322,10 +420,11 @@ class MainWindow(QWidget):
         theme = self._current_theme
         self._title_bar.set_theme(theme)
         self._nav_panel.set_theme(theme)
+        self._bottom_panel.set_theme(theme)
+        self._right_panel.set_theme(theme)
 
         for tab in self._tabs:
-            if hasattr(tab, "set_theme"):
-                tab.set_theme(theme)
+            tab.set_theme(theme)
 
         pm = self.context.get("plugin_manager")
         module_count = len(pm.loaded_modules) if pm else 0

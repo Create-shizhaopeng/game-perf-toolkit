@@ -25,6 +25,7 @@ class BaseTab(QWidget):
         super().__init__(parent)
         self.context = context or {}
         self._device_connected = False
+        self._theme = "dark"
 
     @property
     def device_connected(self) -> bool:
@@ -44,6 +45,24 @@ class BaseTab(QWidget):
         用户当前工作区的数据（已填写的内容）不应丢失。
         """
         self._device_connected = len(devices) > 0
+
+    def set_theme(self, theme: str) -> None:
+        """主题切换回调 — 由 MainWindow._propagate_theme() 调用。
+
+        默认实现仅保存主题标识。全局 QSS 已自动处理大部分样式，
+        子类仅在有动态内联样式（如 QPainter 绘制）时才需重写此方法。
+        """
+        self._theme = theme
+
+    def _log(self, msg: str, *, level: str = "info") -> None:
+        """统一日志输出 — 自动路由到底部面板的 LogManager。"""
+        mgr = self.context.get("log_manager")
+        if mgr:
+            mgr.log(self.tab_title, msg, level=level)
+
+    def right_panel_widget(self) -> "QWidget | None":
+        """返回右侧面板内容 widget。子类重写此方法提供模块专属右侧面板。"""
+        return None
 
     def require_device(self) -> bool:
         """检查设备是否可用。不可用时弹出提示，返回 False。

@@ -22,7 +22,6 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QTabWidget,
-    QTextEdit,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -254,21 +253,13 @@ class WorkspaceToolsTab(BaseTab):
         sum_lay.addWidget(self._summary_list)
         left_lay.addWidget(sum_box)
 
-        log_box = QGroupBox("日志")
-        log_lay = QVBoxLayout(log_box)
-        self._log = QTextEdit()
-        self._log.setReadOnly(True)
-        self._log.setMinimumHeight(96)
-        self._log.setMaximumHeight(140)
-        log_lay.addWidget(self._log)
         pull_row = QHBoxLayout()
         self._btn_cancel_pull = QPushButton("取消拉取")
         self._btn_cancel_pull.setEnabled(False)
         self._btn_cancel_pull.clicked.connect(self._on_cancel_pull)
         pull_row.addWidget(self._btn_cancel_pull)
         pull_row.addStretch()
-        log_lay.addLayout(pull_row)
-        left_lay.addWidget(log_box)
+        left_lay.addLayout(pull_row)
 
         # —— 右栏：差异明细（占满高度）+ 底部操作按钮 ——
         right_col = QWidget()
@@ -296,22 +287,7 @@ class WorkspaceToolsTab(BaseTab):
         hdr.setMinimumSectionSize(80)
         self._diff_tree.setColumnWidth(1, 100)
         self._diff_tree.setColumnWidth(2, 100)
-        self._diff_tree.setStyleSheet(
-            """
-            QTreeWidget#gameperfDiffTree::item:selected,
-            QTreeWidget#gameperfDiffTree::item:selected:active {
-                background-color: #585b70;
-                color: #f5f5f5;
-            }
-            QTreeWidget#gameperfDiffTree::item:selected:!active {
-                background-color: #45475a;
-                color: #e8e8e8;
-            }
-            QTreeWidget#gameperfDiffTree::item:hover {
-                background-color: #313244;
-            }
-            """
-        )
+        # QSS 样式由全局 styles.py 通过 #gameperfDiffTree 管理
         tree_lay.addWidget(self._diff_tree, 1)
         btn_row = QHBoxLayout()
         self._btn_adopt_base = QPushButton("采纳基准侧")
@@ -347,7 +323,13 @@ class WorkspaceToolsTab(BaseTab):
         self._update_buttons_state()
 
     def _append_log(self, msg: str) -> None:
-        self._log.append(msg)
+        if "失败" in msg or "✗" in msg:
+            level = "error"
+        elif "✓" in msg or "成功" in msg or "完成" in msg:
+            level = "success"
+        else:
+            level = "info"
+        self._log(msg, level=level)
 
     def _update_buttons_state(self) -> None:
         has_svc = self._gp_svc is not None

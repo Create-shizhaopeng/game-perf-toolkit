@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+
 from toolkit.gui.toolkit_dialog import confirm_dialog
 
 from .models import HistorySession, HistoryStats
@@ -42,32 +43,6 @@ PANEL_MIN_WIDTH = 600
 LEFT_COL_MIN_WIDTH = 280
 RIGHT_COL_MIN_WIDTH = 320
 ANIMATION_DURATION_MS = 250
-
-# Catppuccin 主题色
-_THEME_COLORS = {
-    "dark": {
-        "bg": "#1e1e2e",
-        "panel_bg": "#313244",
-        "border": "#45475a",
-        "fg": "#cdd6f4",
-        "fg_dim": "#a6adc8",
-        "accent": "#cba6f7",
-        "success": "#a6e3a1",
-        "error": "#f38ba8",
-        "hover": "#45475a",
-    },
-    "light": {
-        "bg": "#eff1f5",
-        "panel_bg": "#e6e9ef",
-        "border": "#ccd0da",
-        "fg": "#333333",
-        "fg_dim": "#616161",
-        "accent": "#8839ef",
-        "success": "#40a02b",
-        "error": "#d20f39",
-        "hover": "#dce0e8",
-    },
-}
 
 
 class OverlayMask(QWidget):
@@ -387,41 +362,7 @@ class HistoryPanel(QWidget):
 
     def _setup_ui(self) -> None:
         """构建左右双栏 UI。"""
-        colors = _THEME_COLORS["dark"]
-
-        self.setStyleSheet(f"""
-            HistoryPanel {{
-                background: {colors['panel_bg']};
-                border-left: 3px solid {colors['border']};
-            }}
-            QLabel {{
-                color: {colors['fg']};
-            }}
-            QLineEdit {{
-                background: {colors['bg']};
-                border: 1px solid {colors['border']};
-                border-radius: 4px;
-                padding: 6px 8px;
-                color: {colors['fg']};
-            }}
-            QLineEdit:focus {{
-                border-color: {colors['accent']};
-            }}
-            QPushButton {{
-                background: {colors['border']};
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                color: {colors['fg']};
-            }}
-            QPushButton:hover {{
-                background: {colors['hover']};
-            }}
-            QSplitter::handle {{
-                background: {colors['border']};
-                width: 2px;
-            }}
-        """)
+        self.setObjectName("historyPanel")
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -431,7 +372,7 @@ class HistoryPanel(QWidget):
         header_bar = QHBoxLayout()
         header_bar.setContentsMargins(12, 8, 12, 8)
         title = QLabel("📂 历史记录 & 分析")
-        title.setStyleSheet(f"font-weight: bold; font-size: 14px; color: {colors['fg']};")
+        title.setObjectName("analysisChatHeader")
         header_bar.addWidget(title)
         header_bar.addStretch()
 
@@ -483,7 +424,7 @@ class HistoryPanel(QWidget):
         # 操作按钮已集成到右键菜单，此处仅保留统计和清理
 
         self._stats_label = QLabel("💾 0 MB / 0 会话")
-        self._stats_label.setStyleSheet(f"color: {colors['fg_dim']}; font-size: 12px;")
+        self._stats_label.setObjectName("fieldHint")
         left_layout.addWidget(self._stats_label)
 
         bottom_actions = QHBoxLayout()
@@ -535,7 +476,7 @@ class HistoryPanel(QWidget):
         right_placeholder_layout = QVBoxLayout(self._right_col_placeholder)
         right_placeholder_layout.setContentsMargins(4, 4, 12, 12)
         placeholder_label = QLabel("💬 选择 trace 后可在此进行 AI 分析对话")
-        placeholder_label.setStyleSheet(f"color: {colors['fg_dim']}; font-size: 13px;")
+        placeholder_label.setObjectName("fieldHint")
         placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         placeholder_label.setWordWrap(True)
         right_placeholder_layout.addWidget(placeholder_label)

@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
-    QDialog,
     QFileDialog,
     QFrame,
     QGroupBox,
@@ -47,7 +46,9 @@ from PyQt6.QtWidgets import (
 
 from toolkit.gui.base_tab import BaseTab
 from toolkit.gui.codicons import codicon_font, icon_char
+from toolkit.gui.theme_colors import THEMES as _THEMES
 from toolkit.gui.toolkit_dialog import (
+    ToolkitDialog,
     confirm_dialog,
     info_dialog,
     input_dialog,
@@ -56,42 +57,6 @@ from toolkit.gui.toolkit_dialog import (
 
 logger = logging.getLogger(__name__)
 
-_THEMES = {
-    "dark": {
-        "bg": "#1e1e2e",
-        "card_bg": "#313244",
-        "border": "#45475a",
-        "fg": "#cdd6f4",
-        "fg_dim": "#a6adc8",
-        "accent": "#cba6f7",
-        "success": "#a6e3a1",
-        "error": "#f38ba8",
-        "warning": "#fab387",
-        "user_bubble": "#313244",
-        "tool_card_bg": "#181825",
-        "workflow_border": "#cba6f7",
-        "learn_border": "#f9e2af",
-        "btn_send_bg": "#cba6f7",
-        "btn_stop_bg": "#f38ba8",
-    },
-    "light": {
-        "bg": "#eff1f5",
-        "card_bg": "#e6e9ef",
-        "border": "#ccd0da",
-        "fg": "#4c4f69",
-        "fg_dim": "#6c6f85",
-        "accent": "#8839ef",
-        "success": "#40a02b",
-        "error": "#d20f39",
-        "warning": "#fe640b",
-        "user_bubble": "#dce0e8",
-        "tool_card_bg": "#e6e9ef",
-        "workflow_border": "#8839ef",
-        "learn_border": "#df8e1d",
-        "btn_send_bg": "#8839ef",
-        "btn_stop_bg": "#d20f39",
-    },
-}
 _DARK = _THEMES["dark"]
 
 
@@ -541,16 +506,9 @@ class _ChatInput(QTextEdit):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("agentChatInput")
         self.setAcceptDrops(True)
         self.setPlaceholderText("描述你的任务...")
-        self.setStyleSheet(
-            f"background-color: {_DARK['card_bg']};"
-            f"border: 1px solid {_DARK['border']};"
-            "border-radius: 8px;"
-            "padding: 8px 10px;"
-            f"color: {_DARK['fg']};"
-            "font-size: 13px;"
-        )
         self._min_lines = 1
         self._max_lines = 5
         self.textChanged.connect(self._adjust_height)
@@ -595,8 +553,8 @@ class _ChatInput(QTextEdit):
 # ---------------------------------------------------------------------------
 
 
-class _SettingsDialog(QDialog):
-    """Agent 设置弹窗 — 无边框风格，与 LLM 设置一致。"""
+class _SettingsDialog(ToolkitDialog):
+    """Agent 设置弹窗 — 继承 ToolkitDialog 统一框架。"""
 
     config_changed = pyqtSignal(object)  # AgentConfig
 
@@ -607,56 +565,19 @@ class _SettingsDialog(QDialog):
         mcp_manager: Any | None = None,
         parent: QWidget | None = None,
     ) -> None:
-        super().__init__(parent)
-        self.setObjectName("llmSettingsDialog")
-        self.setMinimumSize(560, 460)
-        self.setModal(True)
-        self.setWindowFlags(
-            Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint
-        )
-        self._drag_pos: QPoint | None = None
+        super().__init__("⚙ Agent 设置", parent, min_width=560)
+        self.setMinimumHeight(460)
         self._config = config
         self._sop_manager = sop_manager
         self._mcp_manager = mcp_manager
         self._init_ui()
 
     def _init_ui(self) -> None:
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
-
-        title_bar = QWidget()
-        title_bar.setObjectName("llmDialogTitleBar")
-        title_bar.setFixedHeight(36)
-        tb_layout = QHBoxLayout(title_bar)
-        tb_layout.setContentsMargins(16, 0, 4, 0)
-
-        title_lbl = QLabel("⚙ Agent 设置")
-        title_lbl.setObjectName("llmDialogTitle")
-        tb_layout.addWidget(title_lbl)
-        tb_layout.addStretch()
-
-        from toolkit.gui.toolkit_dialog import DialogCloseButton
-        close_btn = DialogCloseButton()
-        close_btn.clicked.connect(self.reject)
-        tb_layout.addWidget(close_btn)
-        outer.addWidget(title_bar)
-
-        sep = QWidget()
-        sep.setObjectName("llmDialogSeparator")
-        sep.setFixedHeight(1)
-        outer.addWidget(sep)
-
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(16, 12, 16, 16)
-        layout.setSpacing(8)
-
         tabs = QTabWidget()
         tabs.addTab(self._build_sop_tab(), "SOP 管理")
         tabs.addTab(self._build_mcp_tab(), "MCP 管理")
         tabs.addTab(self._build_advanced_tab(), "高级设置")
-        layout.addWidget(tabs)
+        self.content_layout.addWidget(tabs)
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
@@ -670,23 +591,7 @@ class _SettingsDialog(QDialog):
         btn_cancel.clicked.connect(self.reject)
         btn_layout.addWidget(btn_save)
         btn_layout.addWidget(btn_cancel)
-        layout.addLayout(btn_layout)
-
-        outer.addWidget(content)
-
-    def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and event.pos().y() < 36:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event) -> None:
-        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event) -> None:
-        self._drag_pos = None
-        super().mouseReleaseEvent(event)
+        self.content_layout.addLayout(btn_layout)
 
     def _build_model_tab(self) -> QWidget:
         w = QWidget()
@@ -1051,10 +956,6 @@ class AgentTab(BaseTab):
         panel = QWidget()
         panel.setObjectName("agentLeftPanel")
         self._left_panel = panel
-        panel.setStyleSheet(
-            f"QWidget#agentLeftPanel {{ background-color: {_DARK['bg']};"
-            f"border-right: 1px solid {_DARK['border']}; }}"
-        )
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(4)
@@ -1062,14 +963,11 @@ class AgentTab(BaseTab):
         # T021: 会话历史
         hist_header = QHBoxLayout()
         hist_label = QLabel("会话历史")
-        hist_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        hist_label.setObjectName("agentHistLabel")
         self._btn_new_conv = QPushButton("+ 新建")
+        self._btn_new_conv.setObjectName("agentBtnNewConv")
         self._btn_new_conv.setFixedHeight(26)
         self._btn_new_conv.setMinimumWidth(60)
-        self._btn_new_conv.setStyleSheet(
-            f"color: {_DARK['accent']}; border: 1px solid {_DARK['border']}; "
-            "border-radius: 4px; font-size: 11px;"
-        )
         self._btn_new_conv.clicked.connect(self._on_new_conversation)
         hist_header.addWidget(hist_label)
         hist_header.addStretch()
@@ -1077,12 +975,7 @@ class AgentTab(BaseTab):
         layout.addLayout(hist_header)
 
         self._conv_list = QListWidget()
-        self._conv_list.setStyleSheet(
-            f"QListWidget {{ background-color: transparent; border: none; }}"
-            f"QListWidget::item {{ padding: 2px 0px; border-radius: 4px; }}"
-            f"QListWidget::item:selected {{ background-color: transparent; }}"
-            f"QListWidget::item:hover {{ background-color: transparent; }}"
-        )
+        self._conv_list.setObjectName("agentConvList")
         self._conv_list.itemClicked.connect(self._on_conv_selected)
         self._conv_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._conv_list.customContextMenuRequested.connect(self._on_conv_context_menu)
@@ -1100,14 +993,10 @@ class AgentTab(BaseTab):
         self._toolbar = QWidget()
         self._toolbar.setObjectName("agentToolbar")
         self._toolbar.setFixedHeight(36)
-        self._toolbar.setStyleSheet(
-            f"QWidget#agentToolbar {{ background-color: {_DARK['bg']};"
-            f"border-bottom: 1px solid {_DARK['border']}; }}"
-        )
         tb_layout = QHBoxLayout(self._toolbar)
         tb_layout.setContentsMargins(12, 0, 12, 0)
         self._lbl_title = QLabel("🤖 Agent 智能助手")
-        self._lbl_title.setStyleSheet(f"color: {_DARK['accent']}; font-weight: bold; font-size: 13px;")
+        self._lbl_title.setObjectName("agentLblTitle")
         tb_layout.addWidget(self._lbl_title)
         tb_layout.addStretch()
         layout.addWidget(self._toolbar)
@@ -1125,7 +1014,7 @@ class AgentTab(BaseTab):
 
         # 输入区域
         self._input_bar = QWidget()
-        self._input_bar.setStyleSheet(f"border-top: 1px solid {_DARK['border']};")
+        self._input_bar.setObjectName("agentInputBar")
         ib_layout = QHBoxLayout(self._input_bar)
         ib_layout.setContentsMargins(12, 8, 12, 8)
 
@@ -1133,13 +1022,8 @@ class AgentTab(BaseTab):
         ib_layout.addWidget(self._chat_input, 1)
 
         self._btn_send = QPushButton("发送")
+        self._btn_send.setObjectName("agentBtnSend")
         self._btn_send.setFixedSize(60, 36)
-        self._btn_send.setStyleSheet(
-            f"background-color: {_DARK['btn_send_bg']};"
-            "color: #1e1e2e;"
-            "border-radius: 8px;"
-            "font-weight: bold;"
-        )
         self._btn_send.clicked.connect(self._on_send)
         self._chat_input.send_requested.connect(self._on_send)
         ib_layout.addWidget(self._btn_send)
@@ -1156,13 +1040,13 @@ class AgentTab(BaseTab):
         center.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._welcome_title = QLabel("🤖 Agent 智能助手")
+        self._welcome_title.setObjectName("agentWelcomeTitle")
         self._welcome_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._welcome_title.setStyleSheet(f"color: {_DARK['accent']}; font-size: 20px; font-weight: bold;")
         center.addWidget(self._welcome_title)
 
         self._welcome_subtitle = QLabel("描述你的任务，我将自动匹配工作流完成分析。")
+        self._welcome_subtitle.setObjectName("agentWelcomeSubtitle")
         self._welcome_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._welcome_subtitle.setStyleSheet(f"color: {_DARK['fg_dim']}; font-size: 13px; padding: 8px;")
         center.addWidget(self._welcome_subtitle)
 
         btn_grid = QHBoxLayout()
@@ -1177,14 +1061,8 @@ class AgentTab(BaseTab):
         self._shortcut_btns: list[QPushButton] = []
         for label, prompt in shortcuts:
             btn = QPushButton(label)
+            btn.setObjectName("agentShortcutBtn")
             btn.setFixedSize(140, 36)
-            btn.setStyleSheet(
-                f"background-color: {_DARK['card_bg']};"
-                f"color: {_DARK['fg']};"
-                f"border: 1px solid {_DARK['border']};"
-                "border-radius: 8px;"
-                "font-size: 12px;"
-            )
             btn.clicked.connect(lambda checked, p=prompt: self._quick_send(p))
             btn_grid.addWidget(btn)
             self._shortcut_btns.append(btn)
@@ -1192,8 +1070,8 @@ class AgentTab(BaseTab):
         center.addLayout(btn_grid)
 
         self._welcome_hint = QLabel("💡 提示: 你也可以直接描述需求，无需选择具体分析类型")
+        self._welcome_hint.setObjectName("agentWelcomeHint")
         self._welcome_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._welcome_hint.setStyleSheet(f"color: {_DARK['fg_dim']}; font-size: 11px; padding: 12px;")
         center.addWidget(self._welcome_hint)
 
         layout.addLayout(center)
@@ -1206,9 +1084,9 @@ class AgentTab(BaseTab):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self._msg_scroll = QScrollArea()
+        self._msg_scroll.setObjectName("agentMsgScroll")
         self._msg_scroll.setWidgetResizable(True)
         self._msg_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._msg_scroll.setStyleSheet("border: none;")
 
         self._msg_container = QWidget()
         self._msg_layout = QVBoxLayout(self._msg_container)
@@ -1240,81 +1118,10 @@ class AgentTab(BaseTab):
             self._show_setup_guide()
 
     def set_theme(self, theme: str) -> None:
-        """切换主题 — 更新内联样式中的颜色引用。"""
+        """切换主题 — 全局 QSS 自动处理大部分样式，此处只更新动态引用。"""
         c = _THEMES.get(theme, _THEMES["dark"])
         global _DARK
         _DARK = c
-
-        if hasattr(self, "_left_panel"):
-            self._left_panel.setStyleSheet(
-                f"QWidget#agentLeftPanel {{ background-color: {c['bg']};"
-                f"border-right: 1px solid {c['border']}; }}"
-            )
-
-        if hasattr(self, "_toolbar"):
-            self._toolbar.setStyleSheet(
-                f"QWidget#agentToolbar {{ background-color: {c['bg']};"
-                f"border-bottom: 1px solid {c['border']}; }}"
-            )
-
-        if hasattr(self, "_lbl_title"):
-            self._lbl_title.setStyleSheet(
-                f"color: {c['accent']}; font-weight: bold; font-size: 13px;"
-            )
-
-        if hasattr(self, "_input_bar"):
-            self._input_bar.setStyleSheet(
-                f"border-top: 1px solid {c['border']};"
-            )
-
-        self._conv_list.setStyleSheet(
-            f"QListWidget {{ background-color: transparent; border: none; }}"
-            f"QListWidget::item {{ padding: 2px 0px; border-radius: 4px; }}"
-            f"QListWidget::item:selected {{ background-color: transparent; }}"
-            f"QListWidget::item:hover {{ background-color: transparent; }}"
-        )
-
-        if hasattr(self, "_btn_send"):
-            self._btn_send.setStyleSheet(
-                f"background-color: {c['btn_send_bg']};"
-                f"color: {c['bg']};"
-                "border-radius: 8px; font-weight: bold;"
-            )
-
-        if hasattr(self, "_btn_new_conv"):
-            self._btn_new_conv.setStyleSheet(
-                f"color: {c['accent']}; border: 1px solid {c['border']}; "
-                "border-radius: 4px; font-size: 11px;"
-            )
-
-        if hasattr(self, "_welcome_title"):
-            self._welcome_title.setStyleSheet(
-                f"color: {c['accent']}; font-size: 20px; font-weight: bold;"
-            )
-        if hasattr(self, "_welcome_subtitle"):
-            self._welcome_subtitle.setStyleSheet(
-                f"color: {c['fg_dim']}; font-size: 13px; padding: 8px;"
-            )
-        if hasattr(self, "_welcome_hint"):
-            self._welcome_hint.setStyleSheet(
-                f"color: {c['fg_dim']}; font-size: 11px; padding: 12px;"
-            )
-        for btn in getattr(self, "_shortcut_btns", []):
-            btn.setStyleSheet(
-                f"background-color: {c['card_bg']};"
-                f"color: {c['fg']};"
-                f"border: 1px solid {c['border']};"
-                "border-radius: 8px; font-size: 12px;"
-            )
-
-        if hasattr(self, "_chat_input"):
-            self._chat_input.setStyleSheet(
-                f"background-color: {c['card_bg']};"
-                f"color: {c['fg']};"
-                f"border: 1px solid {c['border']};"
-                "border-radius: 8px; padding: 8px; font-size: 13px;"
-            )
-
         self._refresh_conv_list()
 
 

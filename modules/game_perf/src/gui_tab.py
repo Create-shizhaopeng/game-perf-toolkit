@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QScrollArea, QSplitter, QTabWidget, QDialog, QDialogButtonBox,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QTextCursor, QColor, QTextCharFormat, QFont, QDragEnterEvent, QDropEvent
+from PyQt6.QtGui import QFont, QDragEnterEvent, QDropEvent
 
 from toolkit.gui.base_tab import BaseTab
 from toolkit.gui.toolkit_dialog import (
@@ -104,7 +104,7 @@ class GamePerfTab(BaseTab):
         bottom_layout = QVBoxLayout(bottom_widget)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(4)
-        self._create_log_section(bottom_layout)
+        self._create_progress_section(bottom_layout)
         self._create_button_section(bottom_layout)
         splitter.addWidget(bottom_widget)
 
@@ -130,13 +130,11 @@ class GamePerfTab(BaseTab):
         title.setProperty("class", "sectionTitleBlue")
         header.addWidget(title)
         hint = QLabel("选择或拖拽「文件名包含 gameperfconfig」的 .xml")
-        hint.setProperty("class", "fieldLabel")
-        hint.setStyleSheet("font-size: 10px; font-style: italic;")
+        hint.setObjectName("fieldHint")
         header.addWidget(hint)
         header.addStretch()
         self._origin_lbl = QLabel("")
-        self._origin_lbl.setProperty("class", "fieldLabel")
-        self._origin_lbl.setStyleSheet("font-size: 10px;")
+        self._origin_lbl.setObjectName("fieldHint")
         header.addWidget(self._origin_lbl)
         card_layout.addLayout(header)
 
@@ -180,8 +178,7 @@ class GamePerfTab(BaseTab):
         row.addStretch(1)
 
         self._policy_version_lbl = QLabel("")
-        self._policy_version_lbl.setProperty("class", "fieldLabel")
-        self._policy_version_lbl.setStyleSheet("font-size: 13px;")
+        self._policy_version_lbl.setObjectName("fieldLabel")
         self._policy_version_lbl.setMinimumWidth(140)
         self._policy_version_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(self._policy_version_lbl)
@@ -234,22 +231,7 @@ class GamePerfTab(BaseTab):
 
         parent_layout.addWidget(self._strategy_tabs, 1)
 
-    def _create_log_section(self, parent_layout: QVBoxLayout):
-        card = QFrame()
-        card.setProperty("class", "sectionCard")
-        cl = QVBoxLayout(card)
-        cl.setContentsMargins(8, 4, 8, 4)
-        cl.setSpacing(2)
-
-        title = QLabel("执行日志")
-        title.setProperty("class", "sectionTitleBlue")
-        cl.addWidget(title)
-
-        self._log_area = QTextEdit()
-        self._log_area.setReadOnly(True)
-        self._log_area.setMaximumHeight(150)
-        cl.addWidget(self._log_area, 1)
-
+    def _create_progress_section(self, parent_layout: QVBoxLayout):
         prog = QHBoxLayout()
         self._progress_bar = QProgressBar()
         self._progress_bar.setValue(0)
@@ -265,9 +247,7 @@ class GamePerfTab(BaseTab):
         self._cancel_bg_btn.setToolTip("取消正在进行的从设备拉取（各步骤间隙生效）")
         self._cancel_bg_btn.clicked.connect(self._on_cancel_background_pull)
         prog.addWidget(self._cancel_bg_btn)
-        cl.addLayout(prog)
-
-        parent_layout.addWidget(card, 1)
+        parent_layout.addLayout(prog)
 
     def _create_button_section(self, parent_layout: QVBoxLayout):
         row = QHBoxLayout()
@@ -896,7 +876,7 @@ class GamePerfTab(BaseTab):
         dlg = ToolkitDialog("填写推送备注", self.window(), min_width=420)
         lbl = QLabel("推送前必须填写备注，将写入推送记录。请简要说明本次变更目的：")
         lbl.setWordWrap(True)
-        lbl.setStyleSheet("font-size: 13px;")
+        lbl.setObjectName("dlgMsgLabel")
         dlg.content_layout.addWidget(lbl)
 
         edit = QLineEdit()
@@ -955,7 +935,6 @@ class GamePerfTab(BaseTab):
             self.parser.write_to_path(filepath)
 
         self._save_push_record(notes)
-        self._log_area.clear()
         self._set_progress(0)
         self._update_push_button_states(False)
 
@@ -1000,7 +979,6 @@ class GamePerfTab(BaseTab):
     def _on_reset(self):
         if not self.require_device():
             return
-        self._log_area.clear()
         self._set_progress(0)
         self._update_push_button_states(False)
 
@@ -1168,13 +1146,15 @@ class GamePerfTab(BaseTab):
         self._reset_btn.setEnabled(enabled)
 
     def _append_log(self, text: str, color: str = "#d4d4d4"):
-        cursor = self._log_area.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        fmt = QTextCharFormat()
-        fmt.setForeground(QColor(color))
-        cursor.insertText(text + "\n", fmt)
-        self._log_area.setTextCursor(cursor)
-        self._log_area.ensureCursorVisible()
+        if "✓" in text or "#608b4e" in color:
+            level = "success"
+        elif "✗" in text or "#f44747" in color:
+            level = "error"
+        elif "#dcdcaa" in color or "#569cd6" in color:
+            level = "warning"
+        else:
+            level = "info"
+        self._log(text, level=level)
 
     def _set_progress(self, value: int):
         self._progress_bar.setValue(value)

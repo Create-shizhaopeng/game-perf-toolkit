@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import QSize, QThread, QTimer, QUrl, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QDesktopServices, QTextCharFormat
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -19,7 +19,6 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -74,53 +73,9 @@ class _FlowWidget(QWidget):
         return QSize(200, self.minimumHeight() or 20)
 
 from toolkit.gui.base_tab import BaseTab
+from toolkit.gui.theme_colors import THEMES as _THEME_COLORS
 
 logger = logging.getLogger(__name__)
-
-_THEME_COLORS = {
-    "dark": {
-        "bg": "#1e1e2e",
-        "card_bg": "#313244",
-        "border": "#45475a",
-        "fg": "#cdd6f4",
-        "fg_dim": "#a6adc8",
-        "accent": "#cba6f7",
-        "success": "#a6e3a1",
-        "error": "#f38ba8",
-        "warning": "#fab387",
-        "btn_primary_bg": "#a6e3a1",
-        "btn_primary_fg": "#1e1e2e",
-        "btn_save_bg": "#f9e2af",
-        "btn_save_fg": "#1e1e2e",
-        "btn_stop_bg": "#f38ba8",
-        "btn_stop_fg": "#1e1e2e",
-        "btn_secondary_bg": "#45475a",
-        "btn_secondary_fg": "#cdd6f4",
-        "input_bg": "#313244",
-        "input_border": "#45475a",
-    },
-    "light": {
-        "bg": "#eff1f5",
-        "card_bg": "#e6e9ef",
-        "border": "#ccd0da",
-        "fg": "#333333",
-        "fg_dim": "#616161",
-        "accent": "#8839ef",
-        "success": "#40a02b",
-        "error": "#d20f39",
-        "warning": "#df8e1d",
-        "btn_primary_bg": "#40a02b",
-        "btn_primary_fg": "#ffffff",
-        "btn_save_bg": "#df8e1d",
-        "btn_save_fg": "#ffffff",
-        "btn_stop_bg": "#d20f39",
-        "btn_stop_fg": "#ffffff",
-        "btn_secondary_bg": "#ccd0da",
-        "btn_secondary_fg": "#333333",
-        "input_bg": "#dce0e8",
-        "input_border": "#bcc0cc",
-    },
-}
 
 
 class _CaptureWorker(QThread):
@@ -392,30 +347,25 @@ class PerfettoCaptureTab(BaseTab):
         self._btn_save.clicked.connect(self._on_save)
         self._btn_stop.clicked.connect(self._on_stop)
         self._btn_abandon.clicked.connect(self._on_abandon)
-        self._btn_history = QPushButton("📂 历史")
-        self._btn_history.setFixedWidth(action_btn_w)
-        self._btn_history.clicked.connect(self._toggle_history_panel)
         btn_layout.addWidget(self._btn_start)
         btn_layout.addWidget(self._btn_save)
         btn_layout.addWidget(self._btn_stop)
         btn_layout.addWidget(self._btn_abandon)
-        btn_layout.addWidget(self._btn_history)
         btn_layout.addStretch()
         bottom_layout.addLayout(btn_layout)
 
-        log_label = QLabel("📋 操作日志")
-        bottom_layout.addWidget(log_label)
-        self._log_area = QTextEdit()
-        self._log_area.setReadOnly(True)
-        self._log_area.setFixedHeight(160)
-        bottom_layout.addWidget(self._log_area)
-
         root.addWidget(bottom_widget)
 
-        # 历史记录面板（延迟初始化）
+        # 右侧面板容器（HistoryPanel 延迟初始化后填入）
+        self._history_container = QWidget()
+        self._history_container_layout = QVBoxLayout(self._history_container)
+        self._history_container_layout.setContentsMargins(0, 0, 0, 0)
         self._history_panel = None
-        self._history_mask = None
         self._history_service = None
+
+    def right_panel_widget(self) -> QWidget | None:
+        """返回右侧面板内容（历史记录面板容器）。"""
+        return self._history_container
 
     def _ensure_history_panel(self) -> None:
         """确保历史面板已初始化。"""
@@ -423,17 +373,12 @@ class PerfettoCaptureTab(BaseTab):
             return
 
         from .analysis_chat import AnalysisChatWidget
-        from .history_panel import HistoryPanel, OverlayMask
+        from .history_panel import HistoryPanel
         from .history_service import HistoryService
         from .history_storage import HistoryStorage
 
-        # 初始化遮罩
-        self._history_mask = OverlayMask(self)
-        self._history_mask.clicked.connect(self._close_history_panel)
-
-        # 初始化面板
-        self._history_panel = HistoryPanel(self)
-        self._history_panel.close_requested.connect(self._close_history_panel)
+        self._history_panel = HistoryPanel()
+        self._history_panel.close_requested.connect(self._on_history_close)
         self._history_panel.refresh_requested.connect(self._refresh_history)
         self._history_panel.cleanup_requested.connect(self._cleanup_history)
         self._history_panel.open_directory_requested.connect(self._open_history_directory)
@@ -465,6 +410,8 @@ class PerfettoCaptureTab(BaseTab):
         analysis_available = self._is_analysis_module_available()
         self._history_panel.set_analysis_available(bool(analysis_available))
 
+        self._history_container_layout.addWidget(self._history_panel)
+
     def _get_output_dir(self) -> Path:
         """获取输出目录。"""
         import sys
@@ -483,32 +430,11 @@ class PerfettoCaptureTab(BaseTab):
         except Exception:
             return False
 
-    def _toggle_history_panel(self) -> None:
-        """切换历史面板显示状态。"""
-        try:
-            self._ensure_history_panel()
-        except Exception as e:
-            self._log(f"✗ 历史面板初始化失败: {e}", "error")
-            return
-
-        if self._history_panel.isVisible():
-            self._close_history_panel()
-        else:
-            self._open_history_panel()
-
-    def _open_history_panel(self) -> None:
-        """打开历史面板。"""
-        self._ensure_history_panel()
-        self._history_mask.show_mask()
-        self._history_panel.show_animated()
-        self._refresh_history()
-
-    def _close_history_panel(self) -> None:
-        """关闭历史面板。"""
-        if self._history_panel:
-            self._history_panel.hide_animated()
-        if self._history_mask:
-            self._history_mask.hide_mask()
+    def _on_history_close(self) -> None:
+        """历史面板关闭按钮 — 通知框架隐藏右侧面板。"""
+        hide_fn = self.context.get("hide_right_panel")
+        if hide_fn:
+            hide_fn()
 
     def _refresh_history(self) -> None:
         """刷新历史记录和分析历史。"""
@@ -710,7 +636,7 @@ class PerfettoCaptureTab(BaseTab):
             bus = get_event_bus()
             bus.emit("perfetto_capture.open_trace_for_analysis", {"trace_path": str(trace_path)})
             self._log(f"已请求分析: {trace_path.name}", "info")
-            self._close_history_panel()
+            self._on_history_close()
         except Exception as e:
             self._log(f"发送分析请求失败: {e}", "error")
 
@@ -734,51 +660,12 @@ class PerfettoCaptureTab(BaseTab):
             self._log(f"删除失败: {trace_path.name}", "error")
         self._refresh_history()
 
-    def resizeEvent(self, event) -> None:  # noqa: N802
-        """父级大小变化时，重新定位遮罩和历史面板（跨屏 DPI 变化等场景）。"""
-        super().resizeEvent(event)
-        if self._history_mask and self._history_mask.isVisible():
-            self._history_mask.setGeometry(0, 0, self.width(), self.height())
-        if self._history_panel and self._history_panel.isVisible():
-            from PyQt6.QtCore import QAbstractAnimation
-
-            anim_running = (
-                hasattr(self._history_panel, "_animation")
-                and self._history_panel._animation.state()
-                == QAbstractAnimation.State.Running
-            )
-            if not anim_running:
-                self._history_panel.setFixedHeight(self.height())
-                panel_x = self.width() - self._history_panel.width()
-                self._history_panel.move(panel_x, 0)
-
-    def keyPressEvent(self, event) -> None:
-        """键盘事件处理。"""
-        if event.key() == Qt.Key.Key_Escape:
-            if self._history_panel and self._history_panel.isVisible():
-                self._close_history_panel()
-                return
-        super().keyPressEvent(event)
-
-    def _log(self, message: str, level: str = "info") -> None:
-        ts = datetime.datetime.now().strftime("%H:%M:%S")
-        fmt = QTextCharFormat()
-        colors = _THEME_COLORS.get("dark", _THEME_COLORS["dark"])
-        if level == "success":
-            fmt.setForeground(QColor(colors["success"]))
-        elif level == "error":
-            fmt.setForeground(QColor(colors["error"]))
-        elif level == "warning":
-            fmt.setForeground(QColor(colors["warning"]))
-        else:
-            fmt.setForeground(QColor(colors["fg"]))
-        cursor = self._log_area.textCursor()
-        cursor.movePosition(cursor.MoveOperation.End)
-        cursor.insertText(f"[{ts}] {message}\n", fmt)
-        self._log_area.setTextCursor(cursor)
-        self._log_area.ensureCursorVisible()
+    def _log(self, msg: str, level: str = "info") -> None:
+        """兼容旧接口的位置参数 level 调用。"""
+        super()._log(msg, level=level)
 
     def on_activated(self) -> None:
+        self._ensure_history_panel()
         if self.context:
             self._service = self.context.get("pe_service")
             self._adb = self.context.get("pe_adb")
