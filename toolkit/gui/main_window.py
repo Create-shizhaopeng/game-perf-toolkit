@@ -48,6 +48,7 @@ class MainWindow(QWidget):
         self._resize_edge = 0
         self._resize_start_pos = QPoint()
         self._resize_start_geo = QRect()
+        self._intended_size = self.size()
 
         self._root_layout = QVBoxLayout(self)
         self._root_layout.setContentsMargins(
@@ -62,6 +63,7 @@ class MainWindow(QWidget):
         self._title_bar.close_clicked.connect(self.close)
         self._title_bar.theme_toggled.connect(self._toggle_theme)
         self._title_bar.llm_settings_requested.connect(self._open_llm_settings)
+        self._title_bar.agent_settings_requested.connect(self._open_agent_settings)
         self._root_layout.addWidget(self._title_bar)
 
         self._nav_panel = NavPanel(self)
@@ -137,12 +139,17 @@ class MainWindow(QWidget):
             event_bus.on("device_disguise.state_changed", self._on_disguise_state_changed)
 
         self._apply_theme()
+        self._title_bar.set_theme(self._current_theme)
+        self._nav_panel.set_theme(self._current_theme)
+        self._home_tab.set_theme(self._current_theme)
 
     def add_tab(self, tab: BaseTab) -> None:
         """添加一个模块页面到内容区。"""
         self._tabs.append(tab)
         self._content_stack.addWidget(tab)
         self._nav_panel.add_tab_button(tab.tab_title, tab.tab_icon)
+        if hasattr(tab, "set_theme"):
+            tab.set_theme(self._current_theme)
         logger.info("注册 GUI Tab: %s", tab.tab_title)
 
     def set_module_info(self, modules: list[dict]) -> None:
@@ -155,6 +162,15 @@ class MainWindow(QWidget):
     def show(self) -> None:
         super().show()
         self._device_monitor.start()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if not hasattr(self, "_screen_connected"):
+            self._intended_size = self.size()
+            win = self.windowHandle()
+            if win:
+                win.screenChanged.connect(self._on_screen_changed)
+                self._screen_connected = True
 
     def closeEvent(self, event) -> None:
         self._device_monitor.stop()
@@ -198,6 +214,7 @@ class MainWindow(QWidget):
             )
             self.showNormal()
             self._is_maximized = False
+            self._intended_size = self.size()
 
             if center_on_cursor:
                 from PyQt6.QtGui import QCursor
@@ -277,6 +294,8 @@ class MainWindow(QWidget):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
+        if self._resize_edge:
+            self._intended_size = self.size()
         self._resize_edge = 0
         self.setCursor(Qt.CursorShape.ArrowCursor)
         super().mouseReleaseEvent(event)
@@ -294,32 +313,39 @@ class MainWindow(QWidget):
             config.set_theme(self._current_theme)
 
         self._apply_theme()
-
-        self._title_bar.set_theme(self._current_theme)
-        self._home_tab.set_theme(self._current_theme)
-
-        pm = self.context.get("plugin_manager")
-        module_count = len(pm.loaded_modules) if pm else 0
-        self._home_tab.update_status(self._devices, module_count, self._current_theme)
+        self._propagate_theme()
 
         logger.info("主题已切换: %s", self._current_theme)
 
+    def _propagate_theme(self) -> None:
+        """将当前主题通知到所有子组件。"""
+        theme = self._current_theme
+        self._title_bar.set_theme(theme)
+        self._nav_panel.set_theme(theme)
+
+        for tab in self._tabs:
+            if hasattr(tab, "set_theme"):
+                tab.set_theme(theme)
+
+        pm = self.context.get("plugin_manager")
+        module_count = len(pm.loaded_modules) if pm else 0
+        self._home_tab.update_status(self._devices, module_count, theme)
+
     def _on_budget_alert(self, ratio: float) -> None:
         """Token 预算到达告警阈值。"""
-        from PyQt6.QtWidgets import QMessageBox
+        from toolkit.gui.toolkit_dialog import confirm_dialog
 
         pct = int(ratio * 100)
-        result = QMessageBox.warning(
+        ok = confirm_dialog(
             self,
             "Token 预算告警",
             f"当前会话 Token 用量已达预算的 {pct}%。\n\n"
             "是否继续后续请求？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
+            confirm_text="继续",
         )
         llm_mgr = self.context.get("llm_manager")
         if llm_mgr and hasattr(llm_mgr, "set_budget_paused"):
-            llm_mgr.set_budget_paused(result == QMessageBox.StandardButton.No)
+            llm_mgr.set_budget_paused(not ok)
 
     def _on_degradation(self, from_provider: str, to_provider: str) -> None:
         """LLM Provider 降级通知。"""
@@ -330,7 +356,7 @@ class MainWindow(QWidget):
         QTimer.singleShot(3000, lambda: self._status_text.setText(original))
 
     def _open_llm_settings(self) -> None:
-        """打开 LLM 模型设置对话框（T018-T020 实现）。"""
+        """打开 LLM 模型设置对话框。"""
         from toolkit.gui.llm_settings_dialog import LLMSettingsDialog
 
         llm_manager = self.context.get("llm_manager")
@@ -339,6 +365,34 @@ class MainWindow(QWidget):
             return
         dialog = LLMSettingsDialog(llm_manager, parent=self)
         dialog.exec()
+
+    def _open_agent_settings(self) -> None:
+        """打开 Agent 设置对话框。"""
+        for tab in self._tabs:
+            if hasattr(tab, "_on_open_settings"):
+                tab._on_open_settings()
+                return
+        logger.warning("Agent 模块未加载，无法打开设置")
+
+    def _on_screen_changed(self, screen) -> None:
+        """跨屏拖动后恢复窗口大小。"""
+        if self._is_maximized:
+            return
+        from PyQt6.QtCore import QTimer
+
+        target = self._intended_size
+        QTimer.singleShot(100, lambda: self._restore_after_screen_change(target))
+
+    def _restore_after_screen_change(self, target_size) -> None:
+        """DPI 缩放稳定后恢复到目标大小。"""
+        if self._is_maximized:
+            return
+        screen = self.screen()
+        if screen:
+            avail = screen.availableGeometry()
+            w = min(target_size.width(), avail.width())
+            h = min(target_size.height(), avail.height())
+            self.resize(w, h)
 
     def _apply_theme(self) -> None:
         """应用主题样式表到整个应用。"""

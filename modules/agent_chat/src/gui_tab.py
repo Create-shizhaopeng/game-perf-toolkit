@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QThread, QTimer, Qt, pyqtSignal
+from PyQt6.QtCore import QSize, QThread, QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QKeyEvent, QTextCharFormat
 from PyQt6.QtWidgets import (
     QApplication,
@@ -25,13 +25,11 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMenu,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -48,26 +46,53 @@ from PyQt6.QtWidgets import (
 )
 
 from toolkit.gui.base_tab import BaseTab
+from toolkit.gui.codicons import codicon_font, icon_char
+from toolkit.gui.toolkit_dialog import (
+    confirm_dialog,
+    info_dialog,
+    input_dialog,
+    warning_dialog,
+)
 
 logger = logging.getLogger(__name__)
 
-_DARK = {
-    "bg": "#1e1e2e",
-    "card_bg": "#313244",
-    "border": "#45475a",
-    "fg": "#cdd6f4",
-    "fg_dim": "#a6adc8",
-    "accent": "#cba6f7",
-    "success": "#a6e3a1",
-    "error": "#f38ba8",
-    "warning": "#fab387",
-    "user_bubble": "#313244",
-    "tool_card_bg": "#181825",
-    "workflow_border": "#cba6f7",
-    "learn_border": "#f9e2af",
-    "btn_send_bg": "#cba6f7",
-    "btn_stop_bg": "#f38ba8",
+_THEMES = {
+    "dark": {
+        "bg": "#1e1e2e",
+        "card_bg": "#313244",
+        "border": "#45475a",
+        "fg": "#cdd6f4",
+        "fg_dim": "#a6adc8",
+        "accent": "#cba6f7",
+        "success": "#a6e3a1",
+        "error": "#f38ba8",
+        "warning": "#fab387",
+        "user_bubble": "#313244",
+        "tool_card_bg": "#181825",
+        "workflow_border": "#cba6f7",
+        "learn_border": "#f9e2af",
+        "btn_send_bg": "#cba6f7",
+        "btn_stop_bg": "#f38ba8",
+    },
+    "light": {
+        "bg": "#eff1f5",
+        "card_bg": "#e6e9ef",
+        "border": "#ccd0da",
+        "fg": "#4c4f69",
+        "fg_dim": "#6c6f85",
+        "accent": "#8839ef",
+        "success": "#40a02b",
+        "error": "#d20f39",
+        "warning": "#fe640b",
+        "user_bubble": "#dce0e8",
+        "tool_card_bg": "#e6e9ef",
+        "workflow_border": "#8839ef",
+        "learn_border": "#df8e1d",
+        "btn_send_bg": "#8839ef",
+        "btn_stop_bg": "#d20f39",
+    },
 }
+_DARK = _THEMES["dark"]
 
 
 # ---------------------------------------------------------------------------
@@ -571,7 +596,7 @@ class _ChatInput(QTextEdit):
 
 
 class _SettingsDialog(QDialog):
-    """Agent 设置弹窗（模型配置 + SOP 管理 + MCP 管理 + 高级设置）。"""
+    """Agent 设置弹窗 — 无边框风格，与 LLM 设置一致。"""
 
     config_changed = pyqtSignal(object)  # AgentConfig
 
@@ -583,34 +608,85 @@ class _SettingsDialog(QDialog):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Agent 设置")
+        self.setObjectName("llmSettingsDialog")
         self.setMinimumSize(560, 460)
+        self.setModal(True)
+        self.setWindowFlags(
+            Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint
+        )
+        self._drag_pos: QPoint | None = None
         self._config = config
         self._sop_manager = sop_manager
         self._mcp_manager = mcp_manager
         self._init_ui()
 
     def _init_ui(self) -> None:
-        layout = QVBoxLayout(self)
-        tabs = QTabWidget()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
+        title_bar = QWidget()
+        title_bar.setObjectName("llmDialogTitleBar")
+        title_bar.setFixedHeight(36)
+        tb_layout = QHBoxLayout(title_bar)
+        tb_layout.setContentsMargins(16, 0, 4, 0)
+
+        title_lbl = QLabel("⚙ Agent 设置")
+        title_lbl.setObjectName("llmDialogTitle")
+        tb_layout.addWidget(title_lbl)
+        tb_layout.addStretch()
+
+        from toolkit.gui.toolkit_dialog import DialogCloseButton
+        close_btn = DialogCloseButton()
+        close_btn.clicked.connect(self.reject)
+        tb_layout.addWidget(close_btn)
+        outer.addWidget(title_bar)
+
+        sep = QWidget()
+        sep.setObjectName("llmDialogSeparator")
+        sep.setFixedHeight(1)
+        outer.addWidget(sep)
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(16, 12, 16, 16)
+        layout.setSpacing(8)
+
+        tabs = QTabWidget()
         tabs.addTab(self._build_sop_tab(), "SOP 管理")
         tabs.addTab(self._build_mcp_tab(), "MCP 管理")
         tabs.addTab(self._build_advanced_tab(), "高级设置")
-
         layout.addWidget(tabs)
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         btn_save = QPushButton("保存")
+        btn_save.setObjectName("primaryBtn")
         btn_save.setFixedWidth(80)
         btn_save.clicked.connect(self._on_save)
         btn_cancel = QPushButton("取消")
+        btn_cancel.setObjectName("secondaryBtn")
         btn_cancel.setFixedWidth(80)
         btn_cancel.clicked.connect(self.reject)
         btn_layout.addWidget(btn_save)
         btn_layout.addWidget(btn_cancel)
         layout.addLayout(btn_layout)
+
+        outer.addWidget(content)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and event.pos().y() < 36:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        self._drag_pos = None
+        super().mouseReleaseEvent(event)
 
     def _build_model_tab(self) -> QWidget:
         w = QWidget()
@@ -771,15 +847,15 @@ class _SettingsDialog(QDialog):
 
     def _on_add_mcp_server(self) -> None:
         if not self._mcp_manager:
-            QMessageBox.warning(self, "MCP", "MCP SDK 未安装")
+            warning_dialog(self, "MCP", "MCP SDK 未安装")
             return
-        name, ok = QInputDialog.getText(self, "添加 MCP 服务器", "服务器名称:")
+        name, ok = input_dialog(self, "添加 MCP 服务器", "服务器名称:")
         if not ok or not name.strip():
             return
-        cmd, ok = QInputDialog.getText(self, "添加 MCP 服务器", "启动命令 (如 npx):")
+        cmd, ok = input_dialog(self, "添加 MCP 服务器", "启动命令 (如 npx):")
         if not ok or not cmd.strip():
             return
-        args_str, _ = QInputDialog.getText(self, "添加 MCP 服务器", "参数 (空格分隔):")
+        args_str, ok = input_dialog(self, "添加 MCP 服务器", "参数 (空格分隔):")
         args = args_str.strip().split() if args_str.strip() else []
 
         from .models import MCPServerConfig
@@ -973,9 +1049,11 @@ class AgentTab(BaseTab):
 
     def _build_left_panel(self) -> QWidget:
         panel = QWidget()
+        panel.setObjectName("agentLeftPanel")
+        self._left_panel = panel
         panel.setStyleSheet(
-            f"background-color: {_DARK['bg']};"
-            f"border-right: 1px solid {_DARK['border']};"
+            f"QWidget#agentLeftPanel {{ background-color: {_DARK['bg']};"
+            f"border-right: 1px solid {_DARK['border']}; }}"
         )
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -986,8 +1064,8 @@ class AgentTab(BaseTab):
         hist_label = QLabel("会话历史")
         hist_label.setStyleSheet("font-weight: bold; font-size: 12px;")
         self._btn_new_conv = QPushButton("+ 新建")
-        self._btn_new_conv.setFixedHeight(22)
-        self._btn_new_conv.setFixedWidth(50)
+        self._btn_new_conv.setFixedHeight(26)
+        self._btn_new_conv.setMinimumWidth(60)
         self._btn_new_conv.setStyleSheet(
             f"color: {_DARK['accent']}; border: 1px solid {_DARK['border']}; "
             "border-radius: 4px; font-size: 11px;"
@@ -1001,49 +1079,14 @@ class AgentTab(BaseTab):
         self._conv_list = QListWidget()
         self._conv_list.setStyleSheet(
             f"QListWidget {{ background-color: transparent; border: none; }}"
-            f"QListWidget::item {{ padding: 6px 8px; border-radius: 4px; }}"
-            f"QListWidget::item:selected {{ background-color: {_DARK['card_bg']}; }}"
-            f"QListWidget::item:hover {{ background-color: {_DARK['border']}; }}"
+            f"QListWidget::item {{ padding: 2px 0px; border-radius: 4px; }}"
+            f"QListWidget::item:selected {{ background-color: transparent; }}"
+            f"QListWidget::item:hover {{ background-color: transparent; }}"
         )
         self._conv_list.itemClicked.connect(self._on_conv_selected)
         self._conv_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._conv_list.customContextMenuRequested.connect(self._on_conv_context_menu)
         layout.addWidget(self._conv_list, 1)
-
-        # 知识管理（Skills）
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {_DARK['border']};")
-        layout.addWidget(sep)
-
-        skill_header = QHBoxLayout()
-        skill_label = QLabel("知识管理")
-        skill_label.setStyleSheet("font-weight: bold; font-size: 12px;")
-        skill_header.addWidget(skill_label)
-        skill_header.addStretch()
-        layout.addLayout(skill_header)
-
-        self._skill_tree = QTreeWidget()
-        self._skill_tree.setHeaderHidden(True)
-        self._skill_tree.setStyleSheet(
-            f"QTreeWidget {{ background-color: transparent; border: none; }}"
-            f"QTreeWidget::item {{ padding: 3px 4px; }}"
-            f"QTreeWidget::item:hover {{ background-color: {_DARK['border']}; }}"
-        )
-        self._skill_tree.setMaximumHeight(180)
-        layout.addWidget(self._skill_tree)
-
-        skill_btn_row = QHBoxLayout()
-        btn_manage = QPushButton("⚙ 管理")
-        btn_manage.setFixedHeight(22)
-        btn_manage.setStyleSheet(
-            f"color: {_DARK['fg_dim']}; border: 1px solid {_DARK['border']}; "
-            "border-radius: 4px; font-size: 11px; padding: 2px 6px;"
-        )
-        btn_manage.clicked.connect(self._on_open_settings)
-        skill_btn_row.addWidget(btn_manage)
-        skill_btn_row.addStretch()
-        layout.addLayout(skill_btn_row)
 
         return panel
 
@@ -1054,30 +1097,20 @@ class AgentTab(BaseTab):
         layout.setSpacing(0)
 
         # 顶部工具栏
-        toolbar = QWidget()
-        toolbar.setFixedHeight(36)
-        toolbar.setStyleSheet(
-            f"background-color: {_DARK['bg']};"
-            f"border-bottom: 1px solid {_DARK['border']};"
+        self._toolbar = QWidget()
+        self._toolbar.setObjectName("agentToolbar")
+        self._toolbar.setFixedHeight(36)
+        self._toolbar.setStyleSheet(
+            f"QWidget#agentToolbar {{ background-color: {_DARK['bg']};"
+            f"border-bottom: 1px solid {_DARK['border']}; }}"
         )
-        tb_layout = QHBoxLayout(toolbar)
+        tb_layout = QHBoxLayout(self._toolbar)
         tb_layout.setContentsMargins(12, 0, 12, 0)
-        lbl_title = QLabel("🤖 Agent 智能助手")
-        lbl_title.setStyleSheet(f"color: {_DARK['accent']}; font-weight: bold; font-size: 13px;")
-        tb_layout.addWidget(lbl_title)
+        self._lbl_title = QLabel("🤖 Agent 智能助手")
+        self._lbl_title.setStyleSheet(f"color: {_DARK['accent']}; font-weight: bold; font-size: 13px;")
+        tb_layout.addWidget(self._lbl_title)
         tb_layout.addStretch()
-        self._lbl_model = QLabel("模型: --")
-        self._lbl_model.setStyleSheet(f"color: {_DARK['fg_dim']}; font-size: 11px;")
-        tb_layout.addWidget(self._lbl_model)
-        self._btn_settings = QPushButton("⚙ 设置")
-        self._btn_settings.setFixedHeight(24)
-        self._btn_settings.setStyleSheet(
-            f"color: {_DARK['fg_dim']}; border: 1px solid {_DARK['border']}; "
-            "border-radius: 4px; padding: 2px 8px; font-size: 11px;"
-        )
-        self._btn_settings.clicked.connect(self._on_open_settings)
-        tb_layout.addWidget(self._btn_settings)
-        layout.addWidget(toolbar)
+        layout.addWidget(self._toolbar)
 
         # 消息区域（QStackedWidget: 欢迎页 / 聊天页）
         self._content_stack = QStackedWidget()
@@ -1091,9 +1124,9 @@ class AgentTab(BaseTab):
         layout.addWidget(self._content_stack, 1)
 
         # 输入区域
-        input_bar = QWidget()
-        input_bar.setStyleSheet(f"border-top: 1px solid {_DARK['border']};")
-        ib_layout = QHBoxLayout(input_bar)
+        self._input_bar = QWidget()
+        self._input_bar.setStyleSheet(f"border-top: 1px solid {_DARK['border']};")
+        ib_layout = QHBoxLayout(self._input_bar)
         ib_layout.setContentsMargins(12, 8, 12, 8)
 
         self._chat_input = _ChatInput()
@@ -1111,7 +1144,7 @@ class AgentTab(BaseTab):
         self._chat_input.send_requested.connect(self._on_send)
         ib_layout.addWidget(self._btn_send)
 
-        layout.addWidget(input_bar)
+        layout.addWidget(self._input_bar)
         return panel
 
     def _build_welcome_page(self) -> QWidget:
@@ -1122,15 +1155,15 @@ class AgentTab(BaseTab):
         center = QVBoxLayout()
         center.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        title = QLabel("🤖 Agent 智能助手")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet(f"color: {_DARK['accent']}; font-size: 20px; font-weight: bold;")
-        center.addWidget(title)
+        self._welcome_title = QLabel("🤖 Agent 智能助手")
+        self._welcome_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._welcome_title.setStyleSheet(f"color: {_DARK['accent']}; font-size: 20px; font-weight: bold;")
+        center.addWidget(self._welcome_title)
 
-        subtitle = QLabel("描述你的任务，我将自动匹配工作流完成分析。")
-        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet(f"color: {_DARK['fg_dim']}; font-size: 13px; padding: 8px;")
-        center.addWidget(subtitle)
+        self._welcome_subtitle = QLabel("描述你的任务，我将自动匹配工作流完成分析。")
+        self._welcome_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._welcome_subtitle.setStyleSheet(f"color: {_DARK['fg_dim']}; font-size: 13px; padding: 8px;")
+        center.addWidget(self._welcome_subtitle)
 
         btn_grid = QHBoxLayout()
         btn_grid.setSpacing(12)
@@ -1141,6 +1174,7 @@ class AgentTab(BaseTab):
             ("⚙ 策略审查", "帮我审查当前的游戏性能策略配置"),
             ("🔬 综合卡顿分析", "帮我做一次完整的游戏卡顿综合分析"),
         ]
+        self._shortcut_btns: list[QPushButton] = []
         for label, prompt in shortcuts:
             btn = QPushButton(label)
             btn.setFixedSize(140, 36)
@@ -1153,13 +1187,14 @@ class AgentTab(BaseTab):
             )
             btn.clicked.connect(lambda checked, p=prompt: self._quick_send(p))
             btn_grid.addWidget(btn)
+            self._shortcut_btns.append(btn)
         btn_grid.addStretch()
         center.addLayout(btn_grid)
 
-        hint = QLabel("💡 提示: 你也可以直接描述需求，无需选择具体分析类型")
-        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint.setStyleSheet(f"color: {_DARK['fg_dim']}; font-size: 11px; padding: 12px;")
-        center.addWidget(hint)
+        self._welcome_hint = QLabel("💡 提示: 你也可以直接描述需求，无需选择具体分析类型")
+        self._welcome_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._welcome_hint.setStyleSheet(f"color: {_DARK['fg_dim']}; font-size: 11px; padding: 12px;")
+        center.addWidget(self._welcome_hint)
 
         layout.addLayout(center)
         layout.addStretch(3)
@@ -1190,10 +1225,6 @@ class AgentTab(BaseTab):
     def on_activated(self) -> None:
         if self.context:
             self._config = self.context.get("ac_config")
-            if self._config:
-                self._lbl_model.setText(
-                    f"模型: {self._config.model_name} ({self._config.provider.upper()})"
-                )
         self._ensure_service()
         self._refresh_conv_list()
         self._refresh_skill_tree()
@@ -1207,6 +1238,85 @@ class AgentTab(BaseTab):
             )
         if not has_key and self._content_stack.currentIndex() == 0:
             self._show_setup_guide()
+
+    def set_theme(self, theme: str) -> None:
+        """切换主题 — 更新内联样式中的颜色引用。"""
+        c = _THEMES.get(theme, _THEMES["dark"])
+        global _DARK
+        _DARK = c
+
+        if hasattr(self, "_left_panel"):
+            self._left_panel.setStyleSheet(
+                f"QWidget#agentLeftPanel {{ background-color: {c['bg']};"
+                f"border-right: 1px solid {c['border']}; }}"
+            )
+
+        if hasattr(self, "_toolbar"):
+            self._toolbar.setStyleSheet(
+                f"QWidget#agentToolbar {{ background-color: {c['bg']};"
+                f"border-bottom: 1px solid {c['border']}; }}"
+            )
+
+        if hasattr(self, "_lbl_title"):
+            self._lbl_title.setStyleSheet(
+                f"color: {c['accent']}; font-weight: bold; font-size: 13px;"
+            )
+
+        if hasattr(self, "_input_bar"):
+            self._input_bar.setStyleSheet(
+                f"border-top: 1px solid {c['border']};"
+            )
+
+        self._conv_list.setStyleSheet(
+            f"QListWidget {{ background-color: transparent; border: none; }}"
+            f"QListWidget::item {{ padding: 2px 0px; border-radius: 4px; }}"
+            f"QListWidget::item:selected {{ background-color: transparent; }}"
+            f"QListWidget::item:hover {{ background-color: transparent; }}"
+        )
+
+        if hasattr(self, "_btn_send"):
+            self._btn_send.setStyleSheet(
+                f"background-color: {c['btn_send_bg']};"
+                f"color: {c['bg']};"
+                "border-radius: 8px; font-weight: bold;"
+            )
+
+        if hasattr(self, "_btn_new_conv"):
+            self._btn_new_conv.setStyleSheet(
+                f"color: {c['accent']}; border: 1px solid {c['border']}; "
+                "border-radius: 4px; font-size: 11px;"
+            )
+
+        if hasattr(self, "_welcome_title"):
+            self._welcome_title.setStyleSheet(
+                f"color: {c['accent']}; font-size: 20px; font-weight: bold;"
+            )
+        if hasattr(self, "_welcome_subtitle"):
+            self._welcome_subtitle.setStyleSheet(
+                f"color: {c['fg_dim']}; font-size: 13px; padding: 8px;"
+            )
+        if hasattr(self, "_welcome_hint"):
+            self._welcome_hint.setStyleSheet(
+                f"color: {c['fg_dim']}; font-size: 11px; padding: 12px;"
+            )
+        for btn in getattr(self, "_shortcut_btns", []):
+            btn.setStyleSheet(
+                f"background-color: {c['card_bg']};"
+                f"color: {c['fg']};"
+                f"border: 1px solid {c['border']};"
+                "border-radius: 8px; font-size: 12px;"
+            )
+
+        if hasattr(self, "_chat_input"):
+            self._chat_input.setStyleSheet(
+                f"background-color: {c['card_bg']};"
+                f"color: {c['fg']};"
+                f"border: 1px solid {c['border']};"
+                "border-radius: 8px; padding: 8px; font-size: 13px;"
+            )
+
+        self._refresh_conv_list()
+
 
     # ── 服务初始化 ────────────────────────────────────────────────────────
 
@@ -1317,12 +1427,75 @@ class AgentTab(BaseTab):
 
             for c in items:
                 title = c.get("title") or "新对话"
-                if len(title) > 20:
-                    title = title[:20] + "..."
-                prefix = "🔵" if c["id"] == self._current_conv_id else "⚪"
-                item = QListWidgetItem(f"  {prefix} {title}")
-                item.setData(Qt.ItemDataRole.UserRole, c["id"])
+                if len(title) > 24:
+                    title = title[:24] + "…"
+                is_active = c["id"] == self._current_conv_id
+                conv_id = c["id"]
+
+                row_h = 30
+
+                row_widget = QWidget()
+                row_widget.setFixedHeight(row_h)
+                row_layout = QHBoxLayout(row_widget)
+                row_layout.setContentsMargins(8, 0, 4, 0)
+                row_layout.setSpacing(2)
+
+                lbl = QLabel(title)
+                lbl.setAlignment(
+                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+                )
+                lbl.setStyleSheet(
+                    f"font-weight: {'bold' if is_active else 'normal'};"
+                    f"color: {_DARK['accent'] if is_active else _DARK['fg']};"
+                    "font-size: 12px; background: transparent;"
+                )
+                row_layout.addWidget(lbl, 1)
+
+                if not is_active:
+                    btn_del = QPushButton()
+                    btn_del.setFixedSize(20, 20)
+                    _cf = codicon_font(12)
+                    if _cf:
+                        btn_del.setFont(_cf)
+                        btn_del.setText(icon_char("close"))
+                    else:
+                        btn_del.setText("\u00D7")
+                    btn_del.setStyleSheet(
+                        f"QPushButton {{ background: transparent; border: none;"
+                        f"padding: 0; margin: 0; color: {_DARK['fg_dim']}; }}"
+                        f"QPushButton:hover {{ color: {_DARK['error']};"
+                        f"background: {_DARK['border']}; border-radius: 3px; }}"
+                    )
+                    btn_del.setToolTip("删除会话")
+                    btn_del.clicked.connect(
+                        lambda checked, cid=conv_id: self._on_delete_conv(cid)
+                    )
+                    row_layout.addWidget(btn_del)
+
+                if is_active:
+                    row_widget.setStyleSheet(
+                        f"background-color: {_DARK['card_bg']}; border-radius: 4px;"
+                    )
+
+                item = QListWidgetItem()
+                item.setData(Qt.ItemDataRole.UserRole, conv_id)
+                item.setSizeHint(QSize(0, row_h))
                 self._conv_list.addItem(item)
+                self._conv_list.setItemWidget(item, row_widget)
+
+    def _on_delete_conv(self, conv_id: str) -> None:
+        """直接删除指定会话。"""
+        ok = confirm_dialog(
+            self, "删除对话", "确认删除该对话？",
+            confirm_text="删除", danger=True,
+        )
+        if ok and self._store:
+            self._store.delete_conversation(conv_id)
+            if self._current_conv_id == conv_id:
+                self._current_conv_id = None
+                self._clear_messages()
+                self._content_stack.setCurrentIndex(0)
+            self._refresh_conv_list()
 
     def _on_conv_selected(self, item: QListWidgetItem) -> None:
         conv_id = item.data(Qt.ItemDataRole.UserRole)
@@ -1330,13 +1503,11 @@ class AgentTab(BaseTab):
             return
 
         if self._is_running:
-            reply = QMessageBox.question(
-                self,
-                "切换会话",
+            ok = confirm_dialog(
+                self, "切换会话",
                 "当前有任务在执行中，切换会话将停止当前任务。是否继续？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
-            if reply == QMessageBox.StandardButton.No:
+            if not ok:
                 return
             self._on_stop()
 
@@ -1358,16 +1529,16 @@ class AgentTab(BaseTab):
 
         action = menu.exec(self._conv_list.mapToGlobal(pos))
         if action == action_rename:
-            new_name, ok = QInputDialog.getText(self, "重命名对话", "新名称:")
+            new_name, ok = input_dialog(self, "重命名对话", "新名称:")
             if ok and new_name.strip() and self._store:
                 self._store.rename_conversation(conv_id, new_name.strip())
                 self._refresh_conv_list()
         elif action == action_delete:
-            reply = QMessageBox.question(
+            ok = confirm_dialog(
                 self, "删除对话", "确认删除该对话？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                confirm_text="删除", danger=True,
             )
-            if reply == QMessageBox.StandardButton.Yes and self._store:
+            if ok and self._store:
                 self._store.delete_conversation(conv_id)
                 if self._current_conv_id == conv_id:
                     self._current_conv_id = None
@@ -1377,13 +1548,11 @@ class AgentTab(BaseTab):
 
     def _on_new_conversation(self) -> None:
         if self._is_running:
-            reply = QMessageBox.question(
-                self,
-                "新建对话",
+            ok = confirm_dialog(
+                self, "新建对话",
                 "当前有任务在执行中，新建对话将停止当前任务。是否继续？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
-            if reply == QMessageBox.StandardButton.No:
+            if not ok:
                 return
             self._on_stop()
 
@@ -1435,6 +1604,8 @@ class AgentTab(BaseTab):
     # ── 知识管理 (Skills) ──────────────────────────────────────────────
 
     def _refresh_skill_tree(self) -> None:
+        if not hasattr(self, "_skill_tree"):
+            return
         self._skill_tree.clear()
         if not self._skills_manager:
             return
@@ -1476,9 +1647,6 @@ class AgentTab(BaseTab):
         self._config = new_config
         if self.context:
             self.context["ac_config"] = new_config
-        self._lbl_model.setText(
-            f"模型: {new_config.model_name} ({new_config.provider.upper()})"
-        )
         self._reinit_service()
         self._refresh_skill_tree()
 
@@ -1498,11 +1666,11 @@ class AgentTab(BaseTab):
 
         self._ensure_service()
         if not self._service:
-            QMessageBox.warning(self, "Agent 未就绪", "请先在设置中配置 API Key。")
+            warning_dialog(self, "Agent 未就绪", "请先在设置中配置 API Key。")
             return
 
         if not self._service.is_ready:
-            QMessageBox.warning(self, "Agent 未就绪", "API Key 未配置或无效，请在设置中检查。")
+            warning_dialog(self, "Agent 未就绪", "API Key 未配置或无效，请在设置中检查。")
             return
 
         self._content_stack.setCurrentIndex(1)
@@ -1666,13 +1834,12 @@ class AgentTab(BaseTab):
             self._sop_manager.load_all()
         self._refresh_skill_tree()
 
-        reply = QMessageBox.question(
-            self,
-            "SOP 已保存",
+        ok = confirm_dialog(
+            self, "SOP 已保存",
             f"SOP 已保存到:\n{saved_path}\n\n是否打开编辑？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            confirm_text="打开",
         )
-        if reply == QMessageBox.StandardButton.Yes:
+        if ok:
             open_sop_file(saved_path)
 
     # ── UI 辅助方法 ──────────────────────────────────────────────────────

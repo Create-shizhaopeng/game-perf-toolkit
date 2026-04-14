@@ -48,9 +48,36 @@ QMenu#settingsMenu::item:selected {
     background-color: #45475a;
 }
 
-/* LLM 设置对话框 */
+/* LLM 设置对话框 — 无边框风格 */
 QDialog#llmSettingsDialog {
     background-color: #1e1e2e;
+    border: 1px solid #45475a;
+    border-radius: 8px;
+}
+QWidget#llmDialogTitleBar {
+    background-color: #181825;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+QLabel#llmDialogTitle {
+    color: #cdd6f4;
+    font-weight: bold;
+    font-size: 13px;
+    background: transparent;
+}
+QPushButton#llmDialogCloseBtn {
+    background: transparent;
+    border: none;
+    color: #a6adc8;
+    font-size: 14px;
+    border-radius: 4px;
+}
+QPushButton#llmDialogCloseBtn:hover {
+    background: #f38ba8;
+    color: #1e1e2e;
+}
+QWidget#llmDialogSeparator {
+    background-color: #45475a;
 }
 QDialog#llmSettingsDialog QLabel {
     color: #cdd6f4;
@@ -370,6 +397,46 @@ QGroupBox::title {
     padding: 0 8px;
 }
 
+/* 主要按钮 — 强调操作（保存/确认/发送） */
+QPushButton#primaryBtn {
+    background-color: #cba6f7;
+    color: #1e1e2e;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 20px;
+    font-weight: bold;
+}
+QPushButton#primaryBtn:hover { background-color: #b490e0; }
+QPushButton#primaryBtn:pressed { background-color: #a37dd0; }
+
+/* 次要按钮 — 辅助操作（取消/关闭） */
+QPushButton#secondaryBtn {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 6px 20px;
+    color: #cdd6f4;
+}
+QPushButton#secondaryBtn:hover { background-color: #45475a; }
+
+/* 危险按钮 — 破坏性操作（删除） */
+QPushButton#dangerBtn {
+    background-color: transparent;
+    border: 1px solid #f38ba8;
+    border-radius: 6px;
+    padding: 6px 20px;
+    color: #f38ba8;
+}
+QPushButton#dangerBtn:hover { background-color: #f38ba8; color: #1e1e2e; }
+
+/* 幽灵按钮 — 无背景无边框（列表内操作图标等） */
+QPushButton#ghostBtn {
+    background: transparent;
+    border: none;
+    padding: 0px;
+    margin: 0px;
+}
+
 /* 停止按钮 */
 QPushButton#stopBtn {
     background-color: #f38ba8;
@@ -526,9 +593,36 @@ QMenu#settingsMenu::item:selected {
     background-color: #ccd0da;
 }
 
-/* LLM 设置对话框 — 浅色 */
+/* LLM 设置对话框 — 浅色无边框 */
 QDialog#llmSettingsDialog {
     background-color: #eff1f5;
+    border: 1px solid #bcc0cc;
+    border-radius: 8px;
+}
+QWidget#llmDialogTitleBar {
+    background-color: #e6e9ef;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+QLabel#llmDialogTitle {
+    color: #333333;
+    font-weight: bold;
+    font-size: 13px;
+    background: transparent;
+}
+QPushButton#llmDialogCloseBtn {
+    background: transparent;
+    border: none;
+    color: #616161;
+    font-size: 14px;
+    border-radius: 4px;
+}
+QPushButton#llmDialogCloseBtn:hover {
+    background: #d20f39;
+    color: #ffffff;
+}
+QWidget#llmDialogSeparator {
+    background-color: #bcc0cc;
 }
 QDialog#llmSettingsDialog QLabel {
     color: #333333;
@@ -846,6 +940,46 @@ QGroupBox {
 QGroupBox::title {
     subcontrol-origin: margin;
     padding: 0 8px;
+}
+
+/* 主要按钮 */
+QPushButton#primaryBtn {
+    background-color: #8839ef;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 20px;
+    font-weight: bold;
+}
+QPushButton#primaryBtn:hover { background-color: #7030d0; }
+QPushButton#primaryBtn:pressed { background-color: #5f28b8; }
+
+/* 次要按钮 */
+QPushButton#secondaryBtn {
+    background-color: #dce0e8;
+    border: 1px solid #bcc0cc;
+    border-radius: 6px;
+    padding: 6px 20px;
+    color: #333333;
+}
+QPushButton#secondaryBtn:hover { background-color: #ccd0da; }
+
+/* 危险按钮 */
+QPushButton#dangerBtn {
+    background-color: transparent;
+    border: 1px solid #d20f39;
+    border-radius: 6px;
+    padding: 6px 20px;
+    color: #d20f39;
+}
+QPushButton#dangerBtn:hover { background-color: #d20f39; color: #ffffff; }
+
+/* 幽灵按钮 */
+QPushButton#ghostBtn {
+    background: transparent;
+    border: none;
+    padding: 0px;
+    margin: 0px;
 }
 
 /* 停止按钮 */

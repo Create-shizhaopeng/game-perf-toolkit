@@ -19,7 +19,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -29,6 +28,13 @@ from PyQt6.QtWidgets import (
 )
 
 from toolkit.gui.base_tab import BaseTab
+from toolkit.gui.toolkit_dialog import (
+    ToolkitDialog,
+    confirm_dialog,
+    info_dialog,
+    three_button_dialog,
+    warning_dialog,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -387,16 +393,15 @@ class DeviceDisguiseTab(BaseTab):
 
         profile_mgr = self.context.get("dd_profile_mgr")
         if profile_mgr and not profile_mgr.exists(brand, mfr, model):
-            reply = QMessageBox.question(
+            choice = three_button_dialog(
                 self,
                 "保存档案",
                 f"目标组合 {brand}/{mfr}/{model} 不在档案库中。\n是否保存为新档案？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                | QMessageBox.StandardButton.Cancel,
+                "保存", "不保存", "取消",
             )
-            if reply == QMessageBox.StandardButton.Cancel:
+            if choice == 2:
                 return
-            if reply == QMessageBox.StandardButton.Yes:
+            if choice == 0:
                 self._save_profile_record(brand, mfr, model)
 
         svc = self.context.get("dd_service")
@@ -488,7 +493,7 @@ class DeviceDisguiseTab(BaseTab):
 
         profiles = profile_mgr.get_all()
         if not profiles:
-            QMessageBox.information(self, "档案库", "档案库为空，请先添加档案。")
+            info_dialog(self, "档案库", "档案库为空，请先添加档案。")
             return
 
         dlg = _ProfileSelectDialog(profile_mgr, self._theme, self)
@@ -504,7 +509,7 @@ class DeviceDisguiseTab(BaseTab):
         mfr = self._combo_manufacturer.currentText().strip()
         model = self._combo_model.currentText().strip()
         if not (brand and mfr and model):
-            QMessageBox.warning(self, "保存档案", "请先填写品牌、厂商和型号。")
+            warning_dialog(self, "保存档案", "请先填写品牌、厂商和型号。")
             return
 
         dlg = _ProfileSaveDialog(brand, mfr, model, self._theme, self)
@@ -527,18 +532,18 @@ class DeviceDisguiseTab(BaseTab):
         try:
             result = profile_mgr.import_from(path)
         except (OSError, json.JSONDecodeError, ValueError) as e:
-            QMessageBox.critical(self, "导入失败", str(e))
+            warning_dialog(self, "导入失败", str(e))
             self._append_log(f"✗ 导入配置失败: {e}", ok=False)
             return
         except Exception as e:
-            QMessageBox.critical(self, "导入失败", str(e))
+            warning_dialog(self, "导入失败", str(e))
             self._append_log(f"✗ 导入配置失败: {e}", ok=False)
             return
         msg = (
             f"已导入 {result['imported']} 条，跳过 {result['skipped']} 条。\n"
             "档案已同步写入配置文件。"
         )
-        QMessageBox.information(self, "导入完成", msg)
+        info_dialog(self, "导入完成", msg)
         self._append_log(
             f"✓ 导入配置: 新增 {result['imported']} 条, 跳过 {result['skipped']} 条"
         )
@@ -583,25 +588,22 @@ class DeviceDisguiseTab(BaseTab):
 # ======================================================================
 
 
-class _ProfileSelectDialog(QDialog):
+class _ProfileSelectDialog(ToolkitDialog):
     """档案选取弹窗：搜索 + 列表 + 选取 / 编辑 / 删除"""
 
     def __init__(self, profile_mgr, theme: str, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("选择设备档案")
-        self.setMinimumSize(480, 360)
+        super().__init__("选择设备档案", parent, min_width=480)
+        self.setMinimumHeight(360)
         self.selected = None
         self._profile_mgr = profile_mgr
         self._theme = theme
         self._init_ui()
 
     def _init_ui(self) -> None:
-        layout = QVBoxLayout(self)
-
         self._search = QLineEdit()
         self._search.setPlaceholderText("搜索档案...")
         self._search.textChanged.connect(self._filter)
-        layout.addWidget(self._search)
+        self.content_layout.addWidget(self._search)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -610,7 +612,7 @@ class _ProfileSelectDialog(QDialog):
         self._list_layout.setSpacing(4)
         self._list_layout.setContentsMargins(4, 4, 4, 4)
         scroll.setWidget(self._list_container)
-        layout.addWidget(scroll)
+        self.content_layout.addWidget(scroll)
 
         self._populate(self._profile_mgr.get_all())
 
@@ -639,22 +641,16 @@ class _ProfileSelectDialog(QDialog):
             select_btn.clicked.connect(lambda checked, profile=p: self._select(profile))
 
             edit_btn = QPushButton("编辑")
-            edit_btn.setFixedWidth(48)
-            edit_btn.setStyleSheet(
-                f"padding: 6px; border-radius: 4px; "
-                f"color: {c['accent']}; background: {c['card_bg']}; "
-                f"border: 1px solid {c['accent']};"
-            )
+            edit_btn.setObjectName("secondaryBtn")
+            edit_btn.setFixedWidth(64)
+            edit_btn.setStyleSheet("padding: 4px 8px;")
             edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             edit_btn.clicked.connect(lambda checked, profile=p: self._edit(profile))
 
             del_btn = QPushButton("删除")
-            del_btn.setFixedWidth(48)
-            del_btn.setStyleSheet(
-                f"padding: 6px; border-radius: 4px; "
-                f"color: {c['error']}; background: {c['card_bg']}; "
-                f"border: 1px solid {c['error']};"
-            )
+            del_btn.setObjectName("dangerBtn")
+            del_btn.setFixedWidth(64)
+            del_btn.setStyleSheet("padding: 4px 8px;")
             del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             del_btn.clicked.connect(lambda checked, profile=p: self._delete(profile))
 
@@ -694,21 +690,21 @@ class _ProfileSelectDialog(QDialog):
                 self._profile_mgr.update(profile, new_profile)
                 self._populate(self._get_filtered_profiles())
             except ValueError as e:
-                QMessageBox.warning(self, "编辑失败", str(e))
+                warning_dialog(self, "编辑失败", str(e))
 
     def _delete(self, profile) -> None:
-        reply = QMessageBox.question(
+        ok = confirm_dialog(
             self,
             "确认删除",
             f"确认删除档案 {profile.brand}/{profile.manufacturer}/{profile.model}？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            confirm_text="删除", danger=True,
         )
-        if reply == QMessageBox.StandardButton.Yes:
+        if ok:
             try:
                 self._profile_mgr.delete(profile)
                 self._populate(self._get_filtered_profiles())
             except ValueError as e:
-                QMessageBox.warning(self, "删除失败", str(e))
+                warning_dialog(self, "删除失败", str(e))
 
 
 # ======================================================================
@@ -716,21 +712,16 @@ class _ProfileSelectDialog(QDialog):
 # ======================================================================
 
 
-class _ProfileEditDialog(QDialog):
+class _ProfileEditDialog(ToolkitDialog):
     """编辑设备档案对话框"""
 
     def __init__(self, profile, theme: str, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("编辑设备档案")
-        self.setMinimumWidth(350)
+        super().__init__("编辑设备档案", parent, min_width=380)
         self.result_profile = None
         self._original = profile
-        self._init_ui(profile, theme)
+        self._init_ui(profile)
 
-    def _init_ui(self, profile, theme: str) -> None:
-        layout = QVBoxLayout(self)
-        c = _THEME_COLORS[theme]
-
+    def _init_ui(self, profile) -> None:
         form = QFormLayout()
 
         self._brand_input = QLineEdit(profile.brand)
@@ -743,25 +734,22 @@ class _ProfileEditDialog(QDialog):
         form.addRow("型号:", self._model_input)
         form.addRow("备注:", self._notes_input)
 
-        layout.addLayout(form)
+        self.content_layout.addLayout(form)
 
         btn_bar = QHBoxLayout()
         btn_bar.addStretch()
 
         cancel_btn = QPushButton("取消")
+        cancel_btn.setObjectName("secondaryBtn")
         cancel_btn.clicked.connect(self.reject)
 
         ok_btn = QPushButton("保存")
-        ok_btn.setStyleSheet(
-            f"background-color: {c['btn_primary_bg']}; "
-            f"color: {c['btn_primary_fg']}; font-weight: bold; "
-            f"border-radius: 6px; padding: 6px 16px;"
-        )
+        ok_btn.setObjectName("primaryBtn")
         ok_btn.clicked.connect(self._on_ok)
 
         btn_bar.addWidget(cancel_btn)
         btn_bar.addWidget(ok_btn)
-        layout.addLayout(btn_bar)
+        self.content_layout.addLayout(btn_bar)
 
     def _on_ok(self) -> None:
         from .models import DeviceProfile
@@ -772,7 +760,7 @@ class _ProfileEditDialog(QDialog):
         notes = self._notes_input.text().strip()
 
         if not (brand and mfr and model):
-            QMessageBox.warning(self, "编辑档案", "品牌、厂商和型号不能为空。")
+            warning_dialog(self, "编辑档案", "品牌、厂商和型号不能为空。")
             return
 
         self.result_profile = DeviceProfile(
@@ -786,20 +774,15 @@ class _ProfileEditDialog(QDialog):
 # ======================================================================
 
 
-class _ProfileSaveDialog(QDialog):
+class _ProfileSaveDialog(ToolkitDialog):
     """保存档案对话框"""
 
     def __init__(self, brand: str, mfr: str, model: str, theme: str, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("保存设备档案")
-        self.setMinimumWidth(350)
+        super().__init__("保存设备档案", parent, min_width=380)
         self.notes_text = ""
-        self._init_ui(brand, mfr, model, theme)
+        self._init_ui(brand, mfr, model)
 
-    def _init_ui(self, brand: str, mfr: str, model: str, theme: str) -> None:
-        layout = QVBoxLayout(self)
-        c = _THEME_COLORS[theme]
-
+    def _init_ui(self, brand: str, mfr: str, model: str) -> None:
         form = QFormLayout()
         form.addRow("品牌:", QLabel(brand))
         form.addRow("厂商:", QLabel(mfr))
@@ -809,25 +792,22 @@ class _ProfileSaveDialog(QDialog):
         self._notes_input.setPlaceholderText("可选备注...")
         form.addRow("备注:", self._notes_input)
 
-        layout.addLayout(form)
+        self.content_layout.addLayout(form)
 
         btn_bar = QHBoxLayout()
         btn_bar.addStretch()
 
         cancel_btn = QPushButton("取消")
+        cancel_btn.setObjectName("secondaryBtn")
         cancel_btn.clicked.connect(self.reject)
 
         ok_btn = QPushButton("保存")
-        ok_btn.setStyleSheet(
-            f"background-color: {c['btn_primary_bg']}; "
-            f"color: {c['btn_primary_fg']}; font-weight: bold; "
-            f"border-radius: 6px; padding: 6px 16px;"
-        )
+        ok_btn.setObjectName("primaryBtn")
         ok_btn.clicked.connect(self._on_ok)
 
         btn_bar.addWidget(cancel_btn)
         btn_bar.addWidget(ok_btn)
-        layout.addLayout(btn_bar)
+        self.content_layout.addLayout(btn_bar)
 
     def _on_ok(self) -> None:
         self.notes_text = self._notes_input.text().strip()

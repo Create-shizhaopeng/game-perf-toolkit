@@ -105,7 +105,7 @@ class HomeTab(BaseTab):
 
         c = _THEME_COLORS["dark"]
 
-        self._welcome = QLabel("欢迎使用 LV Game Toolkit")
+        self._welcome = QLabel("欢迎使用 Game Toolkit")
         self._welcome.setStyleSheet(f"font-size: 20px; font-weight: bold; color: {c['accent']};")
         content_layout.addWidget(self._welcome)
 

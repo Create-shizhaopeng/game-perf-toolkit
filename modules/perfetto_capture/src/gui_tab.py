@@ -16,7 +16,6 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -24,6 +23,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from toolkit.gui.toolkit_dialog import warning_dialog
 
 
 class _FlowWidget(QWidget):
@@ -733,6 +734,24 @@ class PerfettoCaptureTab(BaseTab):
             self._log(f"删除失败: {trace_path.name}", "error")
         self._refresh_history()
 
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """父级大小变化时，重新定位遮罩和历史面板（跨屏 DPI 变化等场景）。"""
+        super().resizeEvent(event)
+        if self._history_mask and self._history_mask.isVisible():
+            self._history_mask.setGeometry(0, 0, self.width(), self.height())
+        if self._history_panel and self._history_panel.isVisible():
+            from PyQt6.QtCore import QAbstractAnimation
+
+            anim_running = (
+                hasattr(self._history_panel, "_animation")
+                and self._history_panel._animation.state()
+                == QAbstractAnimation.State.Running
+            )
+            if not anim_running:
+                self._history_panel.setFixedHeight(self.height())
+                panel_x = self.width() - self._history_panel.width()
+                self._history_panel.move(panel_x, 0)
+
     def keyPressEvent(self, event) -> None:
         """键盘事件处理。"""
         if event.key() == Qt.Key.Key_Escape:
@@ -941,11 +960,7 @@ class PerfettoCaptureTab(BaseTab):
         if self._jank_enabled:
             config = self._jank_config_panel.get_config()
             if not config.target_package:
-                from PyQt6.QtWidgets import QMessageBox
-                QMessageBox.warning(
-                    self, "提示",
-                    "已启用 Jank 检测，请先选择监控应用",
-                )
+                warning_dialog(self, "提示", "已启用 Jank 检测，请先选择监控应用")
                 return
         self._apply_config_from_ui()
         self._log("正在启动 Perfetto 抓取...")

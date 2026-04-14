@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QMessageBox, QWidget
+from PyQt6.QtWidgets import QWidget
+
+from toolkit.gui.toolkit_dialog import warning_dialog
 
 
 class BaseTab(QWidget):
@@ -52,5 +54,5 @@ class BaseTab(QWidget):
         """
         if self._device_connected:
             return True
-        QMessageBox.warning(self, "设备已断开", "当前无可用设备，请连接设备后重试。")
+        warning_dialog(self, "设备已断开", "当前无可用设备，请连接设备后重试。")
         return False

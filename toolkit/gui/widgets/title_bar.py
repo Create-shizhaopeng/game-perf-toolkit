@@ -1,11 +1,14 @@
-"""自定义标题栏 — Logo + 设备选择器(居中) + 状态灯 + 设置 + 窗口控制"""
+"""自定义标题栏 — Logo + 设备选择器(居中) + 状态灯 + 设置 + 窗口控制
+
+窗口控制按钮和设置按钮使用 Codicons 字体图标（VS Code 官方图标集）。
+"""
 
 from __future__ import annotations
 
 import math
 
 from PyQt6.QtCore import Qt, pyqtSignal, QPointF, QRectF, QEvent
-from PyQt6.QtGui import QPainter, QColor, QFont, QPen, QPolygonF
+from PyQt6.QtGui import QPainter, QColor, QFont, QPen
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -14,50 +17,129 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from toolkit.gui.codicons import codicon_font, icon_char
+
+
+_LOGO_STYLES = {
+    "dual_color": {
+        "dark": {"t": "#3B82F6", "s": "#60A5FA", "dot": "#3B82F6", "gt": "#6B7280"},
+        "light": {"t": "#2563EB", "s": "#3B82F6", "dot": "#2563EB", "gt": "#6B7280"},
+    },
+    "underline": {
+        "dark": {"ts": "#E2E8F0", "bar": "#3B82F6", "gt": "#6B7280"},
+        "light": {"ts": "#1E293B", "bar": "#2563EB", "gt": "#6B7280"},
+    },
+    "gradient_weight": {
+        "dark": {"t": "#F8FAFC", "s": "#94A3B8", "gt": "#4B5563"},
+        "light": {"t": "#0F172A", "s": "#475569", "gt": "#6B7280"},
+    },
+}
+
 
 class LogoWidget(QWidget):
-    """矢量 Logo — 菱形图标 + LVGT 文字，自动适配主题。"""
+    """矢量 Logo — TS 纯文字设计 + GT 后缀。
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    支持三种风格:
+    - dual_color: T/S 双色分体
+    - underline: TS 整体 + 底部彩色横线
+    - gradient_weight: T 粗 S 细 字重渐变
+    """
+
+    def __init__(self, style: str = "dual_color", parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setFixedSize(110, 30)
-        self._accent = QColor("#cba6f7")
-        self._bg = QColor("#1e1e2e")
+        self.setFixedSize(100, 30)
+        self._style = style
+        self._theme = "dark"
+
+    def set_style(self, style: str) -> None:
+        self._style = style
+        self.update()
 
     def set_theme(self, theme: str) -> None:
-        self._accent = QColor("#cba6f7") if theme == "dark" else QColor("#8839ef")
-        self._bg = QColor("#1e1e2e") if theme == "dark" else QColor("#e6e9ef")
+        self._theme = theme
         self.update()
 
     def paintEvent(self, event) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
-        cx, cy = 15, 15
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(self._accent)
-        diamond = QPolygonF([
-            QPointF(cx, cy - 10), QPointF(cx + 10, cy),
-            QPointF(cx, cy + 10), QPointF(cx - 10, cy),
-        ])
-        p.drawPolygon(diamond)
+        scheme = _LOGO_STYLES.get(self._style, _LOGO_STYLES["dual_color"])
+        c = scheme[self._theme]
 
-        p.setBrush(self._bg)
-        p.drawEllipse(QPointF(cx, cy), 3.5, 3.5)
-
-        inner_pen = QPen(self._bg, 1.2)
-        p.setPen(inner_pen)
-        p.drawLine(QPointF(cx - 2, cy), QPointF(cx + 2, cy))
-        p.drawLine(QPointF(cx, cy - 2), QPointF(cx, cy + 2))
-
-        p.setPen(self._accent)
-        f = QFont("Segoe UI", 11)
-        f.setBold(True)
-        f.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0.5)
-        p.setFont(f)
-        p.drawText(30, 0, 80, 30, Qt.AlignmentFlag.AlignVCenter, "LVGT")
+        if self._style == "dual_color":
+            self._paint_dual_color(p, c)
+        elif self._style == "underline":
+            self._paint_underline(p, c)
+        elif self._style == "gradient_weight":
+            self._paint_gradient_weight(p, c)
 
         p.end()
+
+    def _paint_dual_color(self, p: QPainter, c: dict) -> None:
+        """T/S 双色紧凑排列 + 分隔点 + GT"""
+        f_bold = QFont("Consolas", 13)
+        f_bold.setBold(True)
+        fm = p.fontMetrics()
+
+        p.setFont(f_bold)
+        p.setPen(QColor(c["t"]))
+        t_w = fm.horizontalAdvance("T")
+        p.drawText(QRectF(6, 0, t_w, 30), Qt.AlignmentFlag.AlignCenter, "T")
+
+        p.setPen(QColor(c["s"]))
+        p.drawText(QRectF(6 + t_w + 2, 0, t_w, 30), Qt.AlignmentFlag.AlignCenter, "S")
+
+        dot_x = 6 + t_w * 2 + 2 + 6
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(c["dot"]))
+        p.drawEllipse(QPointF(dot_x, 15), 2, 2)
+
+        f_gt = QFont("Segoe UI", 9)
+        f_gt.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.0)
+        p.setFont(f_gt)
+        p.setPen(QColor(c["gt"]))
+        p.drawText(QRectF(dot_x + 6, 0, 50, 30), Qt.AlignmentFlag.AlignVCenter, "GT")
+
+    def _paint_underline(self, p: QPainter, c: dict) -> None:
+        """TS 整体 + 底部彩色强调线 + GT"""
+        f_ts = QFont("Consolas", 13)
+        f_ts.setBold(True)
+
+        p.setFont(f_ts)
+        p.setPen(QColor(c["ts"]))
+        p.drawText(QRectF(6, -1, 30, 28), Qt.AlignmentFlag.AlignCenter, "TS")
+
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(c["bar"]))
+        p.drawRoundedRect(QRectF(8, 24, 26, 2.5), 1.2, 1.2)
+
+        f_gt = QFont("Segoe UI", 9)
+        f_gt.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.0)
+        p.setFont(f_gt)
+        p.setPen(QColor(c["gt"]))
+        p.drawText(QRectF(40, 0, 50, 30), Qt.AlignmentFlag.AlignVCenter, "GT")
+
+    def _paint_gradient_weight(self, p: QPainter, c: dict) -> None:
+        """T 粗 S 细 字重对比 + GT"""
+        f_t = QFont("Consolas", 14)
+        f_t.setBold(True)
+
+        p.setFont(f_t)
+        p.setPen(QColor(c["t"]))
+        p.drawText(QRectF(6, 0, 16, 30), Qt.AlignmentFlag.AlignCenter, "T")
+
+        f_s = QFont("Consolas", 12)
+        f_s.setWeight(QFont.Weight.Normal)
+        p.setFont(f_s)
+        p.setPen(QColor(c["s"]))
+        p.drawText(QRectF(21, 1, 14, 30), Qt.AlignmentFlag.AlignCenter, "S")
+
+        f_gt = QFont("Segoe UI", 9)
+        f_gt.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.0)
+        p.setFont(f_gt)
+        p.setPen(QColor(c["gt"]))
+        p.drawText(QRectF(40, 0, 50, 30), Qt.AlignmentFlag.AlignVCenter, "GT")
 
 
 class ThemeButton(QPushButton):
@@ -107,11 +189,85 @@ class ThemeButton(QPushButton):
         p.end()
 
 
+class _CodiconButton(QPushButton):
+    """Codicons 字体图标按钮 — 统一基类。"""
+
+    def __init__(
+        self,
+        icon_name: str,
+        obj_name: str,
+        size: tuple[int, int] = (46, 30),
+        font_size: int = 14,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._icon_name = icon_name
+        self._icon_char = icon_char(icon_name)
+        self._font_size = font_size
+        self.setFixedSize(*size)
+        self.setObjectName(obj_name)
+        self._is_dark = True
+        self._fg = QColor("#a6adc8")
+        self._fg_hover = QColor("#cdd6f4")
+        self._hover_bg = QColor("#313244")
+        self._close_mode = icon_name == "chrome-close"
+
+    def set_theme(self, theme: str) -> None:
+        self._is_dark = theme == "dark"
+        self._fg = QColor("#a6adc8") if self._is_dark else QColor("#444444")
+        self._fg_hover = QColor("#cdd6f4") if self._is_dark else QColor("#1a1a1a")
+        self._hover_bg = QColor("#313244") if self._is_dark else QColor("#ccd0da")
+        self.update()
+
+    def set_maximized(self, maximized: bool) -> None:
+        if maximized:
+            self._icon_char = icon_char("chrome-restore")
+        else:
+            self._icon_char = icon_char("chrome-maximize")
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        hovered = self.underMouse()
+        if self._close_mode and hovered:
+            p.fillRect(
+                self.rect(),
+                QColor("#f38ba8") if self._is_dark else QColor("#d20f39"),
+            )
+            icon_color = QColor("#ffffff")
+        elif hovered:
+            p.fillRect(self.rect(), self._hover_bg)
+            icon_color = self._fg_hover
+        else:
+            icon_color = self._fg
+
+        font = codicon_font(self._font_size)
+        if font:
+            p.setPen(icon_color)
+            p.setFont(font)
+            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self._icon_char)
+        else:
+            p.setPen(QPen(icon_color, 1.0))
+            cx, cy = self.width() / 2, self.height() / 2
+            if self._icon_name == "chrome-minimize":
+                p.drawLine(QPointF(cx - 5, cy), QPointF(cx + 5, cy))
+            elif self._icon_name in ("chrome-maximize", "chrome-restore"):
+                p.drawRect(int(cx - 5), int(cy - 4), 10, 9)
+            elif self._icon_name == "chrome-close":
+                p.drawLine(QPointF(cx - 5, cy - 4), QPointF(cx + 5, cy + 4))
+                p.drawLine(QPointF(cx + 5, cy - 4), QPointF(cx - 5, cy + 4))
+
+        p.end()
+
+
 class SettingsButton(QPushButton):
-    """齿轮设置按钮 — 点击弹出设置菜单（主题切换、LLM 设置）。"""
+    """Codicons 齿轮设置按钮。"""
 
     theme_toggled = pyqtSignal()
     llm_settings_requested = pyqtSignal()
+    agent_settings_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -139,6 +295,9 @@ class SettingsButton(QPushButton):
         llm_action = menu.addAction("LLM 模型设置")
         llm_action.triggered.connect(self.llm_settings_requested.emit)
 
+        agent_action = menu.addAction("Agent 设置")
+        agent_action.triggered.connect(self.agent_settings_requested.emit)
+
         menu.exec(self.mapToGlobal(self.rect().bottomLeft()))
 
     def paintEvent(self, event) -> None:
@@ -148,24 +307,35 @@ class SettingsButton(QPushButton):
         if self.underMouse():
             p.fillRect(self.rect(), self._hover_bg)
 
-        cx = self.width() / 2
-        cy = self.height() / 2
-        pen = QPen(self._fg, 1.2)
-        p.setPen(pen)
-        p.setBrush(Qt.BrushStyle.NoBrush)
+        font = codicon_font(10)
+        if font:
+            p.setPen(self._fg)
+            p.setFont(font)
+            p.drawText(
+                self.rect(), Qt.AlignmentFlag.AlignCenter, icon_char("settings-gear")
+            )
+        else:
+            from PyQt6.QtGui import QPainterPath
 
-        r_outer = 7.0
-        r_inner = 4.5
-        r_tooth = 2.0
-        teeth = 6
-        for i in range(teeth):
-            angle = math.radians(i * (360 / teeth))
-            x = cx + r_outer * math.cos(angle)
-            y = cy + r_outer * math.sin(angle)
-            p.drawEllipse(QPointF(x, y), r_tooth, r_tooth)
-
-        p.drawEllipse(QPointF(cx, cy), r_inner, r_inner)
-        p.drawEllipse(QPointF(cx, cy), 2.0, 2.0)
+            cx = self.width() / 2
+            cy = self.height() / 2
+            p.setPen(QPen(self._fg, 1.2))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            teeth = 8
+            r_outer, r_inner, r_center = 8.0, 5.5, 2.5
+            path = QPainterPath()
+            for i in range(teeth * 2):
+                angle = math.radians(i * (360 / (teeth * 2)) - 90)
+                r = r_outer if i % 2 == 0 else r_inner
+                x = cx + r * math.cos(angle)
+                y = cy + r * math.sin(angle)
+                if i == 0:
+                    path.moveTo(x, y)
+                else:
+                    path.lineTo(x, y)
+            path.closeSubpath()
+            p.drawPath(path)
+            p.drawEllipse(QPointF(cx, cy), r_center, r_center)
 
         p.end()
 
@@ -206,73 +376,10 @@ class DeviceComboBox(QComboBox):
         p.end()
 
 
-class WinCtrlButton(QPushButton):
-    """VS Code 风格的窗口控制按钮（统一 46x30）。"""
-
-    def __init__(self, icon_type: str, obj_name: str, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._icon_type = icon_type
-        self.setFixedSize(46, 30)
-        self.setObjectName(obj_name)
-        self._is_dark = True
-        self._is_maximized = False
-        self._fg = QColor("#a6adc8")
-        self._fg_hover = QColor("#cdd6f4")
-        self._hover_bg = QColor("#313244")
-
-    def set_theme(self, theme: str) -> None:
-        self._is_dark = theme == "dark"
-        self._fg = QColor("#a6adc8") if self._is_dark else QColor("#444444")
-        self._fg_hover = QColor("#cdd6f4") if self._is_dark else QColor("#1a1a1a")
-        self._hover_bg = QColor("#313244") if self._is_dark else QColor("#ccd0da")
-        self.update()
-
-    def set_maximized(self, maximized: bool) -> None:
-        self._is_maximized = maximized
-        self.update()
-
-    def paintEvent(self, event) -> None:
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        hovered = self.underMouse()
-        if self._icon_type == "close" and hovered:
-            p.fillRect(self.rect(), QColor("#f38ba8") if self._is_dark else QColor("#d20f39"))
-        elif hovered:
-            p.fillRect(self.rect(), self._hover_bg)
-
-        if self._icon_type == "close" and hovered:
-            icon_color = QColor("#ffffff")
-        elif hovered:
-            icon_color = self._fg_hover
-        else:
-            icon_color = self._fg
-
-        pen = QPen(icon_color, 1.0)
-        p.setPen(pen)
-
-        cx = self.width() / 2
-        cy = self.height() / 2
-
-        if self._icon_type == "minimize":
-            p.drawLine(QPointF(cx - 5, cy), QPointF(cx + 5, cy))
-        elif self._icon_type == "maximize":
-            if self._is_maximized:
-                p.drawRect(int(cx - 3), int(cy - 5), 8, 7)
-                p.drawRect(int(cx - 5), int(cy - 3), 8, 7)
-            else:
-                p.drawRect(int(cx - 5), int(cy - 4), 10, 9)
-        elif self._icon_type == "close":
-            p.drawLine(QPointF(cx - 5, cy - 4), QPointF(cx + 5, cy + 4))
-            p.drawLine(QPointF(cx + 5, cy - 4), QPointF(cx - 5, cy + 4))
-
-        p.end()
-
-
 class TitleBar(QWidget):
     """自定义标题栏，VS Code 风格。
 
-    布局：[Logo] --- [设备选择器] [状态灯] --- [主题切换] [最小化] [最大化] [关闭]
+    布局：[Logo] --- [设备选择器(绝对居中)] --- [主题切换] [设置] [最小化] [最大化] [关闭]
     """
 
     minimize_clicked = pyqtSignal()
@@ -281,6 +388,7 @@ class TitleBar(QWidget):
     device_selected = pyqtSignal(list)
     theme_toggled = pyqtSignal()
     llm_settings_requested = pyqtSignal()
+    agent_settings_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -292,16 +400,8 @@ class TitleBar(QWidget):
         layout.setContentsMargins(8, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._logo = LogoWidget(self)
+        self._logo = LogoWidget(style="dual_color", parent=self)
         layout.addWidget(self._logo)
-
-        layout.addStretch(1)
-
-        self._device_combo = DeviceComboBox(self)
-        self._device_combo.setFixedHeight(22)
-        self._device_combo.setFixedWidth(200)
-        self._device_combo.currentIndexChanged.connect(self._on_device_changed)
-        layout.addWidget(self._device_combo)
 
         layout.addStretch(1)
 
@@ -310,18 +410,27 @@ class TitleBar(QWidget):
         self._settings_btn.llm_settings_requested.connect(
             self.llm_settings_requested.emit
         )
+        self._settings_btn.agent_settings_requested.connect(
+            self.agent_settings_requested.emit
+        )
         layout.addWidget(self._settings_btn)
 
-        self._ctrl_btns: list[WinCtrlButton] = []
-        for icon_type, signal, obj_name in [
-            ("minimize", self.minimize_clicked, "minBtn"),
-            ("maximize", self.maximize_clicked, "maxBtn"),
-            ("close", self.close_clicked, "closeBtn"),
+        self._ctrl_btns: list[_CodiconButton] = []
+        for icon_name, signal, obj_name in [
+            ("chrome-minimize", self.minimize_clicked, "minBtn"),
+            ("chrome-maximize", self.maximize_clicked, "maxBtn"),
+            ("chrome-close", self.close_clicked, "closeBtn"),
         ]:
-            btn = WinCtrlButton(icon_type, obj_name, self)
+            btn = _CodiconButton(icon_name, obj_name, size=(46, 30), font_size=10, parent=self)
             btn.clicked.connect(signal.emit)
             layout.addWidget(btn)
             self._ctrl_btns.append(btn)
+
+        # DeviceCombo 不加入 layout，使用绝对定位确保水平居中
+        self._device_combo = DeviceComboBox(self)
+        self._device_combo.setFixedHeight(22)
+        self._device_combo.setFixedWidth(200)
+        self._device_combo.currentIndexChanged.connect(self._on_device_changed)
 
         self._devices: list[str] = []
         self._update_status([])
@@ -336,8 +445,16 @@ class TitleBar(QWidget):
     def set_maximized(self, maximized: bool) -> None:
         """更新最大化按钮图标。"""
         for btn in self._ctrl_btns:
-            if btn._icon_type == "maximize":
+            if btn._icon_name == "chrome-maximize":
                 btn.set_maximized(maximized)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        combo_w = self._device_combo.width()
+        x = (self.width() - combo_w) // 2
+        y = (self.height() - self._device_combo.height()) // 2
+        self._device_combo.move(x, y)
+        self._device_combo.raise_()
 
     def mouseDoubleClickEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:

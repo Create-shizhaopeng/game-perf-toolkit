@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -20,6 +19,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from toolkit.gui.toolkit_dialog import warning_dialog
 
 from toolkit.core.perfdog.config_defaults import REPORT_METHODS_AND_LIMITATIONS_ZH
 from toolkit.core.perfdog.export_md import anomaly_chunk_to_tsv, format_finding_anomaly_period
@@ -168,7 +169,7 @@ class PerfdogInsightsTab(BaseTab):
             self._set_selected_path(path)
             event.acceptProposedAction()
         else:
-            QMessageBox.warning(self, "格式不支持", "请拖入 .xlsx 或 .xlsm 文件。")
+            warning_dialog(self, "格式不支持", "请拖入 .xlsx 或 .xlsm 文件。")
             event.ignore()
 
     def _set_selected_path(self, path: str) -> None:
@@ -191,7 +192,7 @@ class PerfdogInsightsTab(BaseTab):
         if path == "未选择文件" or not path:
             return
         if not Path(path).is_file():
-            QMessageBox.warning(self, "文件无效", "所选路径不是有效文件。")
+            warning_dialog(self, "文件无效", "所选路径不是有效文件。")
             return
 
         self._start_worker(path)
@@ -222,7 +223,7 @@ class PerfdogInsightsTab(BaseTab):
 
     def _on_worker_err(self, message: str) -> None:
         self._status_lbl.setText("解析失败")
-        QMessageBox.warning(self, "解析失败", message)
+        warning_dialog(self, "解析失败", message)
         # FR-009：不覆盖上一份成功结果
         if self._last_good_report is not None:
             self._report = self._last_good_report
@@ -488,7 +489,7 @@ class PerfdogInsightsTab(BaseTab):
         try:
             Path(path).write_text(text, encoding="utf-8")
         except OSError as e:
-            QMessageBox.warning(self, "导出失败", str(e))
+            warning_dialog(self, "导出失败", str(e))
 
     def _on_copy(self) -> None:
         if self._report is None:
