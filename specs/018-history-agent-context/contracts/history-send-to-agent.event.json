@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "history-send-to-agent.event.json",
+  "title": "history.send_to_agent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "file_path",
+    "file_name",
+    "context_type"
+  ],
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "历史项对应的绝对路径"
+    },
+    "file_name": {
+      "type": "string",
+      "description": "UI 展示文件名"
+    },
+    "context_type": {
+      "type": "string",
+      "enum": [
+        "trace",
+        "analysis"
+      ],
+      "description": "历史上下文类型"
+    },
+    "missing": {
+      "type": "boolean",
+      "description": "文件不存在标记",
+      "default": false
+    }
+  }
+}
