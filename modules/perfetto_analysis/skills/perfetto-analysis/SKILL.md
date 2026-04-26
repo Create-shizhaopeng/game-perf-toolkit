@@ -1,5 +1,3 @@
----
-
 ## name: perfetto-analysis
 description: >-
   Perfetto trace 全场景性能分析。涵盖卡顿/ANR/内存/启动/CPU/线程等多场景，

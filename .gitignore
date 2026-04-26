@@ -27,12 +27,21 @@ Thumbs.db
 desktop.ini
 .idea/
 .vscode/
+.claude/settings.local.json
+.claude/skills/speckit.*
+# .specify 目录 — 保留 constitution.md，其他忽略
+.specify/*
+!.specify/memory/
+!.specify/memory/constitution.md
+.playwright-mcp/
+
 
 # Cursor — 忽略个人配置但保留项目共享内容
 .cursor/*
 !.cursor/skills/
 !.cursor/rules/
 !.cursor/commands/
+.cursor/skills/speckit*
 
 # 运行时数据
 data/
