@@ -73,6 +73,7 @@ UI示意图/
 /ui2.png
 /ui3.png
 /model名修改重置工具.md
+**/modules/perfetto_analysis/skills/smart-perfetto/
 
 # 架构设计文档已迁移至 doc/architecture/（纳入 Git 管理）
 
