@@ -1,9 +1,13 @@
 ## name: perfetto-analysis
 description: >-
-  Perfetto trace 全场景性能分析。涵盖卡顿/ANR/内存/启动/CPU/线程等多场景，
-  通过 MCP + 引擎混合架构提供原子工具集，按场景路由分析策略。
-  当用户提到 Perfetto、trace 分析、卡顿、丢帧、jank、fps、帧耗时、
-  游戏性能、ANR、内存泄漏、启动慢、CPU 占用、线程阻塞时使用此技能。
+  Perfetto trace 全场景性能分析。涵盖卡顿/ANR/内存/启动/CPU/线程/输入时延/IO
+  阻塞/响应时延/转屏等多场景，通过 MCP + 引擎混合架构提供原子工具集，按场景路由分析策略。
+  当用户提到 Perfetto、.perfetto-trace、trace 文件、trace 分析、卡顿、丢帧、jank、fps、
+  帧率、帧耗时、游戏性能、ANR、无响应、内存泄漏、OOM、启动慢、冷启动、热启动、TTID、
+  CPU 占用、线程阻塞、IO block、D-State、响应慢、点击延迟、笔写时延、不跟手、转屏慢、
+  或希望"看看这个 trace 有什么问题"/"帮我分析一下"时使用此技能。
+  即使用户没有明确指定分析场景，只要意图是查看 trace 内容或了解 trace 中的性能情况，
+  都应该使用此技能——它会自动完成场景分类并路由到对应的分析流程。
 
 # Perfetto 性能分析
 
@@ -61,19 +65,19 @@ pa_trace_overview(trace_path, process_name?)
 | **通用/不明确**  | "分析一下"、"看看性能"                   | [general-analysis.md](sop/general-analysis.md)   | 场景分类 → 路由                                 |
 
 
-**⚠️ 路由决定工具选择**：MUST 先完成场景路由，再调用对应 SOP 指定的工具。不同场景使用不同工具链：
+**⚠️ 路由决定工具选择**：必须先完成场景路由再调用对应 SOP 指定的工具——不同场景的数据源和工具返回格式不同，混用会导致解析失败或返回不相关数据：
 
-- `pa_detect_jank` / `analysis parse` **仅适用于卡顿/掉帧场景**，不得用于响应时延、启动、转屏等场景
+- `pa_detect_jank` / `analysis parse` **仅适用于卡顿/掉帧场景**（它们基于 VSync 周期检测帧异常，非卡顿场景没有 jank 概念，返回结果无意义），不得用于响应时延、启动、转屏等场景
 - 响应时延/启动/转屏场景使用 `pa_execute_sql` 查询特定 slice 和时间窗口
 - 批量分析多个 trace 时，MUST 逐个路由，不得统一使用同一工具链
 
-**⚠️ 批量分析编排策略**：当用户要求分析多个 trace 时，MUST 采用以下隔离策略防止上下文膨胀：
+**⚠️ 批量分析编排策略**：当用户要求分析多个 trace 时，采用以下隔离策略防止上下文膨胀——trace 数据量大，全部数据进入主 agent 上下文会很快触发 token 限制：
 
 1. **独立分析**：每个 trace 使用独立 subagent（`Task` 工具）分析，各自的 MCP 返回数据不进入主 agent 上下文
 2. **摘要回传**：subagent 分析完成后仅返回**结论摘要**（按 Step 6 输出模板），不回传原始 MCP 数据
 3. **主 agent 职责**：执行场景路由（Step 2）并分配 subagent，汇总各 trace 结论，不参与具体分析
 4. **compact 优先**：subagent 内部调用工具时优先使用 `compact=True` 减少返回量
-5. **并行限制**：同时运行的 subagent 不超过 3 个，避免系统资源争抢
+5. **并行限制**：同时运行的 subagent 不超过 3 个——trace 分析涉及大量 SQL 查询和文件读取，过多并行会导致 I/O 争抢、MCP 超时
 
 示例编排：
 

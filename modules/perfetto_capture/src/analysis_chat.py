@@ -22,17 +22,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from toolkit.gui.theme_colors import THEMES as _THEMES
+
 logger = logging.getLogger(__name__)
 
-_THEME = {
-    "bg": "#1e1e2e",
-    "msg_user": "#585b70",
-    "msg_ai": "#313244",
-    "fg": "#cdd6f4",
-    "fg_dim": "#a6adc8",
-    "accent": "#cba6f7",
-    "border": "#45475a",
-}
+_THEME = _THEMES["dark"]
 
 
 class AnalysisChatWidget(QWidget):
@@ -53,85 +47,41 @@ class AnalysisChatWidget(QWidget):
 
         header_row = QHBoxLayout()
         header = QLabel("💬 AI 分析对话")
-        header.setStyleSheet(
-            f"font-weight: bold; font-size: 13px; color: {_THEME['fg']};"
-        )
+        header.setObjectName("analysisChatHeader")
         header_row.addWidget(header)
         header_row.addStretch()
 
         self._btn_clear = QPushButton("🗑")
+        self._btn_clear.setObjectName("ghostBtn")
         self._btn_clear.setFixedSize(24, 24)
         self._btn_clear.setToolTip("清空对话")
-        self._btn_clear.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: none; color: {_THEME['fg_dim']}; }}"
-            f"QPushButton:hover {{ color: {_THEME['fg']}; }}"
-        )
         self._btn_clear.clicked.connect(self.clear_chat)
         header_row.addWidget(self._btn_clear)
         layout.addLayout(header_row)
 
         self._trace_hint = QLabel()
-        self._trace_hint.setStyleSheet(
-            f"color: {_THEME['fg_dim']}; font-size: 12px; padding: 2px 4px;"
-        )
+        self._trace_hint.setObjectName("fieldHint")
         self._trace_hint.setWordWrap(True)
         self._trace_hint.hide()
         layout.addWidget(self._trace_hint)
 
         self._chat_display = QTextBrowser()
+        self._chat_display.setObjectName("analysisChatDisplay")
         self._chat_display.setOpenExternalLinks(True)
-        self._chat_display.setStyleSheet(f"""
-            QTextBrowser {{
-                background: {_THEME['bg']};
-                border: 1px solid {_THEME['border']};
-                border-radius: 6px;
-                color: {_THEME['fg']};
-                padding: 8px;
-                font-size: 13px;
-            }}
-        """)
         layout.addWidget(self._chat_display, 1)
 
         input_row = QHBoxLayout()
         input_row.setSpacing(4)
 
         self._input = QLineEdit()
+        self._input.setObjectName("analysisChatInput")
         self._input.setPlaceholderText("描述分析需求，如：分析卡顿原因...")
-        self._input.setStyleSheet(f"""
-            QLineEdit {{
-                background: {_THEME['bg']};
-                border: 1px solid {_THEME['border']};
-                border-radius: 4px;
-                padding: 6px 8px;
-                color: {_THEME['fg']};
-                font-size: 13px;
-            }}
-            QLineEdit:focus {{
-                border-color: {_THEME['accent']};
-            }}
-        """)
         self._input.returnPressed.connect(self._on_send)
         input_row.addWidget(self._input, 1)
 
         self._btn_send = QPushButton("发送")
+        self._btn_send.setObjectName("primaryBtn")
         self._btn_send.setFixedWidth(64)
-        self._btn_send.setStyleSheet(f"""
-            QPushButton {{
-                background: {_THEME['accent']};
-                color: {_THEME['bg']};
-                border: none;
-                border-radius: 4px;
-                padding: 6px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background: #b4befe;
-            }}
-            QPushButton:disabled {{
-                background: {_THEME['border']};
-                color: {_THEME['fg_dim']};
-            }}
-        """)
         self._btn_send.clicked.connect(self._on_send)
         input_row.addWidget(self._btn_send)
 
@@ -193,34 +143,12 @@ class AnalysisChatWidget(QWidget):
         self._input.setEnabled(not analyzing)
         if analyzing:
             self._btn_send.setText("取消")
-            self._btn_send.setStyleSheet(f"""
-                QPushButton {{
-                    background: #f38ba8;
-                    color: {_THEME['bg']};
-                    border: none;
-                    border-radius: 4px;
-                    padding: 6px;
-                    font-weight: bold;
-                }}
-                QPushButton:hover {{ background: #eba0ac; }}
-            """)
+            self._btn_send.setObjectName("stopBtn")
         else:
             self._btn_send.setText("发送")
-            self._btn_send.setStyleSheet(f"""
-                QPushButton {{
-                    background: {_THEME['accent']};
-                    color: {_THEME['bg']};
-                    border: none;
-                    border-radius: 4px;
-                    padding: 6px;
-                    font-weight: bold;
-                }}
-                QPushButton:hover {{ background: #b4befe; }}
-                QPushButton:disabled {{
-                    background: {_THEME['border']};
-                    color: {_THEME['fg_dim']};
-                }}
-            """)
+            self._btn_send.setObjectName("primaryBtn")
+        self._btn_send.style().unpolish(self._btn_send)
+        self._btn_send.style().polish(self._btn_send)
 
     def show_batch_progress(self, current: int, total: int, trace_name: str, status: str) -> None:
         """显示批量分析进度。"""

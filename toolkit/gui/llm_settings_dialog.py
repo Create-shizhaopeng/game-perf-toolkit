@@ -2,8 +2,7 @@
 """LLM 模型设置对话框 — 无边框风格，与应用整体主题一致。"""
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, QPointF, Qt
-from PyQt6.QtGui import QColor, QPainter, QPen
+from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -20,45 +19,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from toolkit.gui.toolkit_dialog import DialogCloseButton
 from toolkit.sdk.models import LLMConfig
 
 _GLM_MODELS = ["glm-4-plus", "glm-4-flash", "glm-4-long"]
 _CLAUDE_MODELS = ["claude-sonnet-4-20250514", "claude-3-5-haiku-20241022"]
-
-
-class _DialogCloseButton(QPushButton):
-    """对话框关闭按钮 — Codicons 或 fallback 矢量 X 图标。"""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setFixedSize(28, 28)
-        self.setObjectName("llmDialogCloseBtn")
-
-    def paintEvent(self, event) -> None:
-        from toolkit.gui.codicons import codicon_font, icon_char
-
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        if self.underMouse():
-            p.fillRect(self.rect(), QColor("#f38ba8"))
-            icon_color = QColor("#1e1e2e")
-        else:
-            icon_color = QColor("#a6adc8")
-
-        font = codicon_font(14)
-        if font:
-            p.setPen(icon_color)
-            p.setFont(font)
-            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, icon_char("close"))
-        else:
-            cx = self.width() / 2
-            cy = self.height() / 2
-            p.setPen(QPen(icon_color, 1.2))
-            p.drawLine(QPointF(cx - 4, cy - 4), QPointF(cx + 4, cy + 4))
-            p.drawLine(QPointF(cx + 4, cy - 4), QPointF(cx - 4, cy + 4))
-
-        p.end()
 
 
 class _ApiKeyRow(QWidget):
@@ -135,7 +100,7 @@ class LLMSettingsDialog(QDialog):
         title_layout.addWidget(title_label)
         title_layout.addStretch()
 
-        close_btn = _DialogCloseButton()
+        close_btn = DialogCloseButton()
         close_btn.clicked.connect(self.reject)
         title_layout.addWidget(close_btn)
 

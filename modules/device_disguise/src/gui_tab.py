@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import datetime
 import json
 import logging
 from collections.abc import Callable
 
 from PyQt6.QtCore import QThread, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QTextCharFormat
 from PyQt6.QtWidgets import (
     QComboBox,
     QCompleter,
@@ -21,8 +19,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
-    QSplitter,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -36,42 +32,9 @@ from toolkit.gui.toolkit_dialog import (
     warning_dialog,
 )
 
-logger = logging.getLogger(__name__)
 
-_THEME_COLORS = {
-    "dark": {
-        "bg": "#1e1e2e",
-        "card_bg": "#313244",
-        "border": "#45475a",
-        "fg": "#cdd6f4",
-        "fg_dim": "#a6adc8",
-        "accent": "#cba6f7",
-        "success": "#a6e3a1",
-        "error": "#f38ba8",
-        "btn_primary_bg": "#cba6f7",
-        "btn_primary_fg": "#1e1e2e",
-        "btn_secondary_bg": "#45475a",
-        "btn_secondary_fg": "#cdd6f4",
-        "input_bg": "#313244",
-        "input_border": "#45475a",
-    },
-    "light": {
-        "bg": "#eff1f5",
-        "card_bg": "#e6e9ef",
-        "border": "#ccd0da",
-        "fg": "#333333",
-        "fg_dim": "#616161",
-        "accent": "#8839ef",
-        "success": "#40a02b",
-        "error": "#d20f39",
-        "btn_primary_bg": "#8839ef",
-        "btn_primary_fg": "#ffffff",
-        "btn_secondary_bg": "#ccd0da",
-        "btn_secondary_fg": "#333333",
-        "input_bg": "#dce0e8",
-        "input_border": "#bcc0cc",
-    },
-}
+
+logger = logging.getLogger(__name__)
 
 
 class _BackgroundWorker(QThread):
@@ -118,19 +81,8 @@ class DeviceDisguiseTab(BaseTab):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setObjectName("disguiseSplitter")
-
         left = self._build_left_panel()
-        right = self._build_right_panel()
-
-        splitter.addWidget(left)
-        splitter.addWidget(right)
-        splitter.setStretchFactor(0, 45)
-        splitter.setStretchFactor(1, 55)
-        splitter.setHandleWidth(3)
-
-        root.addWidget(splitter)
+        root.addWidget(left)
 
     # ------------------------------------------------------------------
     # 左侧面板
@@ -213,10 +165,12 @@ class DeviceDisguiseTab(BaseTab):
         self._btn_import_config.clicked.connect(self._on_import_config)
 
         self._btn_disguise = QPushButton("伪装")
+        self._btn_disguise.setObjectName("primaryBtn")
         self._btn_disguise.setEnabled(False)
         self._btn_disguise.clicked.connect(self._on_disguise)
 
         self._btn_reset = QPushButton("还原")
+        self._btn_reset.setObjectName("secondaryBtn")
         self._btn_reset.setEnabled(False)
         self._btn_reset.clicked.connect(self._on_reset)
 
@@ -230,58 +184,11 @@ class DeviceDisguiseTab(BaseTab):
         return bar
 
     # ------------------------------------------------------------------
-    # 右侧日志面板
-    # ------------------------------------------------------------------
-
-    def _build_right_panel(self) -> QWidget:
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(8, 12, 16, 12)
-        layout.setSpacing(4)
-
-        header = QLabel("操作日志")
-        header.setStyleSheet("font-weight: bold; font-size: 13px;")
-        layout.addWidget(header)
-        self._log_header = header
-
-        self._log_view = QTextEdit()
-        self._log_view.setReadOnly(True)
-        self._log_view.setObjectName("disguiseLog")
-        layout.addWidget(self._log_view)
-
-        clear_btn = QPushButton("清空日志")
-        clear_btn.setMaximumWidth(80)
-        clear_btn.clicked.connect(self._log_view.clear)
-        layout.addWidget(clear_btn, alignment=Qt.AlignmentFlag.AlignRight)
-        self._btn_clear_log = clear_btn
-
-        return panel
-
-    # ------------------------------------------------------------------
     # 主题
     # ------------------------------------------------------------------
 
     def set_theme(self, theme: str) -> None:
         self._theme = theme
-        c = _THEME_COLORS[theme]
-
-        self._btn_disguise.setStyleSheet(
-            f"QPushButton {{ background-color: {c['btn_primary_bg']}; "
-            f"color: {c['btn_primary_fg']}; border-radius: 6px; padding: 8px 20px; "
-            f"font-weight: bold; }}"
-            f"QPushButton:hover {{ opacity: 0.9; }}"
-            f"QPushButton:disabled {{ background-color: {c['btn_secondary_bg']}; "
-            f"color: {c['fg_dim']}; }}"
-        )
-        self._btn_reset.setStyleSheet(
-            f"QPushButton {{ background-color: {c['btn_secondary_bg']}; "
-            f"color: {c['btn_secondary_fg']}; border-radius: 6px; padding: 8px 20px; }}"
-            f"QPushButton:disabled {{ color: {c['fg_dim']}; }}"
-        )
-
-        self._log_header.setStyleSheet(
-            f"font-weight: bold; font-size: 13px; color: {c['fg']};"
-        )
 
     # ------------------------------------------------------------------
     # 设备状态感知
@@ -464,23 +371,12 @@ class DeviceDisguiseTab(BaseTab):
     # 日志
     # ------------------------------------------------------------------
 
-    def _append_log(self, text: str, *, success: bool = False, error: bool = False) -> None:
-        ts = datetime.datetime.now().strftime("%H:%M:%S")
-        c = _THEME_COLORS[self._theme]
-
-        fmt = QTextCharFormat()
-        if success:
-            fmt.setForeground(QColor(c["success"]))
-        elif error:
-            fmt.setForeground(QColor(c["error"]))
+    def _append_log(self, text: str, *, success: bool = False, error: bool = False, ok: bool | None = None) -> None:
+        if ok is not None:
+            level = "success" if ok else "error"
         else:
-            fmt.setForeground(QColor(c["fg"]))
-
-        cursor = self._log_view.textCursor()
-        cursor.movePosition(cursor.MoveOperation.End)
-        cursor.insertText(f"[{ts}] {text}\n", fmt)
-        self._log_view.setTextCursor(cursor)
-        self._log_view.ensureCursorVisible()
+            level = "success" if success else ("error" if error else "info")
+        self._log(text, level=level)
 
     # ------------------------------------------------------------------
     # 档案弹窗
@@ -622,7 +518,6 @@ class _ProfileSelectDialog(ToolkitDialog):
             if item.widget():
                 item.widget().deleteLater()
 
-        c = _THEME_COLORS[self._theme]
         for p in profiles:
             row = QWidget()
             row_layout = QHBoxLayout(row)
@@ -631,10 +526,7 @@ class _ProfileSelectDialog(ToolkitDialog):
 
             label_text = f"{p.brand} / {p.manufacturer} / {p.model}"
             select_btn = QPushButton(label_text)
-            select_btn.setStyleSheet(
-                f"text-align: left; padding: 8px; border-radius: 4px; "
-                f"color: {c['fg']}; background: {c['card_bg']};"
-            )
+            select_btn.setObjectName("profileSelectBtn")
             select_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             if p.notes:
                 select_btn.setToolTip(p.notes)

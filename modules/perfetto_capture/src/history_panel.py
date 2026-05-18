@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+
 from toolkit.gui.toolkit_dialog import confirm_dialog
 
 from .models import HistorySession, HistoryStats
@@ -43,31 +44,25 @@ LEFT_COL_MIN_WIDTH = 280
 RIGHT_COL_MIN_WIDTH = 320
 ANIMATION_DURATION_MS = 250
 
-# Catppuccin 主题色
-_THEME_COLORS = {
-    "dark": {
-        "bg": "#1e1e2e",
-        "panel_bg": "#313244",
-        "border": "#45475a",
-        "fg": "#cdd6f4",
-        "fg_dim": "#a6adc8",
-        "accent": "#cba6f7",
-        "success": "#a6e3a1",
-        "error": "#f38ba8",
-        "hover": "#45475a",
-    },
-    "light": {
-        "bg": "#eff1f5",
-        "panel_bg": "#e6e9ef",
-        "border": "#ccd0da",
-        "fg": "#333333",
-        "fg_dim": "#616161",
-        "accent": "#8839ef",
-        "success": "#40a02b",
-        "error": "#d20f39",
-        "hover": "#dce0e8",
-    },
-}
+
+def build_trace_send_payload(path: str) -> dict:
+    p = Path(path)
+    return {
+        "file_path": path,
+        "file_name": p.name,
+        "context_type": "trace",
+        "missing": not p.exists(),
+    }
+
+
+def build_analysis_send_payload(path: str) -> dict:
+    p = Path(path)
+    return {
+        "file_path": path,
+        "file_name": p.name,
+        "context_type": "analysis",
+        "missing": not p.exists(),
+    }
 
 
 class OverlayMask(QWidget):
@@ -105,6 +100,7 @@ class SessionTreeWidget(QTreeWidget):
     analyze_trace_requested = pyqtSignal(Path)
     delete_session_requested = pyqtSignal(str)
     delete_trace_requested = pyqtSignal(Path)
+    send_to_agent_requested = pyqtSignal(dict)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -211,6 +207,11 @@ class SessionTreeWidget(QTreeWidget):
         act_open.triggered.connect(self._ctx_open_directory)
         menu.addAction(act_open)
 
+        if len(items) == 1:
+            act_send = QAction("📤 发送到 Agent 对话", self)
+            act_send.triggered.connect(self._ctx_send_to_agent)
+            menu.addAction(act_send)
+
         menu.addSeparator()
 
         count = len(items)
@@ -268,12 +269,32 @@ class SessionTreeWidget(QTreeWidget):
             if path:
                 self.delete_trace_requested.emit(Path(path))
 
+    def _ctx_send_to_agent(self) -> None:
+        """将选中历史项发送到 Agent 对话。"""
+        items = self.selectedItems()
+        if not items:
+            return
+        data = items[0].data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        if data.get("type") != "trace":
+            return
+        path = str(data.get("path") or "")
+        if not path:
+            return
+        payload = self._build_send_payload(path)
+        self.send_to_agent_requested.emit(payload)
+
+    def _build_send_payload(self, path: str) -> dict:
+        return build_trace_send_payload(path)
+
 
 class AnalysisHistoryTree(QTreeWidget):
     """分析历史记录树形列表。"""
 
     open_report_requested = pyqtSignal(str)
     delete_analysis_requested = pyqtSignal(str)
+    send_to_agent_requested = pyqtSignal(dict)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -302,15 +323,8 @@ class AnalysisHistoryTree(QTreeWidget):
             }
         """)
         self.itemDoubleClicked.connect(self._on_double_click)
-
-        header_item = QTreeWidgetItem()
-        header_item.setText(0, "📊 分析历史")
-        self.setHeaderItem(header_item)
-        self.setHeaderHidden(False)
-        self.header().setStyleSheet(
-            "QHeaderView::section { background: transparent; color: #a6adc8; "
-            "border: none; padding: 4px; font-size: 12px; }"
-        )
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._on_context_menu)
 
     def refresh(self, tasks: list[dict]) -> None:
         """刷新分析任务列表。"""
@@ -344,6 +358,48 @@ class AnalysisHistoryTree(QTreeWidget):
             report_path = str(Path(result_dir) / "report.html")
             self.open_report_requested.emit(report_path)
 
+    def _on_context_menu(self, pos) -> None:
+        item = self.itemAt(pos)
+        if not item:
+            return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+
+        from PyQt6.QtWidgets import QMenu
+        menu = QMenu(self)
+        result_dir = data.get("result_dir", "")
+        if result_dir:
+            action_open = menu.addAction("📂 打开所在目录")
+        else:
+            action_open = None
+        action_send = menu.addAction("📤 发送到 Agent 对话")
+        action_delete = menu.addAction("🗑 删除")
+
+        action = menu.exec(self.viewport().mapToGlobal(pos))
+        if action and action == action_open and result_dir:
+            import subprocess, sys
+            dir_path = Path(result_dir)
+            if dir_path.exists():
+                if sys.platform == "win32":
+                    subprocess.run(["explorer", str(dir_path)], check=False)
+                else:
+                    from PyQt6.QtGui import QDesktopServices
+                    from PyQt6.QtCore import QUrl
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(str(dir_path)))
+        elif action and action == action_send:
+            target = str(result_dir or data.get("trace_path") or "")
+            if target:
+                payload = self._build_send_payload(target)
+                self.send_to_agent_requested.emit(payload)
+        elif action and action == action_delete:
+            task_id = data.get("id", "")
+            if task_id:
+                self.delete_analysis_requested.emit(task_id)
+
+    def _build_send_payload(self, path: str) -> dict:
+        return build_analysis_send_payload(path)
+
 
 class HistoryPanel(QWidget):
     """历史记录面板（覆盖式右侧滑出，支持左边缘拖动调整宽度）。"""
@@ -357,6 +413,7 @@ class HistoryPanel(QWidget):
     analyze_trace_requested = pyqtSignal(Path)
     delete_session_requested = pyqtSignal(str)
     delete_trace_requested = pyqtSignal(Path)
+    send_to_agent_requested = pyqtSignal(dict)
     file_dropped = pyqtSignal(Path)
     import_package_db = pyqtSignal()
     export_package_db = pyqtSignal()
@@ -387,41 +444,7 @@ class HistoryPanel(QWidget):
 
     def _setup_ui(self) -> None:
         """构建左右双栏 UI。"""
-        colors = _THEME_COLORS["dark"]
-
-        self.setStyleSheet(f"""
-            HistoryPanel {{
-                background: {colors['panel_bg']};
-                border-left: 3px solid {colors['border']};
-            }}
-            QLabel {{
-                color: {colors['fg']};
-            }}
-            QLineEdit {{
-                background: {colors['bg']};
-                border: 1px solid {colors['border']};
-                border-radius: 4px;
-                padding: 6px 8px;
-                color: {colors['fg']};
-            }}
-            QLineEdit:focus {{
-                border-color: {colors['accent']};
-            }}
-            QPushButton {{
-                background: {colors['border']};
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                color: {colors['fg']};
-            }}
-            QPushButton:hover {{
-                background: {colors['hover']};
-            }}
-            QSplitter::handle {{
-                background: {colors['border']};
-                width: 2px;
-            }}
-        """)
+        self.setObjectName("historyPanel")
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -431,7 +454,7 @@ class HistoryPanel(QWidget):
         header_bar = QHBoxLayout()
         header_bar.setContentsMargins(12, 8, 12, 8)
         title = QLabel("📂 历史记录 & 分析")
-        title.setStyleSheet(f"font-weight: bold; font-size: 14px; color: {colors['fg']};")
+        title.setObjectName("analysisChatHeader")
         header_bar.addWidget(title)
         header_bar.addStretch()
 
@@ -478,12 +501,13 @@ class HistoryPanel(QWidget):
         self._session_tree.open_directory_requested.connect(self.open_directory_requested.emit)
         self._session_tree.delete_session_requested.connect(self.delete_session_requested.emit)
         self._session_tree.delete_trace_requested.connect(self.delete_trace_requested.emit)
+        self._session_tree.send_to_agent_requested.connect(self.send_to_agent_requested.emit)
         left_layout.addWidget(self._session_tree, 1)
 
         # 操作按钮已集成到右键菜单，此处仅保留统计和清理
 
         self._stats_label = QLabel("💾 0 MB / 0 会话")
-        self._stats_label.setStyleSheet(f"color: {colors['fg_dim']}; font-size: 12px;")
+        self._stats_label.setObjectName("fieldHint")
         left_layout.addWidget(self._stats_label)
 
         bottom_actions = QHBoxLayout()
@@ -522,6 +546,9 @@ class HistoryPanel(QWidget):
         self._left_splitter.addWidget(upper_widget)
 
         self._analysis_history_tree = AnalysisHistoryTree()
+        self._analysis_history_tree.send_to_agent_requested.connect(
+            self.send_to_agent_requested.emit
+        )
         self._left_splitter.addWidget(self._analysis_history_tree)
         self._left_splitter.setSizes([300, 150])
 
@@ -535,7 +562,7 @@ class HistoryPanel(QWidget):
         right_placeholder_layout = QVBoxLayout(self._right_col_placeholder)
         right_placeholder_layout.setContentsMargins(4, 4, 12, 12)
         placeholder_label = QLabel("💬 选择 trace 后可在此进行 AI 分析对话")
-        placeholder_label.setStyleSheet(f"color: {colors['fg_dim']}; font-size: 13px;")
+        placeholder_label.setObjectName("fieldHint")
         placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         placeholder_label.setWordWrap(True)
         right_placeholder_layout.addWidget(placeholder_label)

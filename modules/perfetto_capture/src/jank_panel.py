@@ -44,12 +44,12 @@ class AppSelector(QWidget):
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         label = QLabel("监控应用")
-        label.setStyleSheet("font-size: 11px; font-weight: bold;")
+        label.setObjectName("jankSectionLabel")
         header.addWidget(label)
         header.addStretch()
         self._refresh_btn = QPushButton("🔄 刷新")
+        self._refresh_btn.setObjectName("jankSmallBtn")
         self._refresh_btn.setFixedHeight(22)
-        self._refresh_btn.setStyleSheet("font-size: 11px;")
         self._refresh_btn.clicked.connect(self._on_refresh_clicked)
         header.addWidget(self._refresh_btn)
         layout.addLayout(header)
@@ -148,7 +148,7 @@ class JankConfigPanel(QWidget):
         self._threshold_spin.setToolTip("1 秒内 Jank 帧数超过此阈值触发抓取")
         self._threshold_spin.valueChanged.connect(self._on_threshold_changed)
         lbl1 = QLabel("Jank 阈值")
-        lbl1.setStyleSheet("font-size: 11px;")
+        lbl1.setObjectName("jankSectionLabel")
         form.addRow(lbl1, self._threshold_spin)
 
         self._max_captures_spin = QSpinBox()
@@ -159,7 +159,7 @@ class JankConfigPanel(QWidget):
         self._max_captures_spin.setToolTip("单次监控最多自动抓取次数")
         self._max_captures_spin.valueChanged.connect(self._on_max_captures_changed)
         lbl2 = QLabel("最大抓取")
-        lbl2.setStyleSheet("font-size: 11px;")
+        lbl2.setObjectName("jankSectionLabel")
         form.addRow(lbl2, self._max_captures_spin)
 
         self._duration_spin = QSpinBox()
@@ -170,28 +170,28 @@ class JankConfigPanel(QWidget):
         self._duration_spin.setToolTip("监控最大持续时长，到期自动停止")
         self._duration_spin.valueChanged.connect(self._on_duration_changed)
         lbl3 = QLabel("监控时长")
-        lbl3.setStyleSheet("font-size: 11px;")
+        lbl3.setObjectName("jankSectionLabel")
         form.addRow(lbl3, self._duration_spin)
 
         layout.addLayout(form)
 
         # 抓取状态
         self._capture_label = QLabel("抓取: 0/3")
-        self._capture_label.setStyleSheet("font-size: 12px; font-weight: bold; color: #a6e3a1;")
+        self._capture_label.setObjectName("jankCaptureLabel")
         layout.addWidget(self._capture_label)
 
         layout.addStretch()
 
         # 操作按钮
         self._pause_btn = QPushButton("⏸ 暂停判定")
+        self._pause_btn.setObjectName("jankSmallBtn")
         self._pause_btn.setFixedHeight(26)
-        self._pause_btn.setStyleSheet("font-size: 11px;")
         self._pause_btn.clicked.connect(self._on_pause_clicked)
         layout.addWidget(self._pause_btn)
 
         self._export_btn = QPushButton("📊 导出数据")
+        self._export_btn.setObjectName("jankSmallBtn")
         self._export_btn.setFixedHeight(26)
-        self._export_btn.setStyleSheet("font-size: 11px;")
         self._export_btn.clicked.connect(self.export_clicked.emit)
         layout.addWidget(self._export_btn)
 

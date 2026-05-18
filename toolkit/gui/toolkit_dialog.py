@@ -136,7 +136,7 @@ def confirm_dialog(
 
     msg_label = QLabel(message)
     msg_label.setWordWrap(True)
-    msg_label.setStyleSheet("font-size: 13px; padding: 8px 0;")
+    msg_label.setObjectName("dlgMsgLabel")
     dlg.content_layout.addWidget(msg_label)
 
     btn_row = QHBoxLayout()
@@ -169,7 +169,7 @@ def input_dialog(
     dlg = ToolkitDialog(title, parent, min_width=380)
 
     lbl = QLabel(label)
-    lbl.setStyleSheet("font-size: 13px;")
+    lbl.setObjectName("dlgMsgLabel")
     dlg.content_layout.addWidget(lbl)
 
     edit = QLineEdit()
@@ -203,7 +203,7 @@ def warning_dialog(parent: QWidget, title: str, message: str) -> None:
 
     msg_label = QLabel(message)
     msg_label.setWordWrap(True)
-    msg_label.setStyleSheet("font-size: 13px; padding: 8px 0;")
+    msg_label.setObjectName("dlgMsgLabel")
     dlg.content_layout.addWidget(msg_label)
 
     btn_row = QHBoxLayout()
@@ -237,7 +237,7 @@ def three_button_dialog(
 
     msg_label = QLabel(message)
     msg_label.setWordWrap(True)
-    msg_label.setStyleSheet("font-size: 13px; padding: 8px 0;")
+    msg_label.setObjectName("dlgMsgLabel")
     dlg.content_layout.addWidget(msg_label)
 
     btn_row = QHBoxLayout()

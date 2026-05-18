@@ -136,10 +136,10 @@ def run_gui() -> None:
                 agent_tab = tab
             else:
                 other_tabs.append(tab)
-    if agent_tab:
-        window.add_tab(agent_tab)
     for tab in other_tabs:
         window.add_tab(tab)
+    if agent_tab:
+        window.set_agent_panel(agent_tab)
 
     modules_info = [
         {k: v for k, v in m.items() if not k.startswith("_")}

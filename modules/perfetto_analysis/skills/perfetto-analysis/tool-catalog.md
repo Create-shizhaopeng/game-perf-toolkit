@@ -21,6 +21,7 @@
   - [pa_analyze_dims](#pa_analyze_dims)
   - [pa_list_dims](#pa_list_dims)
   - [pa_history](#pa_history)
+  - [pa_read_knowledge](#pa_read_knowledge)
 - [CLI 命令](#cli-命令)
 - [MCP 工具（Perfetto MCP Server）](#mcp-工具perfetto-mcp-server)
 - [引擎能力概述](#引擎能力概述)
@@ -387,6 +388,27 @@ ORDER BY interval_ms DESC
 ### pa_history
 
 查询分析历史记录。无参数。
+
+### pa_read_knowledge
+
+两级加载 Perfetto 分析知识库资源（patterns/cases/sql-patterns 等）。
+
+| 属性 | 值 |
+|------|------|
+| 数据源 | 文件系统（skills/perfetto-analysis/ 下） |
+| 用途 | 按需加载根因模式库、案例、SQL 模板等知识资产到上下文 |
+
+**参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| resource_path | string | ✅ | 相对于 skills/perfetto-analysis/ 的路径 |
+
+**两级加载模式**：
+- **Level 1**（无锚点）：返回章节目录 + 摘要，用于浏览可用知识
+- **Level 2**（带 `#锚点`）：返回指定章节完整内容，如 `"patterns/root-cause-patterns.md#cpu-调度抢占"`
+
+**安全约束**：路径越界（超出 skills 目录）时拒绝访问。
 
 ## CLI 命令
 

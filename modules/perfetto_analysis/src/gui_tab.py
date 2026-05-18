@@ -34,7 +34,6 @@ from toolkit.gui.base_tab import BaseTab
 
 logger = logging.getLogger(__name__)
 
-_BOTTOM_AREA_HEIGHT = 150
 _LEFT_PANEL_W = 580
 
 
@@ -115,9 +114,7 @@ class _DimensionSelector(QPushButton):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("全部维度 ▾", parent)
         self.setFixedWidth(120)
-        self.setStyleSheet(
-            "QPushButton { text-align: left; padding: 2px 6px; }"
-        )
+        self.setObjectName("dimensionSelector")
 
         self._menu = _PersistentMenu(self)
         self._actions: dict[str, Any] = {}
@@ -283,7 +280,7 @@ class PerfettoAnalysisTab(BaseTab):
         layout.addWidget(self._progress_bar)
 
         self._progress_label = QLabel("")
-        self._progress_label.setStyleSheet("color: #888; font-size: 11px;")
+        self._progress_label.setObjectName("fieldHint")
         layout.addWidget(self._progress_label)
 
         # --- 分析历史 ---
@@ -329,18 +326,6 @@ class PerfettoAnalysisTab(BaseTab):
         layout.addWidget(self._result_group)
 
         layout.addStretch()
-
-        # --- 操作日志（与左侧控制区等高对齐） ---
-        log_box = QWidget()
-        log_box.setFixedHeight(_BOTTOM_AREA_HEIGHT)
-        log_box_layout = QVBoxLayout(log_box)
-        log_box_layout.setContentsMargins(0, 4, 0, 0)
-        log_box_layout.addWidget(QLabel("📋 操作日志"))
-        self._log_text = QTextEdit()
-        self._log_text.setReadOnly(True)
-        self._log_text.setStyleSheet("font-size: 11px;")
-        log_box_layout.addWidget(self._log_text)
-        layout.addWidget(log_box)
 
         return panel
 
@@ -498,9 +483,12 @@ class PerfettoAnalysisTab(BaseTab):
         if not running:
             self._progress_label.setText("")
 
-    def _log(self, msg: str) -> None:
-        ts = datetime.datetime.now().strftime("%H:%M:%S")
-        self._log_text.append(f"[{ts}] {msg}")
+    def _log(self, msg: str, level: str = "info") -> None:
+        if "❌" in msg or "失败" in msg:
+            level = "error"
+        elif "✅" in msg:
+            level = "success"
+        super()._log(msg, level=level)
 
     @staticmethod
     def _make_item(text: str) -> QTableWidgetItem:
@@ -619,12 +607,9 @@ class PerfettoAnalysisTab(BaseTab):
             btn_del = QPushButton()
             btn_del.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DialogCloseButton))
             btn_del.setToolTip("删除该分析报告")
+            btn_del.setObjectName("dangerIconBtn")
             btn_del.setFixedSize(26, 22)
             btn_del.setEnabled(report_exists)
-            btn_del.setStyleSheet(
-                "QPushButton { color: #e74c3c; }"
-                "QPushButton:hover { background-color: #e74c3c; color: white; }"
-            )
             task_id = r.get("task_id", "")
             btn_del.clicked.connect(
                 lambda checked, rd=report_dir, tp=trace_path, tid=task_id: (

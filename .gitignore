@@ -39,9 +39,11 @@ desktop.ini
 # Cursor — 忽略个人配置但保留项目共享内容
 .cursor/*
 !.cursor/skills/
+.cursor/skills/spec*
 !.cursor/rules/
 !.cursor/commands/
-.cursor/skills/speckit*
+**/.github/
+**/.specify/
 
 # 运行时数据
 data/
@@ -79,6 +81,7 @@ UI示意图/
 /ui2.png
 /ui3.png
 /model名修改重置工具.md
+**/modules/perfetto_analysis/skills/smart-perfetto/
 
 # 架构设计文档已迁移至 doc/architecture/（纳入 Git 管理）
 

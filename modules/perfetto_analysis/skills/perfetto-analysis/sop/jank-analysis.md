@@ -106,15 +106,15 @@ SQL 查询见 [sql-patterns.md — CPU 频率查询](../sql-patterns.md#cpu-频�
 
 | 模式 | 特征 | 维度关联 | 深入参考 |
 | --- | --- | --- | --- |
-| 主线程耗时 | cpu 维度显示 Running 时间长 | cpu, thread, hotspot | |
-| Binder 阻塞 | binder 维度显示慢 Binder 调用 | binder | |
-| GPU 瓶颈 | gpu 维度显示 GPU 完成时间超标 | gpu, sf | |
-| GC 停顿 | gc 维度检测到长时间 GC | gc | |
+| 主线程耗时 | cpu 维度显示 Running 时间长 | cpu, thread, hotspot | [CPU 频率检查](../sql-patterns.md#cpu-频率查询) |
+| Binder 阻塞 | binder 维度显示慢 Binder 调用 | binder | [Binder 模式](../patterns/root-cause-patterns.md) |
+| GPU 瓶颈 | gpu 维度显示 GPU 完成时间超标 | gpu, sf | — |
+| GC 停顿 | gc 维度检测到长时间 GC | gc | — |
 | IO 阻塞 | io 维度显示 IO 等待（D-State） | io | [IO Block SOP](io-block-analysis.md) |
-| 锁竞争 | lock 维度检测到长时间等待 | lock, thread | |
+| 锁竞争 | lock 维度检测到长时间等待 | lock, thread | — |
 | SF 合成超时 | sf 维度显示合成超时 | sf | 见上方 SF 维度分析 |
 | HWC 超时 | sf 维度异常 + HWC binder 耗时高 | sf | [HWC 模式](../patterns/root-cause-patterns.md#hwc-binder-超时) |
-| 输入延迟 | input 维度显示输入处理慢 | input | |
+| 输入延迟 | input 维度显示输入处理慢 | input | — |
 | CPU 抢占 | 目标线程被高优线程抢占 | cpu, thread | [CPU 抢占模式](../patterns/root-cause-patterns.md#cpu-调度抢占) |
 
 ## 深入分析资源

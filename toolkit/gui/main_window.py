@@ -1,4 +1,4 @@
-"""主窗口 — 自定义标题栏 + 左侧导航 + 内容区"""
+"""主窗口 — 自定义标题栏 + 左侧面板(导航+历史) + 内容区 + 底部日志 + 右侧Agent(Overlay)"""
 
 from __future__ import annotations
 
@@ -15,19 +15,57 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+
+class _BodyContainer(QWidget):
+    """承载主分割器和右侧 Overlay 面板的容器。"""
+
+    def __init__(
+        self, splitter: QSplitter, right_panel: QWidget,
+        bottom_wrapper: QWidget, parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._splitter = splitter
+        self._right_panel = right_panel
+        self._bottom_wrapper = bottom_wrapper
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(splitter)
+
+        right_panel.setParent(self)
+        right_panel.raise_()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_overlay()
+
+    def _update_overlay(self) -> None:
+        rp = self._right_panel
+        if rp.isVisible():
+            w = rp.width()
+            h = self.height()
+            x = self.width() - w
+            rp.setGeometry(x, 0, w, h)
+            self._bottom_wrapper.setContentsMargins(0, 0, w, 0)
+        rp.raise_()
+
 from toolkit.core.adb_manager import AdbManager
 from toolkit.gui.base_tab import BaseTab
 from toolkit.gui.device_monitor import DeviceMonitor
 from toolkit.gui.home_tab import HomeTab
+from toolkit.gui.log_manager import LogManager
+from toolkit.gui.panels.bottom_panel import BottomPanel
+from toolkit.gui.panels.left_panel import LeftPanel
+from toolkit.gui.panels.right_panel import RightPanel
 from toolkit.gui.styles import get_theme_stylesheet
-from toolkit.gui.widgets.nav_panel import NavPanel
 from toolkit.gui.widgets.title_bar import TitleBar
 
 logger = logging.getLogger(__name__)
 
 
 class MainWindow(QWidget):
-    """无边框主窗口，包含自定义标题栏、左侧导航面板和内容堆栈。"""
+    """无边框主窗口，包含自定义标题栏、左侧面板、内容堆栈、底部日志和右侧 Agent。"""
 
     def __init__(self, context: dict) -> None:
         super().__init__()
@@ -57,6 +95,11 @@ class MainWindow(QWidget):
         )
         self._root_layout.setSpacing(0)
 
+        self._log_manager = LogManager(self)
+        self.context["log_manager"] = self._log_manager
+        self.context["show_right_panel"] = self._show_right_panel
+        self.context["hide_right_panel"] = self._hide_right_panel
+
         self._title_bar = TitleBar(self)
         self._title_bar.minimize_clicked.connect(self.showMinimized)
         self._title_bar.maximize_clicked.connect(self._toggle_maximize)
@@ -64,26 +107,66 @@ class MainWindow(QWidget):
         self._title_bar.theme_toggled.connect(self._toggle_theme)
         self._title_bar.llm_settings_requested.connect(self._open_llm_settings)
         self._title_bar.agent_settings_requested.connect(self._open_agent_settings)
+        self._title_bar.toggle_nav_panel.connect(self._on_toggle_nav)
+        self._title_bar.toggle_bottom_panel.connect(self._on_toggle_bottom)
+        self._title_bar.toggle_right_panel.connect(self._on_toggle_right)
         self._root_layout.addWidget(self._title_bar)
 
-        self._nav_panel = NavPanel(self)
-        self._nav_panel.tab_selected.connect(self._on_tab_selected)
-        self._nav_panel.setMinimumWidth(120)
-        self._nav_panel.setMaximumWidth(300)
+        self._left_panel = LeftPanel(self)
+        self._left_panel.tab_selected.connect(self._on_tab_selected)
+        self._left_panel.setMinimumWidth(48)
+        self._left_panel.setMaximumWidth(480)
 
         self._content_stack = QStackedWidget()
+        self._content_stack.setMinimumWidth(300)
+        self._content_stack.setMinimumHeight(120)
+
+        self._bottom_panel = BottomPanel(self._log_manager, self)
+        self._right_panel = RightPanel(self)
+
+        self._bottom_panel.setMinimumHeight(35)
+
+        self._bottom_wrapper = QWidget()
+        self._bottom_wrapper.setObjectName("bottomWrapper")
+        bw_layout = QVBoxLayout(self._bottom_wrapper)
+        bw_layout.setContentsMargins(0, 0, 0, 0)
+        bw_layout.setSpacing(0)
+        bw_layout.addWidget(self._bottom_panel)
+
+        self._center_splitter = QSplitter(Qt.Orientation.Vertical)
+        self._center_splitter.setObjectName("centerSplitter")
+        self._center_splitter.setChildrenCollapsible(False)
+        self._center_splitter.addWidget(self._content_stack)
+        self._center_splitter.addWidget(self._bottom_wrapper)
+        self._center_splitter.setStretchFactor(0, 1)
+        self._center_splitter.setStretchFactor(1, 0)
+        self._center_splitter.setHandleWidth(4)
 
         self._splitter = QSplitter(Qt.Orientation.Horizontal)
         self._splitter.setObjectName("bodySplitter")
         self._splitter.setChildrenCollapsible(False)
-        self._splitter.addWidget(self._nav_panel)
-        self._splitter.addWidget(self._content_stack)
+        self._splitter.addWidget(self._left_panel)
+        self._splitter.addWidget(self._center_splitter)
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)
         self._splitter.setSizes([180, 1020])
-        self._splitter.setHandleWidth(2)
+        self._splitter.setHandleWidth(4)
 
-        self._root_layout.addWidget(self._splitter)
+        self._bottom_panel.hide()
+        self._bottom_wrapper.hide()
+        self._right_panel.hide()
+        self._nav_saved_width = 180
+        self._bottom_saved_height = 200
+        self._right_saved_width = 320
+
+        self._right_panel.resize_requested.connect(self._on_right_resize_requested)
+
+        self._log_manager.error_logged.connect(self._on_error_logged)
+
+        self._body_container = _BodyContainer(
+            self._splitter, self._right_panel, self._bottom_wrapper, self,
+        )
+        self._root_layout.addWidget(self._body_container)
 
         self._status_bar = QWidget()
         self._status_bar.setObjectName("statusBar")
@@ -129,6 +212,7 @@ class MainWindow(QWidget):
         self._device_monitor.devices_changed.connect(self._on_devices_changed)
 
         self._tabs: list[BaseTab] = []
+        self._agent_tab: BaseTab | None = None
         self._devices: list[str] = []
 
         self._home_tab = HomeTab(context, self)
@@ -140,17 +224,30 @@ class MainWindow(QWidget):
 
         self._apply_theme()
         self._title_bar.set_theme(self._current_theme)
-        self._nav_panel.set_theme(self._current_theme)
+        self._left_panel.set_theme(self._current_theme)
         self._home_tab.set_theme(self._current_theme)
 
     def add_tab(self, tab: BaseTab) -> None:
         """添加一个模块页面到内容区。"""
+        tab_index = len(self._tabs)
         self._tabs.append(tab)
         self._content_stack.addWidget(tab)
-        self._nav_panel.add_tab_button(tab.tab_title, tab.tab_icon)
-        if hasattr(tab, "set_theme"):
-            tab.set_theme(self._current_theme)
+        self._left_panel.add_tab_button(tab.tab_title, tab.tab_icon)
+        tab.set_theme(self._current_theme)
+
+        for title, hw in tab.history_widgets():
+            self._left_panel.register_history(title, hw)
+
         logger.info("注册 GUI Tab: %s", tab.tab_title)
+
+    def set_agent_panel(self, tab: BaseTab) -> None:
+        """将 AgentTab 设置为右侧面板内容（不进入 ContentStack）。"""
+        self._agent_tab = tab
+        tab.set_theme(self._current_theme)
+        self._right_panel.set_agent_widget(tab)
+        if self._devices:
+            tab.on_devices_changed(self._devices)
+        logger.info("Agent Chat 已加载到右侧面板")
 
     def set_module_info(self, modules: list[dict]) -> None:
         """设置已加载模块信息，更新首页。"""
@@ -182,7 +279,13 @@ class MainWindow(QWidget):
             if 0 <= old_index < len(self._tabs):
                 self._tabs[old_index].on_deactivated()
             self._content_stack.setCurrentIndex(index)
-            self._tabs[index].on_activated()
+            tab = self._tabs[index]
+            tab.on_activated()
+            hw_list = tab.history_widgets()
+            if hw_list:
+                self._left_panel.switch_history_to_module(hw_list[0][0])
+            else:
+                self._left_panel.switch_history_to_module(tab.tab_title)
 
     def _on_devices_changed(self, devices: list[str]) -> None:
         self._devices = devices
@@ -192,6 +295,8 @@ class MainWindow(QWidget):
 
         for tab in self._tabs:
             tab.on_devices_changed(devices)
+        if self._agent_tab:
+            self._agent_tab.on_devices_changed(devices)
 
         status = f"已连接: {devices[0]}" if len(devices) == 1 else (
             f"{len(devices)} 台设备已连接" if devices else "未连接设备"
@@ -305,6 +410,103 @@ class MainWindow(QWidget):
             self.setCursor(Qt.CursorShape.ArrowCursor)
         super().leaveEvent(event)
 
+    def _on_toggle_nav(self, visible: bool) -> None:
+        """切换左侧面板可见性。"""
+        if visible:
+            self._left_panel.show()
+            from PyQt6.QtCore import QTimer
+            w = self._nav_saved_width
+            QTimer.singleShot(0, lambda: self._apply_nav_size(w))
+        else:
+            self._nav_saved_width = max(self._splitter.sizes()[0], 120)
+            self._left_panel.hide()
+
+    def _apply_nav_size(self, w: int) -> None:
+        sizes = self._splitter.sizes()
+        total = sum(sizes)
+        sizes[0] = w
+        sizes[1] = total - w
+        self._splitter.setSizes(sizes)
+
+    def _on_toggle_bottom(self, visible: bool) -> None:
+        """切换底部日志面板可见性。"""
+        if visible:
+            self._bottom_panel.show()
+            self._bottom_wrapper.show()
+            if self._right_panel.isVisible():
+                self._bottom_wrapper.setContentsMargins(0, 0, self._right_panel.width(), 0)
+            from PyQt6.QtCore import QTimer
+            h = self._bottom_saved_height
+            QTimer.singleShot(0, lambda: self._apply_bottom_size(h))
+        else:
+            sizes = self._center_splitter.sizes()
+            if sizes[1] > 0:
+                self._bottom_saved_height = sizes[1]
+            self._bottom_panel.hide()
+            self._bottom_wrapper.hide()
+
+    def _apply_bottom_size(self, h: int) -> None:
+        sizes = self._center_splitter.sizes()
+        total = sum(sizes)
+        h = min(h, total * 2 // 3)
+        self._center_splitter.setSizes([total - h, h])
+
+    def _on_toggle_right(self, visible: bool) -> None:
+        """切换右侧 Agent 面板可见性（Overlay 模式）。"""
+        if visible:
+            if self._agent_tab:
+                self._agent_tab.on_activated()
+            self._right_panel.show()
+            from PyQt6.QtCore import QTimer
+            w = self._right_saved_width
+            QTimer.singleShot(0, lambda: self._apply_right_size(w))
+        else:
+            cur_w = self._right_panel.width()
+            if cur_w > 0:
+                self._right_saved_width = cur_w
+            if self._agent_tab:
+                self._agent_tab.on_deactivated()
+            self._right_panel.hide()
+            self._bottom_wrapper.setContentsMargins(0, 0, 0, 0)
+
+    def _apply_right_size(self, w: int) -> None:
+        w = self._clamp_right_width(w)
+        container = self._body_container
+        h = container.height()
+        x = container.width() - w
+        self._right_panel.setGeometry(x, 0, w, h)
+        self._right_panel.raise_()
+        self._bottom_wrapper.setContentsMargins(0, 0, w, 0)
+
+    def _clamp_right_width(self, w: int) -> int:
+        """限制右侧面板宽度：最小 280，最大不超过 body - 左侧面板宽度。"""
+        container = self._body_container
+        left_w = self._splitter.sizes()[0] if self._left_panel.isVisible() else 0
+        max_w = container.width() - left_w
+        return max(280, min(w, max_w))
+
+    def _on_right_resize_requested(self, new_width: int) -> None:
+        """响应右侧面板拖拽手柄的宽度调整请求。"""
+        self._apply_right_size(new_width)
+
+    def _show_right_panel(self) -> None:
+        """供模块调用：显示右侧面板。"""
+        if not self._right_panel.isVisible():
+            self._title_bar.set_panel_active("right", True)
+            self._on_toggle_right(True)
+
+    def _hide_right_panel(self) -> None:
+        """供模块调用：隐藏右侧面板。"""
+        if self._right_panel.isVisible():
+            self._title_bar.set_panel_active("right", False)
+            self._on_toggle_right(False)
+
+    def _on_error_logged(self) -> None:
+        """error/warning 日志自动弹出底部面板。"""
+        if not self._bottom_panel.isVisible():
+            self._title_bar.set_panel_active("bottom", True)
+            self._on_toggle_bottom(True)
+
     def _toggle_theme(self) -> None:
         self._current_theme = "light" if self._current_theme == "dark" else "dark"
 
@@ -321,11 +523,15 @@ class MainWindow(QWidget):
         """将当前主题通知到所有子组件。"""
         theme = self._current_theme
         self._title_bar.set_theme(theme)
-        self._nav_panel.set_theme(theme)
+        self._left_panel.set_theme(theme)
+        self._bottom_panel.set_theme(theme)
+        self._right_panel.set_theme(theme)
 
         for tab in self._tabs:
-            if hasattr(tab, "set_theme"):
-                tab.set_theme(theme)
+            tab.set_theme(theme)
+
+        if self._agent_tab:
+            self._agent_tab.set_theme(theme)
 
         pm = self.context.get("plugin_manager")
         module_count = len(pm.loaded_modules) if pm else 0
@@ -368,6 +574,9 @@ class MainWindow(QWidget):
 
     def _open_agent_settings(self) -> None:
         """打开 Agent 设置对话框。"""
+        if self._agent_tab and hasattr(self._agent_tab, "_on_open_settings"):
+            self._agent_tab._on_open_settings()
+            return
         for tab in self._tabs:
             if hasattr(tab, "_on_open_settings"):
                 tab._on_open_settings()

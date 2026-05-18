@@ -52,6 +52,22 @@ ICONS = {
     "eye-closed": "\ueae7",
     "diff": "\ueae1",
     "arrow-swap": "\uebcb",
+    # 布局面板
+    "layout-sidebar-left": "\uebf3",
+    "layout-sidebar-left-off": "\uec02",
+    "layout-panel": "\uebf2",
+    "layout-panel-off": "\uec01",
+    "layout-sidebar-right": "\uebf4",
+    "layout-sidebar-right-off": "\uec00",
+    # 折叠/展开
+    "chevron-down": "\ueab4",
+    "chevron-right": "\ueab6",
+    "chevron-up": "\ueab5",
+    # 日志面板
+    "clear-all": "\ueabf",
+    "filter": "\uea91",
+    "filter-filled": "\ueb6e",
+    "output": "\ueb7d",
 }
 
 

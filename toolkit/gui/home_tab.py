@@ -14,25 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from toolkit.gui.base_tab import BaseTab
-
-_THEME_COLORS = {
-    "dark": {
-        "accent": "#cba6f7",
-        "subtitle": "#a6adc8",
-        "border": "#313244",
-        "muted": "#6c7086",
-        "card_title": "#a6adc8",
-        "version_fg": "#585b70",
-    },
-    "light": {
-        "accent": "#8839ef",
-        "subtitle": "#616161",
-        "border": "#ccd0da",
-        "muted": "#888888",
-        "card_title": "#616161",
-        "version_fg": "#888888",
-    },
-}
+from toolkit.gui.theme_colors import THEMES as _THEME_COLORS
 
 
 class StatusCard(QFrame):
@@ -103,19 +85,16 @@ class HomeTab(BaseTab):
         content_layout.setContentsMargins(24, 20, 24, 20)
         content_layout.setSpacing(20)
 
-        c = _THEME_COLORS["dark"]
-
         self._welcome = QLabel("欢迎使用 Game Toolkit")
-        self._welcome.setStyleSheet(f"font-size: 20px; font-weight: bold; color: {c['accent']};")
+        self._welcome.setObjectName("homeWelcome")
         content_layout.addWidget(self._welcome)
 
         self._subtitle = QLabel("游戏开发测试工具集 — 集成设备管理、性能分析、日志分析等能力")
-        self._subtitle.setStyleSheet(f"font-size: 13px; color: {c['subtitle']};")
+        self._subtitle.setObjectName("homeSubtitle")
         content_layout.addWidget(self._subtitle)
 
         self._divider = QFrame()
         self._divider.setFrameShape(QFrame.Shape.HLine)
-        self._divider.setStyleSheet(f"color: {c['border']};")
         content_layout.addWidget(self._divider)
 
         cards_layout = QGridLayout()
@@ -139,7 +118,7 @@ class HomeTab(BaseTab):
         content_layout.addLayout(cards_wrapper)
 
         self._modules_title = QLabel("已加载模块")
-        self._modules_title.setStyleSheet("font-size: 15px; font-weight: bold; margin-top: 8px;")
+        self._modules_title.setObjectName("homeModulesTitle")
         content_layout.addWidget(self._modules_title)
 
         self._modules_container = QVBoxLayout()
@@ -148,9 +127,6 @@ class HomeTab(BaseTab):
 
         self._no_modules_label = QLabel("暂无已加载模块")
         self._no_modules_label.setObjectName("noModulesHint")
-        self._no_modules_label.setStyleSheet(
-            f"color: {c['muted']}; font-style: italic; padding: 12px;"
-        )
         self._modules_container.addWidget(self._no_modules_label)
 
         content_layout.addStretch()
@@ -176,16 +152,8 @@ class HomeTab(BaseTab):
         self._theme_card.set_value("暗色" if theme == "dark" else "亮色")
 
     def set_theme(self, theme: str) -> None:
-        """切换主题时更新所有内联样式。"""
+        """切换主题 — 全局 QSS 处理大部分样式，此处只更新动态组件。"""
         self._theme = theme
-        c = _THEME_COLORS.get(theme, _THEME_COLORS["dark"])
-
-        self._welcome.setStyleSheet(f"font-size: 20px; font-weight: bold; color: {c['accent']};")
-        self._subtitle.setStyleSheet(f"font-size: 13px; color: {c['subtitle']};")
-        self._divider.setStyleSheet(f"color: {c['border']};")
-        self._no_modules_label.setStyleSheet(
-            f"color: {c['muted']}; font-style: italic; padding: 12px;"
-        )
 
         for card in (self._device_card, self._module_card, self._db_card, self._theme_card):
             card.set_theme(theme)
@@ -203,38 +171,23 @@ class HomeTab(BaseTab):
             if item.widget():
                 item.widget().deleteLater()
 
-        c = _THEME_COLORS.get(self._theme, _THEME_COLORS["dark"])
-
         for mod in modules:
             card = QFrame()
             card.setObjectName("moduleCard")
             card.setMaximumWidth(756)
-            card.setStyleSheet(f"""
-                QFrame#moduleCard {{
-                    border: 1px solid {c['border']};
-                    border-radius: 6px;
-                }}
-                QFrame#moduleCard:hover {{
-                    border-color: {'#45475a' if self._theme == 'dark' else '#bcc0cc'};
-                }}
-            """)
             layout = QHBoxLayout(card)
             layout.setContentsMargins(12, 8, 12, 8)
 
             name_label = QLabel(mod.get("display_name", mod.get("name", "?")))
-            name_label.setStyleSheet("font-weight: bold; font-size: 13px; background: transparent;")
+            name_label.setObjectName("moduleNameLabel")
             layout.addWidget(name_label)
 
             version_label = QLabel(f"v{mod.get('version', '?')}")
-            version_label.setStyleSheet(
-                f"color: {c['card_title']}; font-size: 11px; background: transparent;"
-            )
+            version_label.setObjectName("moduleVersionLabel")
             layout.addWidget(version_label)
 
             desc_label = QLabel(mod.get("description", ""))
-            desc_label.setStyleSheet(
-                f"color: {c['muted']}; font-size: 12px; background: transparent;"
-            )
+            desc_label.setObjectName("moduleDescLabel")
             layout.addWidget(desc_label, 1)
 
             self._modules_container.addWidget(card)
