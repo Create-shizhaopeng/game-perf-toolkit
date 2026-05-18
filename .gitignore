@@ -47,6 +47,7 @@ desktop.ini
 .claude/*
 !.claude/skills/
 .claude/skills/spec*
+.claude/skills/openspec*
 !.claude/rules/
 
 **/.github/
