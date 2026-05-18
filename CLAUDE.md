@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 LV Game Toolkit 是一个基于插件架构的游戏开发测试工具集，支持 GUI（PyQt6）和 CLI（Typer）双模式运行。核心框架提供配置、数据库、事件总线、服务注册表、插件管理等基础设施，各功能以独立模块形式存在于 `modules/` 目录。
 
+**技术栈**：Python 3.12+ / PyQt6 / Typer + Rich / pluggy 1.3+ / Pydantic 2.0+ / SQLite / uv（推荐包管理）/ pytest / Ruff。详见 [README.md](README.md)。
+
 ## 常用命令
 
 ### 开发环境
@@ -159,9 +161,13 @@ modules/
     src/plugin.py          # 插件入口（必须含 BasePlugin 子类）
     src/service.py         # 业务服务（可选）
     tests/                 # 模块测试
-data/                   # 运行时数据
+data/                   # 运行时数据（config.json、toolkit.db；运行时生成，gitignore）
 scripts/                # 构建、测试、脚手架脚本
-docs/                   # 文档中心
+docs/                   # 文档中心（PROGRESS / SUMMARY / architecture / knowledge / experience）
+specs/                  # Speckit 输出的需求/计划/任务（所有模块统一在此）
+.specify/               # Speckit 配置与模板（含 constitution.md 最高治理文档）
+.claude/rules/          # Claude Code 加载的项目规则
+.cursor/rules/          # Cursor IDE 加载的项目规则（与 .claude/rules/ 内容对齐）
 ```
 
 开发关键文件：
@@ -180,6 +186,8 @@ docs/                   # 文档中心
 3. GUI 后台操作 **MUST** 使用 `QThread + pyqtSignal`，**MUST NOT** 在主线程执行阻塞操作
 4. 所有输出 **MUST** 使用 UTF-8 编码
 5. Pydantic 用于公共 API 的入参和返回值的数据校验与序列化
+6. **GUI 日志**：MUST 用 `self._log(msg, level=...)`，MUST NOT 操作 `LogManager` 或在 Tab 内嵌 `LogTextEdit`（详见 [.claude/rules/log-panel-rules.md](.claude/rules/log-panel-rules.md)）
+7. **GUI 样式**：MUST 通过 `objectName` + `toolkit/gui/styles.py` 全局 QSS；MUST NOT 硬编码主题颜色（用 `theme_colors.get_colors()`）；对话框 MUST 继承 `ToolkitDialog`（详见 [.claude/rules/ui-style-guide.md](.claude/rules/ui-style-guide.md)）
 
 ### Speckit 开发流程
 
