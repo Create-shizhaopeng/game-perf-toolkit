@@ -164,6 +164,7 @@ def _hidden_imports() -> list[str]:
         "toolkit.core.process_bridge",
         "toolkit.core.logger",
         "toolkit.core.hookspecs",
+        "toolkit.core.perfdog",  # 添加 perfdog 模块
         "toolkit.sdk.base_plugin",
         "toolkit.sdk.models",
         "toolkit.sdk.protocols",
@@ -173,6 +174,7 @@ def _hidden_imports() -> list[str]:
         "toolkit.gui.base_tab",
         "toolkit.gui.styles",
         "toolkit.cli.main",
+        "pyqtgraph",
         "perfetto",
         "perfetto.trace_processor",
         "perfetto.trace_processor.api",
