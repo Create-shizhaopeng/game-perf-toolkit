@@ -42,6 +42,13 @@ desktop.ini
 .cursor/skills/spec*
 !.cursor/rules/
 !.cursor/commands/
+
+# Cluade code保留项目共享内容，删掉个人本地的工具，配置等
+.claude/*
+!.claude/skills/
+.claude/skills/spec*
+!.claude/rules/
+
 **/.github/
 **/.specify/
 

@@ -266,3 +266,8 @@ BUG/ANALYZE/DESIGN 文档顶部必须包含状态卡片：
   superseded_by: DES-005
 -->
 ```
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->
