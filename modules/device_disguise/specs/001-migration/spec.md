@@ -106,7 +106,7 @@
 
 ### Session 2026-03-30（device_info 迭代，取代旧路径说明）
 
-- Q: 设备档案 JSON 的文件名与存放路径？ → A: 以 [002-device-info-json/spec.md](../002-device-info-json/spec.md) 为准：正式文件名为 `device_info.json`；开发环境为 `modules/device_disguise/data/device_info.json`；PyInstaller 打包后为 `<exe 同级目录>/data/device_info.json`。原 Clarification 中 `device_profiles.json` 仅作为迁移来源；GUI 增加「导入配置」与档案变更一并写回该文件。
+- Q: 设备档案 JSON 的文件名与存放路径？ → A: 以 [002-device-info-json/spec.md](../002-device-info-json/spec.md) 为准：正式文件名为 `device_info.json`；开发环境为 `modules/device_disguise/config/device_info.json`；PyInstaller 打包后为 `<exe 同级目录>/data/device_info.json`。原 Clarification 中 `device_profiles.json` 仅作为迁移来源；GUI 增加「导入配置」与档案变更一并写回该文件。
 
 ## Requirements *(mandatory)*
 

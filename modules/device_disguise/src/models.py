@@ -20,13 +20,13 @@ DEVICE_INFO_FILENAME = "device_info.json"
 def resolve_device_info_json_path() -> Path:
     """设备档案配置文件路径。
 
-    - 开发：`modules/device_disguise/data/device_info.json`
+    - 开发：`modules/device_disguise/config/device_info.json`
     - 打包（frozen）：`<exe 同级目录>/data/device_info.json`
     """
     mod_root = Path(__file__).resolve().parent.parent
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent / "data" / DEVICE_INFO_FILENAME
-    return mod_root / "data" / DEVICE_INFO_FILENAME
+    return mod_root / "config" / DEVICE_INFO_FILENAME
 
 
 class DeviceProfile(BaseModel):

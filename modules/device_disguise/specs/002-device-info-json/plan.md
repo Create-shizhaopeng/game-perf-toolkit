@@ -11,14 +11,14 @@
 1. **路径解析**：在 `models.py` 提供 `resolve_device_info_json_path()`，基于 `sys.frozen` 分支；常量 `DEVICE_INFO_FILENAME` 便于测试断言。
 2. **迁移**：`ProfileManager.__init__` 在 `load` 前调用 `_maybe_migrate_legacy()`，仅在目标文件不存在时尝试从旧路径 `copy2`。
 3. **GUI**：`gui_tab.py` 增加 `QFileDialog` + `_on_import_config`，捕获 `OSError`、`json.JSONDecodeError` 及未预期异常；导入成功后 `refresh_completers()`。
-4. **构建**：不在 `build.py` 为设备伪装单独 `add-data`；与 001 一致，`modules/*/data` 仍被通用收集规则排除，运行依赖用户目录或首次拷贝仓库随带文件到安装目录（或由导入填充）。
+4. **构建**：在 `build.py` 中通过 `_collect_module_configs()` 收集 `modules/*/config/` 下的配置文件；`package()` 阶段将 `device_info.json` 复制到 `dist/data/` 目录，供 frozen 模式读取。
 5. **数据**：仓库内删除 `device_profiles.json`，新增 `device_info.json`（内容迁移自原默认三条）。
 
 ## 涉及文件
 
 - `modules/device_disguise/src/models.py`
 - `modules/device_disguise/src/gui_tab.py`
-- `modules/device_disguise/data/device_info.json`（新增）
+- `modules/device_disguise/config/device_info.json`（新增）
 - `modules/device_disguise/data/device_profiles.json`（删除）
 - `modules/device_disguise/tests/test_models.py`
 - `modules/device_disguise/specs/001-migration/spec.md`（Clarifications 增补指向 002）

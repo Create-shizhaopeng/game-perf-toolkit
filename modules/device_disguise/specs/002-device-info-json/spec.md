@@ -34,10 +34,10 @@
 
 | 运行方式 | 配置文件路径 |
 |----------|----------------|
-| 开发（非 frozen） | `modules/device_disguise/data/device_info.json` |
+| 开发（非 frozen） | `modules/device_disguise/config/device_info.json` |
 | PyInstaller 打包（frozen） | `<exe 同级目录>/data/device_info.json` |
 
-仓库中在 `modules/device_disguise/data/device_info.json` 保留默认档案列表（与原有三条一致），不再使用 `device_profiles.json` 作为正式文件名。
+仓库中在 `modules/device_disguise/config/device_info.json` 保留默认档案列表（与原有三条一致），不再使用 `device_profiles.json` 作为正式文件名。
 
 ## JSON 格式
 
@@ -60,7 +60,7 @@
 
 | ID | 条件 |
 |----|------|
-| AC-01 | 无参 `ProfileManager()` 在开发环境下读写 `modules/device_disguise/data/device_info.json` |
+| AC-01 | 无参 `ProfileManager()` 在开发环境下读写 `modules/device_disguise/config/device_info.json` |
 | AC-02 | frozen 模式下读写 `<exe_dir>/data/device_info.json`（目录不存在时自动创建） |
 | AC-03 | GUI「导入配置」成功合并记录并刷新联想；非法 JSON 有错误提示 |
 | AC-04 | 仅存在旧 `device_profiles.json` 时能迁移出 `device_info.json` 并正确加载 |

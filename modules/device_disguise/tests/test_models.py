@@ -151,7 +151,7 @@ class TestResolveDeviceInfoJsonPath:
         monkeypatch.setattr(sys, "frozen", False, raising=False)
         p = resolve_device_info_json_path()
         assert p.name == DEVICE_INFO_FILENAME
-        assert p.parent.name == "data"
+        assert p.parent.name == "config"
         assert "device_disguise" in p.parts
 
     def test_frozen_points_next_to_exe(

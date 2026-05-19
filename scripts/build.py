@@ -122,6 +122,7 @@ def _collect_data_dir() -> list[tuple[str, str]]:
     return datas
 
 
+
 def _collect_assets() -> list[tuple[str, str]]:
     """收集 assets/ 目录（图标、Logo 等资源文件）。"""
     datas: list[tuple[str, str]] = []
@@ -220,8 +221,76 @@ def _hidden_imports() -> list[str]:
     return imports
 
 
-def build(console: bool, name: str, version: str) -> None:
-    """执行一次 PyInstaller 构建。"""
+def _write_spec(name: str, datas: list[tuple[str, str]], hidden: list[str],
+                excludes: list[str], icon: str, console: bool) -> Path:
+    """生成 PyInstaller .spec 文件，避免 Windows 命令行长度限制 (32768 字符)。"""
+    spec_path = ROOT / f"{name}.spec"
+
+    datas_repr = "[\n"
+    for src, dst in datas:
+        datas_repr += f"        ({src!r}, {dst!r}),\n"
+    datas_repr += "    ]"
+
+    hidden_repr = "[\n"
+    for imp in hidden:
+        hidden_repr += f"        {imp!r},\n"
+    hidden_repr += "    ]"
+
+    excludes_repr = "[\n"
+    for exc in excludes:
+        excludes_repr += f"        {exc!r},\n"
+    excludes_repr += "    ]"
+
+    spec_content = f'''# -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_submodules
+
+a = Analysis(
+    [{str(ENTRY_POINT)!r}],
+    pathex=[],
+    binaries=[],
+    datas={datas_repr},
+    hiddenimports={hidden_repr},
+    hookspath=[],
+    hooksconfig={{}},
+    runtime_hooks=[],
+    excludes={excludes_repr},
+    noarchive=False,
+    optimize=0,
+)
+pyz = PYZ(a.pure)
+
+exe_kwargs = dict(
+    name={name!r},
+    icon={icon!r} if {icon!r} else None,
+)
+if {console!r}:
+    exe_kwargs["console"] = True
+else:
+    exe_kwargs["console"] = False
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    **exe_kwargs,
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name={name!r},
+)
+'''
+    spec_path.write_text(spec_content, encoding="utf-8")
+    return spec_path
+
+
+def build(console: bool, name: str, version: str) -> str:
+    """执行一次 PyInstaller 构建，返回实际输出目录名（含时间戳以避免锁定冲突）。"""
     version_file = ROOT / "VERSION"
     version_file.write_text(version, encoding="utf-8")
 
@@ -233,42 +302,45 @@ def build(console: bool, name: str, version: str) -> None:
         + [(str(version_file), ".")]
     )
     hidden = _hidden_imports()
+    icon_path = str(ROOT / "assets" / "app.ico")
 
-    icon_path = ROOT / "assets" / "app.ico"
+    ts = _time.strftime("%H%M%S")
+    build_name = f"{name}_{ts}"
+
+    spec = _write_spec(build_name, datas, hidden, EXCLUDE_MODULES, icon_path, console)
 
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm",
-        "--onedir",
-        f"--name={name}",
-        f"--distpath={DIST_DIR}",
-        f"--workpath={BUILD_DIR}",
-        "--clean",
+        "--distpath", str(DIST_DIR),
+        "--workpath", str(BUILD_DIR),
+        str(spec),
     ]
 
-    if icon_path.exists():
-        cmd.append(f"--icon={icon_path}")
-
-    for exclude in EXCLUDE_MODULES:
-        cmd.append(f"--exclude-module={exclude}")
-
-    if not console:
-        cmd.append("--noconsole")
-
-    for src, dst in datas:
-        cmd.append(f"--add-data={src}{os.pathsep}{dst}")
-
-    for imp in hidden:
-        cmd.append(f"--hidden-import={imp}")
-
-    cmd.append(str(ENTRY_POINT))
-
     print(f"\n{'='*60}")
-    print(f"  Building {name} v{version} ({'GUI' if not console else 'CLI'}) ...")
+    print(f"  Building {name} v{version} ({'GUI' if not console else 'CLI'}) -> {build_name}")
     print(f"  Excluding {len(EXCLUDE_MODULES)} unused transitive deps")
     print(f"{'='*60}\n")
 
     subprocess.run(cmd, check=True, cwd=str(ROOT))
+
+    # 在构建产物中创建 data/ 目录，从 modules/*/config/ 复制默认配置文件
+    out_dir = DIST_DIR / build_name
+    data_dir = out_dir / "data"
+    data_dir.mkdir(exist_ok=True)
+    modules_dir = ROOT / "modules"
+    if modules_dir.exists():
+        for mod_dir in sorted(modules_dir.iterdir()):
+            config_dir = mod_dir / "config"
+            if not config_dir.is_dir():
+                continue
+            for f in config_dir.iterdir():
+                if f.is_file() and not f.name.endswith((".pyc", ".pyo")):
+                    dest = data_dir / f.name
+                    if not dest.exists():
+                        shutil.copy2(f, dest)
+    print(f"  [OK] Created data/ directory with default configs in {out_dir}")
+    return build_name
 
 
 def _copy_as_cli(gui_dir: Path, pkg_dir: Path, os_name: str) -> None:
@@ -278,7 +350,7 @@ def _copy_as_cli(gui_dir: Path, pkg_dir: Path, os_name: str) -> None:
     通过 editbin 或直接修改 PE 头可避免第二次完整构建。
     如果 editbin 不可用，则退回到构建一个轻量 CLI wrapper。
     """
-    gui_exe = gui_dir / ("Toolkit.exe" if os_name == "windows" else "Toolkit")
+    gui_exe = list(gui_dir.glob("*.exe"))[0] if os_name == "windows" else next(gui_dir.glob("*"))
     cli_exe_name = "toolkit-cli.exe" if os_name == "windows" else "toolkit-cli"
     cli_dst = pkg_dir / cli_exe_name
 
@@ -331,13 +403,13 @@ def _set_pe_subsystem(exe_path: Path, console: bool = True) -> None:
         f.write(target.to_bytes(2, "little"))
 
 
-def package(version: str) -> None:
+def package(version: str, gui_dir_name: str = "Toolkit") -> None:
     """将构建产物合并到统一目录并打包。"""
     os_name = "windows" if platform.system() == "Windows" else "linux"
     pkg_name = f"{APP_NAME}-v{version}-{os_name}"
     pkg_dir = DIST_DIR / pkg_name
 
-    gui_dir = DIST_DIR / "Toolkit"
+    gui_dir = DIST_DIR / gui_dir_name
 
     if pkg_dir.exists():
         removed = False
@@ -364,9 +436,6 @@ def package(version: str) -> None:
         return
 
     _copy_as_cli(gui_dir, pkg_dir, os_name)
-
-    data_dir = pkg_dir / "data"
-    data_dir.mkdir(exist_ok=True)
 
     version_file = pkg_dir / "VERSION"
     version_file.write_text(version, encoding="utf-8")
@@ -408,15 +477,15 @@ def main() -> None:
     t0 = _time.time()
 
     if args.cli_only:
-        build(console=True, name="toolkit-cli", version=version)
+        gui_dir_name = build(console=True, name="toolkit-cli", version=version)
     else:
-        build(console=False, name="Toolkit", version=version)
+        gui_dir_name = build(console=False, name="Toolkit", version=version)
 
     elapsed = _time.time() - t0
     print(f"\n  Build time: {elapsed:.1f}s")
 
     if not args.no_package:
-        package(version)
+        package(version, gui_dir_name="Toolkit" if args.cli_only else gui_dir_name)
 
 
 if __name__ == "__main__":

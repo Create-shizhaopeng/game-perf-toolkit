@@ -27,6 +27,13 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 
 ## 近期完成
 
+### 2026-05-19（构建打包修复 — device_info.json 分发）
+
+- 修复 `device_info.json` 打包时未被复制到 `dist/data/` 的 BUG（[BUG-001](bugfix/BUG-001-build-config-not-packaged.md)）
+- `modules/<name>/data/` 与 `config/` 路径职责分离：data 为测试资源不打包，config 为分发配置随构建复制
+- PyInstaller 命令行模式改为 .spec 文件模式，绕过 Windows 命令行 32768 字符限制
+- 构建输出目录使用时间戳后缀，避免目录锁定导致 PermissionError
+
 ### 2026-04-09（长期记忆系统优化）
 
 - 合并 7 个模块 constitution → AGENTS.md，AGENTS.md 成为统一权威约束源
