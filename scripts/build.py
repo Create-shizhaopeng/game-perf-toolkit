@@ -324,22 +324,25 @@ def build(console: bool, name: str, version: str) -> str:
 
     subprocess.run(cmd, check=True, cwd=str(ROOT))
 
-    # 在构建产物中创建 data/ 目录，从 modules/*/config/ 复制默认配置文件
+    # 在构建产物中创建 data/config/ + data/db/ 目录，从 modules/*/config/ 复制默认配置文件
     out_dir = DIST_DIR / build_name
-    data_dir = out_dir / "data"
-    data_dir.mkdir(exist_ok=True)
+    config_dir = out_dir / "data" / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    db_dir = out_dir / "data" / "db"
+    db_dir.mkdir(parents=True, exist_ok=True)
     modules_dir = ROOT / "modules"
     if modules_dir.exists():
         for mod_dir in sorted(modules_dir.iterdir()):
-            config_dir = mod_dir / "config"
-            if not config_dir.is_dir():
+            src_config_dir = mod_dir / "config"
+            if not src_config_dir.is_dir():
                 continue
-            for f in config_dir.iterdir():
+            mod_name = mod_dir.name
+            for f in src_config_dir.iterdir():
                 if f.is_file() and not f.name.endswith((".pyc", ".pyo")):
-                    dest = data_dir / f.name
+                    dest = config_dir / f"{mod_name}_{f.name}"
                     if not dest.exists():
                         shutil.copy2(f, dest)
-    print(f"  [OK] Created data/ directory with default configs in {out_dir}")
+    print(f"  [OK] Created data/config/ + data/db/ directories with default configs in {out_dir}")
     return build_name
 
 

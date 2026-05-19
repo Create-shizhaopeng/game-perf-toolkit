@@ -7,6 +7,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from toolkit.core.app_paths import get_exe_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -14,12 +16,12 @@ class DatabaseManager:
     """SQLite 数据库管理器。
 
     提供连接管理、SQL 执行和模块迁移支持。
-    数据库文件默认位于 data/toolkit.db。
+    数据库文件默认位于 data/db/toolkit.db。
     """
 
     def __init__(self, db_path: Path | None = None) -> None:
         if db_path is None:
-            db_path = Path("data/toolkit.db")
+            db_path = get_exe_dir() / "data" / "db" / "toolkit.db"
         self._db_path = db_path
         self._conn: sqlite3.Connection | None = None
 

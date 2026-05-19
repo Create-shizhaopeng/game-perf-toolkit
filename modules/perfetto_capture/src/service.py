@@ -12,6 +12,7 @@ import uuid
 from pathlib import Path
 
 from toolkit.core.adb_manager import AdbCmdResult, AdbManager
+from toolkit.core.app_paths import get_exe_dir, is_frozen
 
 from .config_manager import load_config, save_config
 from .models import (
@@ -46,7 +47,7 @@ class PerfettoCaptureService:
 
     def __init__(self, adb: AdbManager, data_dir: Path | None = None) -> None:
         self._adb = adb
-        self._data_dir = data_dir or Path(__file__).parent.parent / "data"
+        self._data_dir = data_dir or (get_exe_dir() / "data")
         self._cfg: CaptureConfig | None = None
         self._session: CaptureSession | None = None
 
@@ -69,12 +70,8 @@ class PerfettoCaptureService:
 
     @property
     def output_dir(self) -> Path:
-        """开发环境: modules/perfetto_capture/data/output/trace
-        打包模式: <exe_dir>/output/trace/
-        """
-        import sys
-        if getattr(sys, "frozen", False):
-            return Path(sys.executable).parent / "output" / "trace"
+        if is_frozen():
+            return get_exe_dir() / "output" / "trace"
         return self._data_dir / self.config.output_dir / "trace"
 
     def reload_config(self, config_path: Path | None = None) -> CaptureConfig:

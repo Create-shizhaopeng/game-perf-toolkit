@@ -7,6 +7,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from toolkit.core.app_paths import get_exe_dir
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_CONFIG: dict[str, Any] = {
@@ -21,12 +23,12 @@ _DEFAULT_CONFIG: dict[str, Any] = {
 class ConfigManager:
     """分层配置管理器。
 
-    全局配置存储在 data/config.json。
+    全局配置存储在 data/config/toolkit_config.json。
     """
 
     def __init__(self, config_path: Path | None = None) -> None:
         if config_path is None:
-            config_path = Path("data/config.json")
+            config_path = get_exe_dir() / "data" / "config" / "toolkit_config.json"
         self._path = config_path
         self._config: dict[str, Any] = {}
         self._load()

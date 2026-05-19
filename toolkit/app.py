@@ -56,9 +56,9 @@ DATA_DIR = Path(sys.executable).parent / "data" if getattr(sys, "frozen", False)
 
 def _build_context() -> dict:
     """构建核心服务上下文，注入到所有模块。"""
-    config_manager = ConfigManager(DATA_DIR / "config.json")
+    config_manager = ConfigManager(DATA_DIR / "config" / "toolkit_config.json")
 
-    db_manager = DatabaseManager(DATA_DIR / "toolkit.db")
+    db_manager = DatabaseManager(DATA_DIR / "db" / "toolkit.db")
     db_manager.connect()
 
     event_bus = EventBus()
@@ -188,7 +188,7 @@ def _resolve_log_level() -> int:
 
     if not cli_override:
         try:
-            config = ConfigManager(DATA_DIR / "config.json")
+            config = ConfigManager(DATA_DIR / "config" / "toolkit_config.json")
             level_name = config.get("log_level", "INFO")
             level = getattr(_logging, str(level_name).upper(), _logging.INFO)
         except Exception:

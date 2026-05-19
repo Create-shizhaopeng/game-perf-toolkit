@@ -1204,11 +1204,13 @@ class AgentTab(BaseTab):
         from .sop.manager import SOPManager
         from .tools.registry import ToolRegistry
 
+        from toolkit.core.app_paths import get_db_path, get_exe_dir
+
         module_dir = Path(__file__).resolve().parent.parent
-        data_dir = module_dir / "data"
+        data_dir = get_exe_dir() / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
 
-        self._store = ConversationStore(data_dir / "agent_chat.db")
+        self._store = ConversationStore(get_db_path("agent_chat", "conversation"))
 
         self._sop_manager = SOPManager(
             builtin_dir=module_dir / "assets" / "sops",
@@ -1729,8 +1731,9 @@ class AgentTab(BaseTab):
         if not self._sop_manager:
             return
 
-        module_dir = Path(__file__).resolve().parent.parent
-        save_dir = module_dir / "data" / "sops"
+        from toolkit.core.app_paths import get_exe_dir
+
+        save_dir = get_exe_dir() / "data" / "sops"
         saved_path = save_sop(content, save_dir)
 
         if self._sop_manager:

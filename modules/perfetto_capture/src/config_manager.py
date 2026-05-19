@@ -6,24 +6,25 @@ import json
 import logging
 from pathlib import Path
 
+from toolkit.core.app_paths import get_config_path, ensure_config_dir, get_exe_dir, is_frozen
+
 from .models import CaptureConfig
 
 logger = logging.getLogger(__name__)
 
-
-def _get_module_dir() -> Path:
-    """返回模块根目录（src/ 的父目录）。"""
-    return Path(__file__).parent.parent
+MODULE_NAME = "perfetto_capture"
 
 
 def get_default_config_path() -> Path:
-    """默认配置模板路径。"""
-    return _get_module_dir() / "assets" / "config.json"
+    """默认配置模板路径。frozen 下用 config 目录，开发时用 assets/。"""
+    if is_frozen():
+        return get_config_path(MODULE_NAME, "config.json")
+    return get_exe_dir() / "modules" / MODULE_NAME / "assets" / "config.json"
 
 
 def get_user_config_path() -> Path:
     """用户自定义配置路径。"""
-    return _get_module_dir() / "data" / "config.json"
+    return get_config_path(MODULE_NAME, "config.json")
 
 
 def load_config(config_path: Path | None = None) -> CaptureConfig:

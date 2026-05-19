@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import shutil
-import sys
 import tempfile
 from pathlib import Path
 
@@ -21,12 +20,11 @@ def resolve_device_info_json_path() -> Path:
     """设备档案配置文件路径。
 
     - 开发：`modules/device_disguise/config/device_info.json`
-    - 打包（frozen）：`<exe 同级目录>/data/device_info.json`
+    - 打包（frozen）：`<exe 同级目录>/data/config/device_info.json`
     """
-    mod_root = Path(__file__).resolve().parent.parent
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent / "data" / DEVICE_INFO_FILENAME
-    return mod_root / "config" / DEVICE_INFO_FILENAME
+    from toolkit.core.app_paths import get_config_path
+
+    return get_config_path("device_disguise", DEVICE_INFO_FILENAME)
 
 
 class DeviceProfile(BaseModel):

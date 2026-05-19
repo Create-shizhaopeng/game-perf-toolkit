@@ -164,7 +164,7 @@ class TestResolveDeviceInfoJsonPath:
         monkeypatch.setattr(sys, "frozen", True, raising=False)
         monkeypatch.setattr(sys, "executable", str(exe))
         p = resolve_device_info_json_path()
-        assert p == exe.parent / "data" / DEVICE_INFO_FILENAME
+        assert p == exe.parent / "data" / "config" / f"device_disguise_{DEVICE_INFO_FILENAME}"
 
 
 class TestLegacyMigration:

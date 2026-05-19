@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from toolkit.core.app_paths import get_db_path, get_exe_dir, is_frozen
 from toolkit.core.hookspecs import hookimpl
 from toolkit.sdk.base_plugin import BasePlugin
 
@@ -339,7 +340,7 @@ class PerfettoAnalysisPlugin(BasePlugin):
 
         from .service import PerfettoAnalysisService
 
-        data_dir = Path(__file__).resolve().parent.parent / "data"
+        data_dir = get_exe_dir() / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
 
         adb = context.get("adb")
@@ -362,7 +363,7 @@ class PerfettoAnalysisPlugin(BasePlugin):
                 from .agent.orchestrator import AnalysisOrchestrator
                 from .agent.package_db import PackageMappingDB
 
-                package_db = PackageMappingDB(data_dir / "package_mappings.db")
+                package_db = PackageMappingDB(get_db_path("perfetto_analysis", "package_mappings"))
                 orchestrator = AnalysisOrchestrator(
                     llm_manager=llm_manager,
                     pa_service=self._service,

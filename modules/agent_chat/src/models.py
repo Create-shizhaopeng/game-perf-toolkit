@@ -91,22 +91,23 @@ def _module_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def _assets_config_path() -> Path:
-    return _module_dir() / "assets" / "config.json"
 
+from toolkit.core.app_paths import get_config_path, ensure_config_dir, is_frozen
 
-def _data_config_path() -> Path:
-    return _module_dir() / "data" / "config.json"
+MODULE_NAME = "agent_chat"
 
 
 def load_config(path: Path | None = None) -> AgentConfig:
-    """加载配置。优先使用 data/config.json，不存在时从 assets 复制。"""
-    target = path or _data_config_path()
+    """加载配置。优先使用 config 目录，不存在时从 assets 复制（仅开发环境）。"""
+    target = path or get_config_path(MODULE_NAME, "config.json")
     if not target.exists():
-        assets = _assets_config_path()
-        if assets.exists():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(assets, target)
+        if not is_frozen():
+            assets = _module_dir() / "assets" / "config.json"
+            if assets.exists():
+                ensure_config_dir(MODULE_NAME)
+                shutil.copy2(assets, target)
+            else:
+                return AgentConfig()
         else:
             return AgentConfig()
     raw = json.loads(target.read_text(encoding="utf-8"))
@@ -114,8 +115,8 @@ def load_config(path: Path | None = None) -> AgentConfig:
 
 
 def save_config(cfg: AgentConfig, path: Path | None = None) -> None:
-    """保存配置到 data/config.json。"""
-    target = path or _data_config_path()
+    """保存配置到 config/config.json。"""
+    target = path or get_config_path(MODULE_NAME, "config.json")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
         cfg.model_dump_json(indent=2),

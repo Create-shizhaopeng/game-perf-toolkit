@@ -416,9 +416,11 @@ class PerfettoCaptureTab(BaseTab):
             self._on_trace_selection_changed
         )
 
+        from toolkit.core.app_paths import get_db_path, get_exe_dir, is_frozen
+
         # 初始化历史服务
         output_dir = self._get_output_dir()
-        db_path = output_dir / "history.db"
+        db_path = get_db_path("perfetto_capture", "history")
         storage = HistoryStorage(db_path)
         self._history_service = HistoryService(storage, output_dir, self._cfg.history)
 
@@ -439,12 +441,12 @@ class PerfettoCaptureTab(BaseTab):
         self._refresh_history()
 
     def _get_output_dir(self) -> Path:
-        """获取输出目录。"""
-        import sys
-        if getattr(sys, "frozen", False):
-            base = Path(sys.executable).parent / "output"
+        from toolkit.core.app_paths import get_exe_dir, is_frozen
+
+        if is_frozen():
+            base = get_exe_dir() / "output"
         else:
-            base = Path(__file__).parent.parent / "data" / self._cfg.output_dir
+            base = get_exe_dir() / "modules" / "perfetto_capture" / "data" / self._cfg.output_dir
         base.mkdir(parents=True, exist_ok=True)
         return base
 

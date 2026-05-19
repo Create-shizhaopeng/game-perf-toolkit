@@ -136,11 +136,12 @@ def _create_service(config):
     from .skills.manager import SkillsManager
     from .tools.registry import ToolRegistry
 
-    module_dir = Path(__file__).resolve().parent.parent
-    data_dir = module_dir / "data"
+    from toolkit.core.app_paths import get_db_path, get_exe_dir
+
+    data_dir = get_exe_dir() / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    store = ConversationStore(data_dir / "agent_chat.db")
+    store = ConversationStore(get_db_path("agent_chat", "conversation"))
 
     tool_registry = ToolRegistry()
     pm = _ac_context.get("plugin_manager") if _ac_context else None

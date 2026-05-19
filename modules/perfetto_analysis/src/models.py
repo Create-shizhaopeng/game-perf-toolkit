@@ -92,30 +92,19 @@ class AnalysisConfig(BaseModel):
 # 配置加载/保存
 # ---------------------------------------------------------------------------
 
-def _module_dir() -> Path:
-    """返回模块根目录 (modules/perfetto_analysis/)。"""
-    return Path(__file__).resolve().parent.parent
-
-
-def _assets_config_path() -> Path:
-    return _module_dir() / "assets" / "config.json"
-
-
-def _data_config_path() -> Path:
-    return _module_dir() / "data" / "config.json"
-
-
 def load_config(config_path: Path | None = None) -> AnalysisConfig:
     """加载配置文件，缺失时使用默认值。
 
-    优先级：config_path 参数 > data/config.json > assets/config.json > 默认值
+    优先级：config_path 参数 > user config > assets 模板 > 默认值
     """
+    from toolkit.core.app_paths import get_config_path, ensure_config_dir, is_frozen
+
     if config_path and config_path.is_file():
         target = config_path
     else:
-        target = _data_config_path()
+        target = get_config_path("perfetto_analysis", "config.json")
         if not target.is_file():
-            assets = _assets_config_path()
+            assets = Path(__file__).resolve().parent.parent / "assets" / "config.json"
             if assets.is_file():
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(assets, target)
@@ -132,7 +121,9 @@ def load_config(config_path: Path | None = None) -> AnalysisConfig:
 
 def save_config(cfg: AnalysisConfig, config_path: Path | None = None) -> Path:
     """保存配置到文件，返回保存路径。"""
-    target = config_path or _data_config_path()
+    from toolkit.core.app_paths import get_config_path
+
+    target = config_path or get_config_path("perfetto_analysis", "config.json")
     target.parent.mkdir(parents=True, exist_ok=True)
     with open(target, "w", encoding="utf-8") as f:
         json.dump(cfg.model_dump(), f, ensure_ascii=False, indent=2)

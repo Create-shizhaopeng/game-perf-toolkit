@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
-import sys
 from datetime import datetime
 from pathlib import Path
+
+from toolkit.core.app_paths import get_exe_dir, is_frozen
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +15,11 @@ def _resolve_workspace_root() -> Path:
     """解析工作空间根目录。
 
     - 打包后: <exe_dir>/output/agent_workspace/
-    - 开发环境: modules/agent_chat/data/agent_workspace/
+    - 开发环境: <project_root>/data/agent_workspace/
     """
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent / "output" / "agent_workspace"
-    return Path(__file__).resolve().parent.parent.parent / "data" / "agent_workspace"
+    if is_frozen():
+        return get_exe_dir() / "output" / "agent_workspace"
+    return get_exe_dir() / "data" / "agent_workspace"
 
 
 def create_workspace(name: str = "") -> str:

@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from toolkit.core.app_paths import get_exe_dir, is_frozen
+
 logger = logging.getLogger(__name__)
 
 _MAX_REPORTS = 20
@@ -108,17 +110,6 @@ class ReportIndex:
 
     def _get_trace_report_dir(self) -> Path | None:
         """获取 trace 报告目录路径。"""
-        if getattr(sys, "frozen", False):
-            return Path(sys.executable).parent / "output" / "trace_report"
-
-        candidates = [
-            Path(__file__).resolve().parent.parent.parent.parent.parent
-            / "data" / "output" / "trace_report",
-            Path(__file__).resolve().parent.parent.parent.parent.parent.parent
-            / "data" / "output" / "trace_report",
-        ]
-        for c in candidates:
-            if c.exists():
-                return c
-
-        return candidates[0] if candidates else None
+        if is_frozen():
+            return get_exe_dir() / "output" / "trace_report"
+        return get_exe_dir() / "data" / "output" / "trace_report"

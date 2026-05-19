@@ -7,6 +7,8 @@ import logging
 from pathlib import Path
 from typing import Any, Callable
 
+from toolkit.core.app_paths import get_config_path
+
 from ..models import MCPConnection, MCPConnectionStatus, MCPServerConfig
 from . import load_mcp_config, save_mcp_config
 from .connection import ConnectionPool
@@ -26,7 +28,7 @@ class MCPManager:
         on_status_change: OnStatusChange | None = None,
     ) -> None:
         self._config_path = config_path or (
-            Path(__file__).parent.parent.parent / "data" / "mcp_servers.json"
+            get_config_path("agent_chat", "mcp_servers.json")
         )
         self._servers: dict[str, MCPServerConfig] = {}
         self._pool = ConnectionPool()

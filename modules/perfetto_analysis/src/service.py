@@ -611,15 +611,17 @@ class PerfettoAnalysisService:
     # ------------------------------------------------------------------
 
     def _get_db_path(self) -> str:
-        return str(self._data_dir / self._cfg.db_path)
+        from toolkit.core.app_paths import get_db_path
+        return str(get_db_path("perfetto_analysis", "analysis"))
 
     def _get_output_dir(self) -> str:
         """开发环境: data/output/trace_report/
         打包模式: <exe_dir>/output/trace_report/
         """
-        import sys
-        if getattr(sys, "frozen", False):
-            return str(Path(sys.executable).parent / "output" / "trace_report")
+        from toolkit.core.app_paths import get_exe_dir, is_frozen
+
+        if is_frozen():
+            return str(get_exe_dir() / "output" / "trace_report")
         if self._root_dir:
             return str(self._root_dir / "data" / "output" / "trace_report")
         return str(self._data_dir / "output" / "trace_report")

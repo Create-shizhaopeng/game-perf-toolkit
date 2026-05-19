@@ -501,8 +501,10 @@ class GamePerfService:
         return backup_file
 
     def _get_backup_dir(self, serial: str) -> str:
+        from toolkit.core.app_paths import get_backup_path
+
         safe_serial = self._safe_serial_dir(serial)
-        path = os.path.join(self._data_dir, "backups", safe_serial)
+        path = str(get_backup_path("game_perf", safe_serial))
         os.makedirs(path, exist_ok=True)
         return path
 
