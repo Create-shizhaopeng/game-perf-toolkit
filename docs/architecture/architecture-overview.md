@@ -382,8 +382,14 @@ lv-game-toolkit/                              # 项目根目录
 │       └── assets/
 │
 ├── data/                                     #   全局运行时数据（gitignored）
-│   ├── config.json                           #     JSON 全局配置
-│   ├── toolkit.db                            #     SQLite 主数据库
+│   ├── config/                               #     配置文件
+│   │   ├── toolkit_config.json               #       全局配置（JSON）
+│   │   └── <module>_<file>                   #       模块配置（构建时从 modules/*/config/ 复制）
+│   ├── db/                                   #     数据库
+│   │   └── toolkit.db                        #       SQLite 主数据库
+│   │   └── <module>_<db>.db                  #       模块数据库
+│   ├── backup/                               #     备份文件
+│   │   └── <module>/                         #       模块备份目录
 │   ├── reports/                              #     报告文件（Markdown，AI可读）
 │   ├── traces/                               #     Trace 原始文件
 │   ├── logs/                                 #     日志原始文件
@@ -438,9 +444,11 @@ lv-game-toolkit/                              # 项目根目录
 
 采用**分布式方案 + 全局共享层**：
 
-- **全局共享**：`data/config.json` — 全局配置（主题、ADB 路径等）
-- **模块私有**：`modules/xx/data/` — 模块运行时数据（gitignored）
-- **测试固件**：`modules/xx/fixtures/` — 测试样本数据（纳入 git）
+- **全局配置**：`data/config/toolkit_config.json` — 全局配置（主题、ADB 路径等）
+- **模块配置**：`modules/<name>/config/<file>`（开发）→ `data/config/<name>_<file>`（打包）— 构建时从模块 config 目录复制，扁平命名避免冲突
+- **数据库**：`data/db/` — 命名规范 `<module>_<db>.db`（如 `toolkit.db`、`agent_chat_conversation.db`）
+- **备份文件**：`data/backup/<module>/` — 模块备份文件（如 `data/backup/game_perf/`）
+- **测试固件**：`modules/<name>/fixtures/` — 测试样本数据（纳入 git）
 - **跨模块数据交换**：通过事件总线和服务注册表，不通过文件目录
 
 ---
@@ -697,12 +705,18 @@ class ProcessBridge:
 
 ```
 data/
-├── config.json          # JSON 全局配置
-├── toolkit.db           # SQLite 主数据库
-├── reports/             # 报告文件（AI 可直接读取 Markdown）
-├── traces/              # Trace 原始文件
-├── logs/                # 日志原始文件
-└── exports/             # 导出文件
+├── config/                       # 配置文件
+│   ├── toolkit_config.json       # 全局配置
+│   └── <module>_<file>           # 模块配置（构建时从 modules/*/config/ 复制，扁平命名）
+├── db/                           # 数据库
+│   ├── toolkit.db                # SQLite 主数据库
+│   └── <module>_<db>.db          # 模块数据库（命名规范：模块名_功能.db）
+├── backup/                       # 备份文件
+│   └── <module>/                 # 模块备份目录
+├── reports/                      # 报告文件（AI 可直接读取 Markdown）
+├── traces/                       # Trace 原始文件
+├── logs/                         # 日志原始文件
+└── exports/                      # 导出文件
 ```
 
 #### 关键表结构
@@ -1243,8 +1257,8 @@ modules/agent_chat/
 │   │   └── generator.py       ← SOP 自动生成: generate_sop_from_trace + save_sop
 │   └── knowledge/
 │       └── report_index.py    ← ReportIndex — 扫描历史报告目录提取摘要
-├── assets/
-│   ├── config.json            ← 默认配置模板
+├── config/
+│   ├── config.json            ← 默认配置模板（开发路径: modules/agent_chat/config/config.json）
 │   └── sops/                  ← 内置 SOP 文档（trace/perfdog/strategy/comprehensive）
 ├── tests/                     ← 10 个测试文件，208 项测试
 └── specs/001-agent-core/      ← Speckit 工作流文档
@@ -1460,7 +1474,7 @@ scope: framework / sdk / gui / cli / {模块名}
 **不纳入 Git 的内容**：
 - 虚拟环境（`.venv/`）— pip install 可重建
 - 构建产物（`dist/`、`build/`）— 构建脚本可重建
-- 运行时数据（`data/config.json`、`modules/*/data/*`）— 运行时生成
+- 运行时数据（`data/config/`、`data/db/`、`data/backup/`）— 运行时生成
 - Python 缓存（`__pycache__/`）— 自动生成
 - Speckit 临时输出（`.specify/out/`）— 命令可重建
 - IDE 个人配置（`.idea/`、`.vscode/`）— 个人偏好

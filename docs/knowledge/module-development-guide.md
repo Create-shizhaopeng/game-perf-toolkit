@@ -210,6 +210,8 @@ spec.md 必须包含：
 modules/my_module/
 ├── manifest.json          # 模块元数据
 ├── AGENTS.md              # AI 开发规则
+├── config/                # 默认配置文件（纳入 Git，构建时复制到 data/config/）
+│   └── config.json        #   默认配置模板
 ├── src/
 │   ├── __init__.py
 │   ├── plugin.py          # 插件注册入口（hookimpl）
@@ -237,6 +239,8 @@ Service 层是模块的核心，所有业务逻辑集中于此。
 
 ```python
 # ✅ 正确：纯同步，不依赖 GUI 框架
+from toolkit.core.app_paths import get_exe_dir
+
 class MyModuleService:
     def __init__(self, adb: AdbManager, data_dir: str):
         self._adb = adb
@@ -250,6 +254,32 @@ class MyModuleService:
 
 # ❌ 错误：在 service 中导入 PyQt6
 from PyQt6.QtWidgets import QMessageBox  # 禁止！
+
+# ❌ 错误：使用 sys.frozen 自行判断路径
+import sys
+if getattr(sys, "frozen", False):  # 禁止！使用 toolkit.core.app_paths
+    ...
+```
+
+**路径规范**：所有模块 MUST 通过 `toolkit.core.app_paths` 解析路径，禁止各自实现 `sys.frozen` 分支：
+
+| 资源类型 | 开发路径 | 打包路径 (frozen) |
+|---------|---------|------------------|
+| 配置文件 | `modules/<name>/config/<file>` | `data/config/<name>_<file>` |
+| 数据库 | `data/db/<module>_<db>.db` | `data/db/<module>_<db>.db`（同构） |
+| 备份文件 | `data/backup/<module>/` | `data/backup/<module>/`（同构） |
+
+```python
+from toolkit.core.app_paths import get_config_path, get_db_path, get_backup_path, get_exe_dir, is_frozen
+
+# 配置文件
+config = load_config(get_config_path("agent_chat", "config.json"))
+
+# 数据库
+db = get_db_path("agent_chat", "conversation")  # → data/db/agent_chat_conversation.db
+
+# 备份
+backup_dir = get_backup_path("game_perf")  # → data/backup/game_perf/
 ```
 
 **进度回调签名**：`Callable[[str], None] | None`
