@@ -20,7 +20,6 @@
     "agent_tools": false,
     "workflow_stages": []
   },
-  "cli_namespace": "perfdog",
   "events": {
     "emits": [],
     "listens": []

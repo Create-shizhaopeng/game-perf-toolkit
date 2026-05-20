@@ -27,12 +27,6 @@ class GamePerfPlugin(BasePlugin):
         }
 
     @hookimpl
-    def register_cli_commands(self, cli_app):
-        from .cli_commands import perf_app
-
-        cli_app.add_typer(perf_app, name="perf")
-
-    @hookimpl
     def register_gui_tab(self):
         from .gui_tab import GamePerfTab
 

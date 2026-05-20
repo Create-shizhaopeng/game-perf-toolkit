@@ -17,7 +17,6 @@
     "agent_tools": true,
     "workflow_stages": ["parse", "analyze", "export"]
   },
-  "cli_namespace": "analysis",
   "events": {
     "emits": ["perfetto_analysis.analysis_complete"],
     "listens": ["perfetto_capture.trace_ready"]

@@ -21,12 +21,6 @@ class PerfdogInsightsPlugin(BasePlugin):
         }
 
     @hookimpl
-    def register_cli_commands(self, cli_app):
-        from .cli_commands import perfdog_app
-
-        cli_app.add_typer(perfdog_app, name="perfdog")
-
-    @hookimpl
     def register_gui_tab(self):
         from .gui_tab import PerfdogInsightsTab
 

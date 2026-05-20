@@ -21,13 +21,6 @@ class PerfettoCapturePlugin(BasePlugin):
         }
 
     @hookimpl
-    def register_cli_commands(self, cli_app):
-        from .cli_commands import perfetto_app, _context
-        from . import cli_commands
-        cli_commands._context = self.context
-        cli_app.add_typer(perfetto_app, name="perfetto")
-
-    @hookimpl
     def register_gui_tab(self):
         from .gui_tab import PerfettoCaptureTab
         return PerfettoCaptureTab(context=self.context)

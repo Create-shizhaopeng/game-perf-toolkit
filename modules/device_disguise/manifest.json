@@ -17,7 +17,6 @@
     "agent_tools": true,
     "workflow_stages": []
   },
-  "cli_namespace": "device",
   "events": {
     "emits": [
       "device_disguise.disguised",

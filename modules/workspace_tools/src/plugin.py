@@ -19,11 +19,6 @@ class WorkspaceToolsPlugin(BasePlugin):
         }
 
     @hookimpl
-    def register_cli_commands(self, cli_app):
-        from .cli_commands import workspace_app
-        cli_app.add_typer(workspace_app, name="workspace")
-
-    @hookimpl
     def register_gui_tab(self):
         from .gui_tab import WorkspaceToolsTab
         return WorkspaceToolsTab(context=self.context)

@@ -92,13 +92,6 @@ class PerfettoAnalysisPlugin(BasePlugin):
         }
 
     @hookimpl
-    def register_cli_commands(self, cli_app) -> None:
-        from .cli_commands import analysis_app
-
-        analysis_app._pa_context = self.context
-        cli_app.add_typer(analysis_app, name="analysis")
-
-    @hookimpl
     def register_gui_tab(self):
         return None
 

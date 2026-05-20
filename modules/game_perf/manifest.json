@@ -24,7 +24,6 @@
       "push"
     ]
   },
-  "cli_namespace": "perf",
   "events": {
     "emits": [
       "game_perf.config_pushed",

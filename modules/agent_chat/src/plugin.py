@@ -25,13 +25,6 @@ class AgentChatPlugin(BasePlugin):
         }
 
     @hookimpl
-    def register_cli_commands(self, cli_app) -> None:
-        from .cli_commands import agent_app
-
-        agent_app._ac_context = self.context
-        cli_app.add_typer(agent_app, name="agent")
-
-    @hookimpl
     def register_gui_tab(self):
         from .gui_tab import AgentTab
 

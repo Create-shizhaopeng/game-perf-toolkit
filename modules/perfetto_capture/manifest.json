@@ -17,7 +17,6 @@
     "agent_tools": false,
     "workflow_stages": []
   },
-  "cli_namespace": "perfetto",
   "events": {
     "emits": ["perfetto_capture.trace_ready"],
     "listens": []
