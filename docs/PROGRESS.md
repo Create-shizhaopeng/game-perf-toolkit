@@ -27,6 +27,27 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 
 ## 近期完成
 
+### 2026-05-20（统一日志规范约束体系化）
+
+- 统一日志体系规则写入 CLAUDE.md 与 .claude/rules/log-panel-rules.md：
+  - 3 个场景的正确日志接口标准：Service/Engine 层用 `logging.getLogger()`、GUI Tab 层用 `self._log()`、结构化日志用 `UnifiedLogger.bind_module()`
+  - 禁用 `print()` 输出诊断/错误/警告（保留 CLI 交互输出例外）
+  - 日志级别语义与 GUI 面板行为对照表（debug/info/success/warning/error）
+- `.cursor/rules/log-panel-rules.mdc` 与 `.claude/rules/log-panel-rules.md` 内容同步对齐
+- `docs/knowledge/module-development-guide.md` 新增「日志输出规范」章节 + 「常见错误」条目 #6
+- 7 个模块的 `print()` 已清理完毕，全部桥接到 `unified_logger` 统一路由
+
+### 2026-05-20（字符串提取规范体系化与归档）
+
+- 完成字符串提取规范的长期规则化：
+  - CLAUDE.md「不可违反的硬规则」新增第 9 条：用户可见中文文本必须提取到 `strings_*.py`
+  - 新建 `.claude/rules/string-extraction-gate.md`：明确提取范围、豁免范围、常量命名约定、导入方式、微调流程
+  - 明确日志输出（`_log()`、`logger.debug()` 等）不需要提取，避免过度工程
+- specs/019-hardcoded-string-extraction 归档：
+  - 创建 `ARCHIVE.md` 记录完成交付物、已知遗留项、后续微调策略
+  - `spec.md` 状态标记为 Archived
+- 当前字符串提取模式已覆盖 7 个模块 + 框架层，后续按模块逐个微调即可
+
 ### 2026-05-20（硬编码中文字符串提取完成）
 
 - 完成 5 个目标模块的硬编码字符串提取，统一提取到 `strings_gui.py` / `strings_cli.py` / `strings_service.py`

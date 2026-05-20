@@ -4,7 +4,7 @@
 
 **Created**: 2026-05-19
 
-**Status**: Draft
+**Status**: Archived (见 [ARCHIVE.md](ARCHIVE.md))
 
 **Input**: 当前项目中存在很多硬编码的字符串，现在需要重构代码优化这个问题，确保每个模块都有单独的字符串映射表，替代掉代码中的硬编码。
 
