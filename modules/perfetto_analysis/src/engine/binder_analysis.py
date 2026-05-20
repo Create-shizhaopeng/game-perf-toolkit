@@ -2,8 +2,11 @@
 """Binder 调用分析 + 线程池饱和度（FR-109/FR-110）。"""
 from __future__ import annotations
 
+import logging
 import sys
 from typing import Any
+
+_log = logging.getLogger("perfetto_analysis.engine")
 
 
 def analyze_binder(
@@ -139,7 +142,7 @@ def _fallback_slice_binder(
             })
         return calls
     except Exception as e:
-        print(f"[perfetto_analysis] 警告: Binder slice 查询失败: {e}", file=sys.stderr)
+        _log.warning("Binder slice 查询失败: %s", e)
         return []
 
 
@@ -204,5 +207,5 @@ def _analyze_pool_saturation(
             "saturation_pct": saturation_pct,
         }
     except Exception as e:
-        print(f"[perfetto_analysis] 警告: Binder 线程池饱和度分析失败: {e}", file=sys.stderr)
+        _log.warning("Binder 线程池饱和度分析失败: %s", e)
         return {}

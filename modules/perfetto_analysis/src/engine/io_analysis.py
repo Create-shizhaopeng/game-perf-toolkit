@@ -2,8 +2,11 @@
 """文件 IO 阻塞分析（FR-111）。"""
 from __future__ import annotations
 
+import logging
 import sys
 from typing import Any
+
+_log = logging.getLogger("perfetto_analysis.engine")
 
 IO_BLOCKED_FUNCTIONS = {
     "do_page_fault", "filemap_fault", "wait_on_page_bit",
@@ -81,7 +84,7 @@ def analyze_io(
         result["categories"] = cat_count
 
     except Exception as e:
-        print(f"[perfetto_analysis] 警告: IO 阻塞分析失败: {e}", file=sys.stderr)
+        _log.warning("IO 阻塞分析失败: %s", e)
 
     return result
 

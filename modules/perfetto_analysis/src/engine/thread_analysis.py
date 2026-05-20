@@ -2,8 +2,11 @@
 """线程状态时间线 + Block/Waker 链（FR-104/FR-105）。"""
 from __future__ import annotations
 
+import logging
 import sys
 from typing import Any
+
+_log = logging.getLogger("perfetto_analysis.engine")
 
 MAX_WAKER_DEPTH = 10
 BLOCK_THRESHOLD_NS = 1_000_000  # 1ms
@@ -34,10 +37,7 @@ def analyze_thread_states(
     if not has_sched:
         result["degraded"] = True
         result["degraded_reason"] = "调度数据不完整"
-        print(
-            "[perfetto_analysis] 警告: 缺少 sched_switch/sched_waking，线程分析降级",
-            file=sys.stderr,
-        )
+        _log.warning("缺少 sched_switch/sched_waking，线程分析降级")
 
     # 查询线程状态
     thread_states = _query_thread_states(tp, window_start_ns, window_end_ns, target_utids)
@@ -117,7 +117,7 @@ def _query_thread_states(
             for row in rows
         ]
     except Exception as e:
-        print(f"[perfetto_analysis] 警告: 线程状态查询失败: {e}", file=sys.stderr)
+        _log.warning("线程状态查询失败: %s", e)
         return []
 
 

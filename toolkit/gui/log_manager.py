@@ -21,6 +21,7 @@ class LogEntry:
     source: str
     message: str
     level: str
+    details: dict | None = None
 
 
 class LogManager(QObject):
@@ -43,10 +44,19 @@ class LogManager(QObject):
         self._entries: deque[LogEntry] = deque(maxlen=self._MAX_ENTRIES)
         self._sources: list[str] = []
 
-    def log(self, source: str, msg: str, *, level: str = "info") -> None:
+    def log(
+        self,
+        source: str,
+        msg: str,
+        *,
+        level: str = "info",
+        details: dict | None = None,
+    ) -> None:
         """记录一条日志并广播。"""
         ts = datetime.datetime.now().strftime("%H:%M:%S")
-        entry = LogEntry(timestamp=ts, source=source, message=msg, level=level)
+        entry = LogEntry(
+            timestamp=ts, source=source, message=msg, level=level, details=details
+        )
         self._entries.append(entry)
 
         if source not in self._sources:

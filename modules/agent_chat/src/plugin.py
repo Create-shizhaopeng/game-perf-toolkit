@@ -2,9 +2,11 @@
 """Agent 智能助手 — 插件注册入口。"""
 from __future__ import annotations
 
-import sys
+import logging
 from pathlib import Path
 from typing import Any
+
+_logger = logging.getLogger("agent_chat")
 
 from toolkit.core.hookspecs import hookimpl
 from toolkit.sdk.base_plugin import BasePlugin
@@ -92,9 +94,8 @@ class AgentChatPlugin(BasePlugin):
 
         has_api_key = bool(config.api_key or config.glm_api_key or config.claude_api_key)
         if not has_api_key:
-            print(
-                "[agent_chat] 提示: 未配置 API Key，请在设置中配置后使用 Agent 功能",
-                file=sys.stderr,
+            _logger.warning(
+                "未配置 API Key，请在设置中配置后使用 Agent 功能",
             )
 
     @hookimpl

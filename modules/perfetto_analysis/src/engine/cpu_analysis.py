@@ -2,8 +2,11 @@
 """CPU 频率/爬升/大小核调度/调度延迟分析（FR-106/FR-107/FR-108）。"""
 from __future__ import annotations
 
+import logging
 import sys
 from typing import Any
+
+_log = logging.getLogger("perfetto_analysis.engine")
 
 FREQ_RAMP_MIN_STEPS = 3  # 连续递增步数判定为频率爬升
 
@@ -57,10 +60,7 @@ def analyze_cpu(
     if not freq_data.get("freq_events"):
         result["degraded"] = True
         result["degraded_reason"] = "缺少 CPU 频率数据"
-        print(
-            "[perfetto_analysis] 警告: 缺少 CPU 频率数据，CPU 频率分析跳过",
-            file=sys.stderr,
-        )
+        _log.warning("缺少 CPU 频率数据，CPU 频率分析跳过")
 
     # 大小核调度分析
     if target_utids and topology:
@@ -124,7 +124,7 @@ def _analyze_cpu_freq(
                 ]
                 break
         except Exception as e:
-            print(f"[perfetto_analysis] CPU 频率查询降级: {e}", file=sys.stderr)
+            _log.warning("CPU 频率查询降级: %s", e)
             continue
 
     if not freq_events:
@@ -246,7 +246,7 @@ def _analyze_cluster_scheduling(
             prev_cpu[utid] = cpu
 
     except Exception as e:
-        print(f"[perfetto_analysis] 警告: 大小核调度分析失败: {e}", file=sys.stderr)
+        _log.warning("大小核调度分析失败: %s", e)
 
     total_running = sum(cluster_time.values()) or 1
     cluster_pct = {k: round(v / total_running * 100, 1) for k, v in cluster_time.items()}
@@ -298,7 +298,7 @@ def _analyze_sched_latency(
                     "cpu": int(row.cpu) if row.cpu is not None else None,
                 })
     except Exception as e:
-        print(f"[perfetto_analysis] 警告: 调度延迟分析失败: {e}", file=sys.stderr)
+        _log.warning("调度延迟分析失败: %s", e)
 
     stats: dict[str, Any] = {}
     if latencies:

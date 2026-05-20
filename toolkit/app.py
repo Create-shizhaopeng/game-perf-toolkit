@@ -37,6 +37,7 @@ from toolkit.core.db_manager import DatabaseManager
 from toolkit.core.event_bus import EventBus
 from toolkit.core.llm.manager import LLMManager
 from toolkit.core.logger import setup_logging
+from toolkit.core.unified_logger import UnifiedLogger
 from toolkit.core.plugin_manager import PluginManager
 from toolkit.core.service_registry import ServiceRegistry
 
@@ -126,6 +127,26 @@ def run_gui() -> None:
     context["plugin_manager"] = pm
 
     window = MainWindow(context)
+
+    # 启用 GUI 日志 Sink，连接 UnifiedLogger -> LogManager -> BottomPanel
+    from toolkit.core.unified_logger import UnifiedLogger
+
+    gui_sink = UnifiedLogger().enable_gui_sink(window)
+    log_mgr = context.get("log_manager")
+    if log_mgr is not None:
+        _LEVEL_GUI_MAP = {
+            "debug": "info",
+            "info": "info",
+            "warning": "warning",
+            "error": "error",
+            "critical": "error",
+        }
+
+        def _route_log_record(ts, src, msg, lvl):
+            mapped = _LEVEL_GUI_MAP.get(lvl, "info")
+            log_mgr.log(src, msg, level=mapped)
+
+        gui_sink.log_record.connect(_route_log_record)
 
     tabs = pm.pm.hook.register_gui_tab()
     agent_tab = None

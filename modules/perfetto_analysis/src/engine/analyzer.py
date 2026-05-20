@@ -2,6 +2,7 @@
 """Phase 2 编排器：逐帧分析 + 整体分析的调度中心。"""
 from __future__ import annotations
 
+import logging
 import sys
 from typing import Any
 
@@ -14,6 +15,8 @@ from . import report_writer
 
 # 维度 → 分析函数映射
 _DIMENSION_ANALYZERS: dict[str, Any] = {}
+
+_log = logging.getLogger("perfetto_analysis.engine")
 
 
 def _register_builtin_dimensions() -> None:
@@ -134,10 +137,7 @@ def analyze_jank(
     }
 
     if not process_name:
-        print(
-            "[perfetto_analysis] 提示: 请通过 --process 指定目标 App",
-            file=sys.stderr,
-        )
+        _log.info("请通过 --process 指定目标 App")
 
     # App 类型检测
     detected_type = app_type_mod.detect_app_type(tp, process_name, app_type_override)
@@ -148,10 +148,7 @@ def analyze_jank(
     if process_name:
         upid = app_type_mod.find_target_upid(tp, process_name)
         if upid is None:
-            print(
-                f"[perfetto_analysis] 错误: 指定进程在 trace 中未找到: {process_name}",
-                file=sys.stderr,
-            )
+            _log.error("指定进程在 trace 中未找到: %s", process_name)
             return result
 
     # CPU 拓扑
@@ -164,10 +161,7 @@ def analyze_jank(
     # jank_records
     jank_records = parse_result.get("jank_records", [])
     if not jank_records:
-        print(
-            "[perfetto_analysis] 提示: 本 trace 无丢帧，跳过逐帧分析",
-            file=sys.stderr,
-        )
+        _log.info("本 trace 无丢帧，跳过逐帧分析")
 
     # 逐帧分析（Top N）
     stand_vsync_ms = parse_result.get("stand_vsync_ms", 16.67)
@@ -219,10 +213,7 @@ def analyze_dimensions(
     if process_name:
         upid = app_type_mod.find_target_upid(tp, process_name)
         if upid is None:
-            print(
-                f"[perfetto_analysis] 错误: 指定进程在 trace 中未找到: {process_name}",
-                file=sys.stderr,
-            )
+            _log.error("指定进程在 trace 中未找到: %s", process_name)
             return result
 
     # CPU 拓扑（cpu 维度需要）
@@ -243,9 +234,9 @@ def analyze_dimensions(
             if 0 <= idx < len(sorted_janks):
                 selected_janks.append(sorted_janks[idx])
             else:
-                print(
-                    f"[perfetto_analysis] 错误: 指定的 jank 序号超出范围: {idx}，共 {len(sorted_janks)} 条 jank_record",
-                    file=sys.stderr,
+                _log.error(
+                    "指定的 jank 序号超出范围: %d，共 %d 条 jank_record",
+                    idx, len(sorted_janks),
                 )
                 return result
         sorted_janks = selected_janks
@@ -315,10 +306,9 @@ def _analyze_single_jank(
     }
 
     if truncated:
-        print(
-            f"[perfetto_analysis] 提示: Jank #{index + 1} jank_num={jank_num} > 20，"
-            "逐帧分析仅采集关键线程的 Top-20 最长阻塞事件，数据已截断",
-            file=sys.stderr,
+        _log.info(
+            "Jank #%d jank_num=%d > 20，逐帧分析仅采集关键线程的 Top-20 最长阻塞事件，数据已截断",
+            index + 1, jank_num,
         )
 
     for dim_id in dimensions:
@@ -340,10 +330,7 @@ def _analyze_single_jank(
             )
             jank_data[dim_id] = dim_result
         except Exception as e:
-            print(
-                f"[perfetto_analysis] 警告: 维度 {dim_id} 分析失败: {e}",
-                file=sys.stderr,
-            )
+            _log.warning("维度 %s 分析失败: %s", dim_id, e)
 
     return jank_data
 
@@ -368,10 +355,7 @@ def _run_summary_analysis(
     except ImportError:
         return {}
     except Exception as e:
-        print(
-            f"[perfetto_analysis] 警告: 整体分析失败: {e}",
-            file=sys.stderr,
-        )
+        _log.warning("整体分析失败: %s", e)
         return {}
 
 

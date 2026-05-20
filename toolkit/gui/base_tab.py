@@ -55,11 +55,13 @@ class BaseTab(QWidget):
         """
         self._theme = theme
 
-    def _log(self, msg: str, *, level: str = "info") -> None:
+    def _log(
+        self, msg: str, *, level: str = "info", details: dict | None = None
+    ) -> None:
         """统一日志输出 — 自动路由到底部面板的 LogManager。"""
         mgr = self.context.get("log_manager")
         if mgr:
-            mgr.log(self.tab_title, msg, level=level)
+            mgr.log(self.tab_title, msg, level=level, details=details)
 
     def right_panel_widget(self) -> "QWidget | None":
         """已废弃，请使用 history_widget()。保留兼容。"""

@@ -372,10 +372,9 @@ class PerfettoAnalysisPlugin(BasePlugin):
                 context["pa_orchestrator"] = orchestrator
                 context["pa_package_db"] = package_db
             except Exception as exc:
-                import sys
-                print(
-                    f"[perfetto_analysis] AnalysisOrchestrator 初始化失败: {exc}",
-                    file=sys.stderr,
+                logger.warning(
+                    "AnalysisOrchestrator 初始化失败: %s",
+                    exc,
                 )
 
         self._event_bus = context.get("event_bus")
@@ -385,11 +384,8 @@ class PerfettoAnalysisPlugin(BasePlugin):
             )
 
         if not self._service.perfetto_available:
-            import sys
-            print(
-                "[perfetto_analysis] 警告: perfetto 包未安装, "
-                "请执行: pip install perfetto>=0.16.0",
-                file=sys.stderr,
+            logger.warning(
+                "perfetto 包未安装，请执行: pip install perfetto>=0.16.0",
             )
 
     @hookimpl

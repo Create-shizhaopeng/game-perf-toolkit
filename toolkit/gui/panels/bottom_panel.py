@@ -1,15 +1,13 @@
-# -*- coding: utf-8 -*-
-"""底部日志面板 — VS Code 风格的统一日志输出区域。
-
-聚合所有模块日志，支持频道切换和级别过滤。
-"""
+"""底部日志面板 — VS Code 风格的统一日志输出区域。"""
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QTextCharFormat
 from PyQt6.QtWidgets import (
+    QFileDialog,
     QHBoxLayout,
+    QLabel,
+    QLineEdit,
     QPushButton,
     QTabBar,
     QTextEdit,
@@ -22,6 +20,8 @@ from toolkit.gui.log_manager import LogManager
 from toolkit.gui.theme_colors import get_colors
 
 _ALL_TAB = "全部"
+_CONSOLE_TAB = "控制台"
+_CONSOLE_SOURCE = "控制台"
 
 
 class _FilterButton(QPushButton):
@@ -39,8 +39,8 @@ class _FilterButton(QPushButton):
 class BottomPanel(QWidget):
     """底部日志面板 — 聚合所有模块日志。
 
-    Header: [频道Tabs] --- [级别过滤] [清除]
-    Content: QTextEdit
+    Header: [搜索] [计数] [频道Tabs] [控制台] --- [级别过滤] [清除]
+    Content: QTextEdit + 结构化详情区域
     """
 
     def __init__(self, log_manager: LogManager, parent: QWidget | None = None) -> None:
@@ -49,6 +49,8 @@ class BottomPanel(QWidget):
         self._log_manager = log_manager
         self._theme = "dark"
         self._current_source: str | None = None  # None = 全部
+        self._search_text: str = ""
+        self._show_console = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -61,6 +63,30 @@ class BottomPanel(QWidget):
         h_layout.setContentsMargins(8, 0, 4, 0)
         h_layout.setSpacing(4)
 
+        # 搜索框
+        self._search_input = QLineEdit()
+        self._search_input.setObjectName("logSearchInput")
+        self._search_input.setPlaceholderText("搜索日志...")
+        self._search_input.setFixedWidth(160)
+        self._search_input.setFixedHeight(22)
+        self._search_input.textChanged.connect(self._on_search_changed)
+        h_layout.addWidget(self._search_input)
+
+        # 匹配计数
+        self._count_label = QLabel("0 / 0")
+        self._count_label.setObjectName("logCountLabel")
+        self._count_label.setFixedWidth(60)
+        h_layout.addWidget(self._count_label)
+
+        # 导出按钮
+        export_btn = QPushButton("导出", self)
+        export_btn.setObjectName("logExportBtn")
+        export_btn.setFixedHeight(22)
+        export_btn.clicked.connect(self._on_export)
+        h_layout.addWidget(export_btn)
+        self._export_btn = export_btn
+
+        # 频道 Tabs
         self._tab_bar = QTabBar()
         self._tab_bar.setObjectName("logChannelBar")
         self._tab_bar.setDrawBase(False)
@@ -68,6 +94,15 @@ class BottomPanel(QWidget):
         self._tab_bar.addTab(_ALL_TAB)
         self._tab_bar.currentChanged.connect(self._on_tab_changed)
         h_layout.addWidget(self._tab_bar)
+
+        # 控制台源切换
+        self._console_btn = QPushButton("控制台", self)
+        self._console_btn.setObjectName("logConsoleBtn")
+        self._console_btn.setFixedHeight(22)
+        self._console_btn.setCheckable(True)
+        self._console_btn.setChecked(False)
+        self._console_btn.toggled.connect(self._on_console_toggled)
+        h_layout.addWidget(self._console_btn)
 
         h_layout.addStretch()
 
@@ -100,11 +135,43 @@ class BottomPanel(QWidget):
         log_manager.log_added.connect(self._on_log_added)
         log_manager.source_registered.connect(self._on_source_registered)
 
+    # --- public ---
+
     def set_theme(self, theme: str) -> None:
         self._theme = theme
         self._refresh_view()
 
+    # --- 搜索 / 过滤 / 导出 ---
+
+    def _on_search_changed(self, text: str) -> None:
+        self._search_text = text.strip().lower()
+        self._refresh_view()
+
+    def _on_console_toggled(self, checked: bool) -> None:
+        self._show_console = checked
+        self._refresh_view()
+
+    def _on_export(self) -> None:
+        entries = self._filtered_entries()
+        if not entries:
+            return
+        fname, _ = QFileDialog.getSaveFileName(
+            self, "导出日志", "logs_export.log", "日志文件 (*.log);;所有文件 (*.*)"
+        )
+        if not fname:
+            return
+        with open(fname, "w", encoding="utf-8") as f:
+            for e in entries:
+                f.write(f"[{e.timestamp}] [{e.source}] {e.message}\n")
+                if e.details:
+                    for k, v in e.details.items():
+                        f.write(f"  [{k}] {v}\n")
+
+    # --- 频道切换 ---
+
     def _on_source_registered(self, source: str) -> None:
+        if source == _CONSOLE_SOURCE:
+            return
         self._tab_bar.addTab(source)
 
     def _on_tab_changed(self, index: int) -> None:
@@ -113,6 +180,8 @@ class BottomPanel(QWidget):
         else:
             self._current_source = self._tab_bar.tabText(index)
         self._refresh_view()
+
+    # --- 过滤 ---
 
     def _on_filter_changed(self) -> None:
         self._refresh_view()
@@ -129,12 +198,29 @@ class BottomPanel(QWidget):
         levels.add("success")
         return levels
 
+    # --- 日志接入 ---
+
     def _on_log_added(self, ts: str, source: str, msg: str, level: str) -> None:
-        if self._current_source is not None and source != self._current_source:
-            return
-        if level not in self._active_levels():
+        if not self._passes_filter(source, msg, level):
             return
         self._append_line(ts, source, msg, level)
+        self._update_count()
+
+    def _passes_filter(self, source: str, msg: str, level: str) -> bool:
+        if level not in self._active_levels():
+            return False
+        if self._show_console:
+            if source != _CONSOLE_SOURCE:
+                return False
+        elif self._current_source is not None:
+            if source != self._current_source:
+                return False
+        if self._search_text:
+            if self._search_text not in source.lower() and self._search_text not in msg.lower():
+                return False
+        return True
+
+    # --- 渲染 ---
 
     def _append_line(self, ts: str, source: str, msg: str, level: str) -> None:
         c = get_colors(self._theme)
@@ -155,7 +241,7 @@ class BottomPanel(QWidget):
         cursor = self._log_view.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
 
-        if self._current_source is None:
+        if self._current_source is None and not self._show_console:
             cursor.insertText(f"[{ts}] ", src_fmt)
             cursor.insertText(f"[{source}] ", src_fmt)
             cursor.insertText(f"{msg}\n", fmt)
@@ -169,10 +255,25 @@ class BottomPanel(QWidget):
     def _refresh_view(self) -> None:
         """重绘全部内容（频道/过滤切换时）。"""
         self._log_view.clear()
+        entries = self._filtered_entries()
+        for e in entries:
+            self._append_line(e.timestamp, e.source, e.message, e.level)
+        self._update_count()
+
+    def _filtered_entries(self):
         levels = self._active_levels()
-        entries = self._log_manager.get_entries(
+        all_entries = self._log_manager.get_entries(
             source=self._current_source,
             levels=levels,
         )
-        for e in entries:
-            self._append_line(e.timestamp, e.source, e.message, e.level)
+        result = []
+        for e in all_entries:
+            if not self._passes_filter(e.source, e.message, e.level):
+                continue
+            result.append(e)
+        return result
+
+    def _update_count(self) -> None:
+        total = len(self._log_manager.get_entries())
+        visible = len(self._filtered_entries())
+        self._count_label.setText(f"{visible} / {total}")
