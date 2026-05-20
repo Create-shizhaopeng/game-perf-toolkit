@@ -31,14 +31,6 @@ class ToolkitHookSpec:
         """
 
     @hookspec
-    def register_cli_commands(self, cli_app: Any) -> None:
-        """注册模块的 CLI 子命令。
-
-        Args:
-            cli_app: typer.Typer 实例，模块通过 add_typer 挂载子命令组。
-        """
-
-    @hookspec
     def register_gui_tab(self) -> BaseTab | None:
         """返回模块的 GUI Tab 实例。
 
@@ -51,6 +43,14 @@ class ToolkitHookSpec:
 
         每个工具是一个字典，包含 name, description, parameters, handler 字段，
         格式与 LLM Function Calling 对齐。
+        """
+
+    @hookspec
+    def register_skills(self) -> list[str]:
+        """返回模块 Skill 文件路径列表。
+
+        每个路径指向一个 SKILL.md 文件（绝对路径或模块内相对路径）。
+        框架通过 SkillRegistry 加载这些文件，使 Agent 可以发现和触发。
         """
 
     @hookspec

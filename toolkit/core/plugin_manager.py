@@ -15,17 +15,9 @@ from .hookspecs import PROJECT_NAME, ToolkitHookSpec
 
 logger = logging.getLogger(__name__)
 
-RESERVED_CLI_NAMESPACES = frozenset({
-    "config", "plugin", "workflow", "version", "help", "gui",
-})
-
 
 class PluginLoadError(Exception):
     """模块加载失败异常。"""
-
-
-class PluginConflictError(Exception):
-    """模块冲突异常（如 CLI 命名空间重复）。"""
 
 
 class PluginManager:
@@ -40,7 +32,6 @@ class PluginManager:
         self.pm.add_hookspecs(ToolkitHookSpec)
         self.modules_dir = modules_dir
         self.loaded_modules: dict[str, dict[str, Any]] = {}
-        self._cli_namespaces: dict[str, str] = {}
 
     def discover_modules(self) -> list[dict[str, Any]]:
         """扫描 modules/ 目录，返回按依赖排序的模块清单列表。"""
@@ -86,23 +77,6 @@ class PluginManager:
             visit(m["name"])
         return result
 
-    def _validate_cli_namespace(self, manifest: dict[str, Any]) -> None:
-        """检查 CLI 命名空间是否冲突。"""
-        ns = manifest.get("cli_namespace")
-        if ns is None:
-            return
-        if ns in RESERVED_CLI_NAMESPACES:
-            raise PluginConflictError(
-                f"CLI 命名空间 '{ns}' 为框架预留，"
-                f"模块 '{manifest['name']}' 不可使用。"
-            )
-        if ns in self._cli_namespaces:
-            raise PluginConflictError(
-                f"CLI 命名空间冲突: '{ns}' 同时被 "
-                f"'{self._cli_namespaces[ns]}' 和 '{manifest['name']}' 使用。"
-            )
-        self._cli_namespaces[ns] = manifest["name"]
-
     def _ensure_parent_packages(self, name: str, module_path: Path, entry: str) -> None:
         """确保父包已注册到 sys.modules，使模块内相对导入正常工作。"""
         import types
@@ -128,8 +102,6 @@ class PluginManager:
         name = manifest["name"]
         module_path: Path = manifest["_path"]
         entry = manifest["entry"]
-
-        self._validate_cli_namespace(manifest)
 
         plugin_file = module_path / entry.replace(".", "/")
         plugin_file = plugin_file.with_suffix(".py")

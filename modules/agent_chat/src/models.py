@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -184,14 +184,8 @@ class Conversation:
 # 工具定义与调用
 # ---------------------------------------------------------------------------
 
-@dataclass
-class ToolDefinition:
-    """工具定义（用于 ToolRegistry）。"""
-
-    name: str
-    description: str
-    parameters: dict[str, Any] = field(default_factory=dict)
-    method: Callable | None = None
+# ToolDefinition 统一从 toolkit.core.llm.base 导入（消除重复定义）
+from toolkit.core.llm.base import ToolDefinition
 
 
 class ToolCallStatus(str, Enum):

@@ -40,6 +40,7 @@ from toolkit.core.logger import setup_logging
 from toolkit.core.unified_logger import UnifiedLogger
 from toolkit.core.plugin_manager import PluginManager
 from toolkit.core.service_registry import ServiceRegistry
+from toolkit.core.skill_registry import SkillRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,23 @@ def _load_plugins(context: dict) -> PluginManager:
         )
         db_manager.run_migrations(name, migrations_dir)
 
+    # 创建 SkillRegistry 并注入 context（供模块 startup 使用）
+    skill_registry = SkillRegistry()
+    context["skill_registry"] = skill_registry
+
+    # 调用模块 startup hooks
     pm.pm.hook.on_startup(context=context)
+
+    # 收集各模块注册的 Skill 文件路径
+    skill_paths_list = pm.pm.hook.register_skills()
+    all_skill_paths: list[str] = []
+    for paths in skill_paths_list:
+        if paths:
+            all_skill_paths.extend(paths)
+    skill_registry.load_skills(all_skill_paths)
+    if all_skill_paths:
+        logger.info("已加载 %d 个 Skill 文件", len(skill_registry.get_skills()))
+
     return pm
 
 
@@ -177,18 +194,34 @@ def run_gui() -> None:
     sys.exit(exit_code)
 
 
-def run_cli() -> None:
-    """启动 CLI 应用。"""
-    from toolkit.cli.main import create_cli_app
+def run_mcp_server(transport: str = "stdio", port: int = 8765) -> None:
+    """启动 MCP server。
+
+    在所有模块 on_startup() 完成后调用，确保 ToolRegistry 已填充。
+    """
+    from toolkit.core.mcp_server import run_sse, run_stdio
 
     context = _build_context()
     pm = _load_plugins(context)
     context["plugin_manager"] = pm
 
-    cli_app = create_cli_app(context)
-    pm.pm.hook.register_cli_commands(cli_app=cli_app)
+    # 初始化 LLM Manager（需要 QApplication 上下文，MCP 模式可跳过）
+    _init_llm_manager(context)
 
-    cli_app()
+    # 构建 ToolRegistry 和 ToolExecutor
+    from modules.agent_chat.src.tools.registry import ToolRegistry
+    from modules.agent_chat.src.tools.executor import ToolExecutor
+
+    registry = ToolRegistry()
+    registry.collect_from_plugins(pm)
+
+    executor = ToolExecutor(registry)
+
+    logger.info("MCP Server 启动（transport=%s, port=%d）", transport, port)
+    if transport == "sse":
+        run_sse(registry, executor, port=port)
+    else:
+        run_stdio(registry, executor)
 
     pm.pm.hook.on_shutdown()
     context["db_manager"].close()
@@ -219,12 +252,27 @@ def _resolve_log_level() -> int:
 
 
 def main() -> None:
-    """应用主入口：根据是否有命令行参数决定启动模式。"""
+    """应用主入口：根据命令行参数决定启动模式。
+
+    - 无参数 → GUI 模式
+    - `mcp-serve` → MCP Server 模式（stdio/sse）
+    - 其他参数 → CLI 模式
+    """
     log_level = _resolve_log_level()
     setup_logging(log_level)
 
-    if len(sys.argv) > 1:
-        run_cli()
+    if len(sys.argv) > 1 and sys.argv[1] == "mcp-serve":
+        transport = "stdio"
+        port = 8765
+        if "--transport" in sys.argv:
+            idx = sys.argv.index("--transport")
+            if idx + 1 < len(sys.argv):
+                transport = sys.argv[idx + 1]
+        if "--port" in sys.argv:
+            idx = sys.argv.index("--port")
+            if idx + 1 < len(sys.argv):
+                port = int(sys.argv[idx + 1])
+        run_mcp_server(transport=transport, port=port)
     else:
         run_gui()
 
