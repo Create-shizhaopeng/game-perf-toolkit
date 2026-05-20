@@ -21,6 +21,7 @@
   - [3.0 代码规则总纲（与架构文档对齐）](#30-代码规则总纲与架构文档对齐)
   - [模块文件结构](#模块文件结构)
   - [Service 层](#service-层)
+  - [日志输出规范](#日志输出规范)
   - [GUI 层](#gui-层)
   - [CLI 层](#cli-层)
   - [Plugin 注册](#plugin-注册)
@@ -284,6 +285,47 @@ backup_dir = get_backup_path("game_perf")  # → data/backup/game_perf/
 
 **进度回调签名**：`Callable[[str], None] | None`
 
+---
+
+### 日志输出规范
+
+项目采用 loguru 统一日志体系，模块代码 **MUST NOT** 使用 `print()` 输出诊断/错误/警告信息。
+
+**Service / Engine 层（推荐）**
+```python
+import logging
+LOGGER = logging.getLogger("my_module.engine")  # 或 __name__
+
+LOGGER.info("操作完成")
+LOGGER.warning("降级处理: %s", reason)
+LOGGER.error("分析失败: %s", e)
+```
+标准库 `logging.getLogger()` 通过 `InterceptHandler` 自动桥接到 `loguru` 统一路由层，
+无需做任何额外配置即可同时输出到终端、日志文件和 GUI 面板。
+
+**GUI Tab 层**
+```python
+self._log("操作完成", level="success")
+self._log("分析失败: " + str(e), level="error")
+```
+
+**结构化字段日志（可选）**
+```python
+from toolkit.core.unified_logger import UnifiedLogger
+logger = UnifiedLogger.bind_module("my_module")
+logger.info("分析完成", trace_id="abc123", fps=59.8)
+```
+
+**禁止行为：**
+- ❌ 在业务代码中使用 `print()` 输出日志
+- ❌ 直接导入并使用 `loguru.logger`
+- ❌ 在模块中创建自定义 `FileHandler` / `RotatingFileHandler`
+- ❌ 在 Tab 中内嵌 `LogTextEdit` 或自建日志 widget
+
+**CLI 交互输出除外**：`scripts/` 中的独立脚本、以及 Rich `console.print()` 的交互提示语不受此限制。
+
+---
+
 ### GUI 层
 
 GUI Tab 继承 `BaseTab`，使用 `QThread` + `pyqtSignal` 执行耗时操作。
@@ -482,6 +524,22 @@ class MyPlugin(BasePlugin):
 ```python
 import io, sys
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+```
+
+### 6. 日志输出违规
+
+```python
+# ❌ 在业务代码中使用 print() — 日志不会进入统一路由，不会写入文件，不会显示在 GUI 面板
+print("分析失败:", e)
+
+# ✅ Service/Engine 层使用 logging（自动桥接到统一日志体系）
+import logging
+LOGGER = logging.getLogger("my_module.engine")
+LOGGER.error("分析失败: %s", e)
+
+# ✅ GUI Tab 层使用 self._log()（自动进入底部日志面板）
+self._log("分析完成", level="success")
+self._log("分析失败: " + str(e), level="error")
 ```
 
 ---

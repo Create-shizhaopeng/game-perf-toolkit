@@ -1,8 +1,56 @@
-# 日志面板开发规则
+# 日志开发规则
 
 模块日志输出和面板扩展的硬约束。架构详见 `docs/architecture/log-panel-architecture.md`。
 
-## 日志输出
+## 日志体系（统一日志规范）
+
+项目采用 **loguru 统一日志体系**。所有模块的日志通过 `InterceptHandler` 桥接到统一路由层，
+输出到「终端 + 日志文件 + GUI 底部面板」三个端点。
+
+### MUST: 使用统一日志接口输出日志
+
+根据场景选择正确的日志接口：
+
+**场景 1: Service / Engine / 纯代码层（推荐）**
+```python
+import logging
+LOGGER = logging.getLogger("my_module.engine")  # 或 __name__
+
+LOGGER.info("操作完成")
+LOGGER.warning("降级处理: %s", reason)
+LOGGER.error("分析失败: %s", e)
+```
+
+**场景 2: GUI Tab 层**
+```python
+self._log("操作完成", level="success")
+self._log("分析失败: " + str(e), level="error")
+```
+
+**场景 3: 需要结构化字段的日志**
+```python
+from toolkit.core.unified_logger import UnifiedLogger
+logger = UnifiedLogger.bind_module("my_module")
+logger.info("分析完成", trace_id="abc123", fps=59.8)
+```
+
+### MUST NOT: 使用 `print()` 输出诊断/错误/警告信息
+
+- `print()` **只能**用于 CLI 交互输出（Rich `console.print` 用户响应）
+- `sys.stderr` 的 `print()` 已全面清理，**禁止使用**
+- `scripts/` 目录下的脚手架/独立脚本不受此限制
+
+### 日志级别语义
+
+| 级别 | 用途 | GUI 面板行为 |
+|------|------|-------------|
+| `debug` | 开发调试信息（不显示在 GUI） | 不显示 |
+| `info` | 一般操作提示 | 显示，不弹面板 |
+| `success` | 操作成功确认 | 显示，不弹面板 |
+| `warning` | 降级、兼容处理、非致命异常 | 显示，自动弹面板 |
+| `error` | 致命错误、分析失败、异常 | 显示，自动弹面板 |
+
+### GUI 面板日志（已有规则保留）
 
 - MUST 使用 `self._log(msg, level=level)` 输出日志，MUST NOT 直接操作 `LogManager`
 - `level` 是 **keyword-only** 参数，值限 `info` / `success` / `warning` / `error`
@@ -11,14 +59,19 @@
   def _log(self, msg: str, level: str = "info") -> None:
       super()._log(msg, level=level)
   ```
-- MUST NOT 在模块 Tab 中创建 `LogTextEdit` 或内嵌日志区域
-- MUST NOT 在模块中 import `LogTextEdit`（已废弃）
+- MUST NOT 在模块 Tab 中创建 `LogTextEdit` 或内嵌日志区域（`LogTextEdit` 已废弃并删除）
+- MUST NOT 在模块中 import `LogTextEdit`
+
+### 日志文件
+
+- 默认日志目录: `data/logs/app_{date}.log`（日轮转 + 30 天保留）
+- 模块级独立日志（opt-in）: 调用 `UnifiedLogger.add_module_sink("module_name")`
 
 ## 右侧面板
 
 - 模块需要右侧面板时 MUST 重写 `right_panel_widget() -> QWidget`
 - 返回的 widget SHOULD 实现 `set_theme(theme: str)` 方法以支持主题切换
-- 面板显示/隐藏 MUST 通过 `context["show_right_panel"]()` / `context["hide_right_panel"]()` 控制
+- 面板显示/隐藏 MUST 通过 `context["show_right_panel"]() / context["hide_right_panel"]()` 控制
 - MUST NOT 直接操作 `RightPanel` 实例
 
 ## 面板样式
@@ -32,3 +85,10 @@
 - 底部面板仅在 `error` / `warning` 级别日志时自动弹出
 - MUST NOT 在 `info` / `success` 级别触发自动弹出
 - 自动弹出 MUST 同步标题栏按钮状态（`set_panel_active`）
+
+## 禁止行为
+
+- MUST NOT 在运行时代码中使用 `print()` 输出日志（CLI 交互输出除外）
+- MUST NOT 在模块中直接导入 loguru 的 `logger`（使用 `UnifiedLogger.bind_module` 或直接 logging）
+- MUST NOT 在模块中创建自定义 `FileHandler` / `RotatingFileHandler`（统一由 UnifiedLogger 管理）
+- MUST NOT 创建内嵌日志 TextEdit widget（所有日志应通过 LogManager -> BottomPanel）
