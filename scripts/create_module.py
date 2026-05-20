@@ -1,7 +1,7 @@
 """模块脚手架 — 根据模板自动生成新模块目录结构
 
 用法:
-    python scripts/create_module.py <module_name> [--display-name "显示名称"] [--cli-ns 命名空间]
+    python scripts/create_module.py <module_name> [--display-name "显示名称"]
 """
 
 from __future__ import annotations
@@ -43,7 +43,6 @@ def _render(template: str, variables: dict[str, str]) -> str:
 def create_module(
     module_name: str,
     display_name: str | None = None,
-    cli_namespace: str | None = None,
 ) -> Path:
     """生成模块骨架目录。"""
     if not re.match(r"^[a-z][a-z0-9_]*$", module_name):
@@ -56,13 +55,11 @@ def create_module(
         sys.exit(1)
 
     display = display_name or module_name.replace("_", " ").title()
-    cli_ns = cli_namespace or module_name.replace("_", "-")
     class_name = _to_class_name(module_name)
 
     variables = {
         "module_name": module_name,
         "display_name": display,
-        "cli_namespace": cli_ns,
         "class_name": class_name,
     }
 
@@ -96,9 +93,6 @@ def create_module(
     service_content = f'"""{ display } — 服务层"""\n\n\nclass {class_name}Service:\n    """{ display } 核心业务逻辑。"""\n\n    def get_service_info(self) -> dict:\n        return {{"name": "{module_name}", "display_name": "{display}"}}\n'
     (module_dir / "src" / "service.py").write_text(service_content, encoding="utf-8")
 
-    cli_content = f'"""{ display } — CLI 子命令"""\n\nimport typer\n\n{cli_ns.replace("-", "_")}_app = typer.Typer(help="{display}")\n\n\n@{cli_ns.replace("-", "_")}_app.command("info")\ndef info():\n    """显示模块信息"""\n    typer.echo("{display} v0.1.0")\n'
-    (module_dir / "src" / "cli_commands.py").write_text(cli_content, encoding="utf-8")
-
     gui_content = f'"""{ display } — GUI 页面"""\n\nfrom toolkit.gui.base_tab import BaseTab\n\n\nclass {class_name}Tab(BaseTab):\n    tab_title = "{display}"\n\n    def __init__(self, context=None, parent=None):\n        super().__init__(context, parent)\n'
     (module_dir / "src" / "gui_tab.py").write_text(gui_content, encoding="utf-8")
 
@@ -110,7 +104,6 @@ def create_module(
 
     print(f"模块骨架已创建: {module_dir}")
     print(f"  显示名称: {display}")
-    print(f"  CLI 命名空间: {cli_ns}")
     print(f"  类名: {class_name}Plugin / {class_name}Service / {class_name}Tab")
 
     _init_speckit(module_dir, module_name, display, variables)
@@ -227,10 +220,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="创建新模块骨架")
     parser.add_argument("module_name", help="模块名称（小写下划线格式，如 log_analysis）")
     parser.add_argument("--display-name", help="模块显示名称（如 '日志分析'）")
-    parser.add_argument("--cli-ns", help="CLI 命名空间（如 log）")
 
     args = parser.parse_args()
-    create_module(args.module_name, args.display_name, args.cli_ns)
+    create_module(args.module_name, args.display_name)
 
 
 if __name__ == "__main__":

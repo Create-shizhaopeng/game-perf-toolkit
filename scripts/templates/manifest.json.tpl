@@ -17,7 +17,6 @@
     "agent_tools": false,
     "workflow_stages": []
   },
-  "cli_namespace": "{{cli_namespace}}",
   "events": {
     "emits": [],
     "listens": []

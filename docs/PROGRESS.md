@@ -27,6 +27,14 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 
 ## 近期完成
 
+### 2026-05-20（Agent Tool Unification 重构：CLI → MCP Server + Skill）
+
+- 全面移除 CLI 体系（移除 Typer/Rich 子命令、`cli_commands.py`、`test_cli.py`、`strings_cli.py`），以 MCP Server + Skill 替代
+- 建立 MCP Server（FastMCP）与 Skill Registry（YAML frontmatter 标准化），框架层通过标准协议自动收集各模块工具
+- `ToolkitDef` 统一，各模块通过 `register_agent_tools()` 返回 JSON Schema 工具定义、`register_skills()` 返回 SKILL.md 路径
+- 以 `device_disguise` 为试点模块完成迁移验证
+- 测试覆盖：150 个测试全部通过，含主项目、device_disguise 及各业务模块
+
 ### 2026-05-20（统一日志规范约束体系化）
 
 - 统一日志体系规则写入 CLAUDE.md 与 .claude/rules/log-panel-rules.md：
@@ -50,7 +58,7 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 
 ### 2026-05-20（硬编码中文字符串提取完成）
 
-- 完成 5 个目标模块的硬编码字符串提取，统一提取到 `strings_gui.py` / `strings_cli.py` / `strings_service.py`
+- 完成 5 个目标模块的硬编码字符串提取，统一提取到 `strings_gui.py` / `strings_service.py`（`strings_cli.py` 已随 CLI 移除）
   - perfetto_capture、agent_chat、perfetto_analysis、perfdog_insights、workspace_tools
 - 完成 `toolkit/gui/` 框架层字符串提取，集中到 `toolkit/gui/strings.py`
   - 覆盖 main_window.py、home_tab.py、toolkit_dialog.py、llm_settings_dialog.py、base_tab.py、title_bar.py、llm_status_widget.py
@@ -59,7 +67,7 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 - 全量 pytest：
   - 主项目 tests/、device_disguise、perfetto_analysis（302 passed）、workspace_tools（15 passed）、game_perf（5 passed）通过
   - agent_chat（289 passed）、perfetto_capture（163 passed）通过
-  - perfdog_insights 的 1 个失败为既有测试缺陷（Typer 子命令调用未传参），非迁移引入
+  - perfdog_insights 的 1 个失败为既有测试缺陷（CLI 子命令调用未传参），非迁移引入
 
 ### 2026-05-19（路径规范化重构）
 

@@ -36,7 +36,7 @@ logger.info("分析完成", trace_id="abc123", fps=59.8)
 
 ### MUST NOT: 使用 `print()` 输出诊断/错误/警告信息
 
-- `print()` **只能**用于 CLI 交互输出（Rich `console.print` 用户响应）
+- `print()` **禁止**用于诊断/错误/警告输出
 - `sys.stderr` 的 `print()` 已全面清理，**禁止使用**
 - `scripts/` 目录下的脚手架/独立脚本不受此限制
 
@@ -88,7 +88,7 @@ logger.info("分析完成", trace_id="abc123", fps=59.8)
 
 ## 禁止行为
 
-- MUST NOT 在运行时代码中使用 `print()` 输出日志（CLI 交互输出除外）
+- MUST NOT 在运行时代码中使用 `print()` 输出日志
 - MUST NOT 在模块中直接导入 loguru 的 `logger`（使用 `UnifiedLogger.bind_module` 或直接 logging）
 - MUST NOT 在模块中创建自定义 `FileHandler` / `RotatingFileHandler`（统一由 UnifiedLogger 管理）
 - MUST NOT 创建内嵌日志 TextEdit widget（所有日志应通过 LogManager -> BottomPanel）

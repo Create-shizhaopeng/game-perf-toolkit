@@ -2,7 +2,7 @@
 
 ## 范围与目的
 
-本文档规范项目中用户可见中文文本的集中管理方式。目标是消除源码中的中文硬编码，使 UI/CLI 文本可统一查找、复用和后续国际化扩展。
+本文档规范项目中用户可见中文文本的集中管理方式。目标是消除源码中的中文硬编码，使 UI 文本可统一查找、复用和后续国际化扩展。
 
 ## 提取范围（MUST 提取）
 
@@ -13,8 +13,6 @@
 | GUI 控件标签 / 标题 | `QPushButton("开始采集")`、`QGroupBox("设备信息")` |
 | GUI 占位提示文字 | `QLineEdit.setPlaceholderText("输入包名...")` |
 | GUI 对话框标题与正文 | `warning_dialog(self, "解析失败", message)` |
-| CLI Help 文本 | `typer.Typer(help="Perfetto 采集命令")` |
-| CLI 控制台输出 | `rprint("设备未连接")` |
 | HTML 报告中的中文标题 | `<h3>会话摘要</h3>` |
 | 状态枚举显示值 | ComboBox 中的中文选项 `"中文"`、`"English"` |
 | 模块 display_name | `get_plugin_info() 返回的 "Agent 智能助手"` |
@@ -34,12 +32,11 @@
 
 ## 文件结构
 
-每个模块 **必须** 创建以下三个常量文件（若无对应场景可省略，但必须满足同一规则）：
+每个模块 **必须** 创建以下常量文件（若无对应场景可省略，但必须满足同一规则）：
 
 ```
 modules/<name>/src/
   strings_gui.py    # GUI 标签、按钮、对话框、占位文字
-  strings_cli.py    # CLI help 文本、console 输出
   strings_service.py # 服务层进度消息、日志模板（用户可见部分）
 ```
 
@@ -76,8 +73,6 @@ BTN_START: Final[str] = "开始采集"  # ✅ 也正确
 | `DLG_TITLE_` | 对话框标题 | `DLG_TITLE_PARSE_FAILED` |
 | `DLG_MSG_` | 对话框正文 | `DLG_MSG_INVALID_FILE` |
 | `MSG_` | 通用消息/提示 | `MSG_NO_DEVICES` |
-| `CLI_HELP_` | CLI help 文本 | `CLI_HELP_ROOT` |
-| `CLI_DOC_` | CLI docstring | `CLI_DOC_INFO` |
 | `PROGRESS_` | 进度提示 | `PROGRESS_PARSING` |
 | `LOG_` | 用户可见日志消息 | `LOG_PUSH_SUCCESS` |
 | `FILE_FILTER_` | 文件选择过滤器 | `FILE_FILTER_EXCEL` |
@@ -120,8 +115,8 @@ rprint(sc.RICH_PUSH_SUCCESS_FMT.format(version=version))
 模块内使用统一别名 `s`：
 
 ```python
-# gui_tab.py / cli_commands.py / service.py
-from . import strings_gui as s   # 或 strings_cli / strings_service
+# gui_tab.py / service.py
+from . import strings_gui as s   # 或 strings_service
 ```
 
 框架层使用：
@@ -154,7 +149,7 @@ python scripts/check_hardcoded_strings.py
 
 ## 新建模块脚手架
 
-`scripts/create_module.py` 会自动生成空的 `strings_gui.py`、`strings_cli.py`、`strings_service.py` 模板。开发者应在实现功能的同时填充常量，**禁止** 在代码审查通过后再补字符串提取。
+`scripts/create_module.py` 会自动生成空的 `strings_gui.py`、`strings_service.py` 模板。开发者应在实现功能的同时填充常量，**禁止** 在代码审查通过后再补字符串提取。
 
 ## 禁止行为
 
@@ -162,4 +157,3 @@ python scripts/check_hardcoded_strings.py
 - **禁止** 在 `gui_tab.py` 中 import `strings_service.py`
 - **禁止** 在 `strings_*.py` 中出现业务逻辑、条件分支、函数定义
 - **禁止** 日志/调试文本提取到 strings 文件
-- **禁止** 为日志文本创建 `_FMT` 模板常量（日志中的动态值直接用 f-string）

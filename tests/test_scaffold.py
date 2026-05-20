@@ -28,7 +28,7 @@ class TestScaffoldCreation:
     def test_creates_module_directory(self, modules_tmp):
         from scripts.create_module import create_module
 
-        result = create_module("log_analysis", display_name="日志分析", cli_namespace="log")
+        result = create_module("log_analysis", display_name="日志分析")
         assert result.exists()
         assert result.name == "log_analysis"
 
@@ -43,7 +43,6 @@ class TestScaffoldCreation:
         assert manifest["name"] == "trace_viewer"
         assert manifest["version"] == "0.1.0"
         assert manifest["entry"] == "src.plugin"
-        assert manifest["cli_namespace"] == "trace-viewer"
 
     def test_creates_plugin_entry(self, modules_tmp):
         from scripts.create_module import create_module
@@ -73,14 +72,12 @@ class TestScaffoldCreation:
         content = service_py.read_text("utf-8")
         assert "ReportGenService" in content
 
-    def test_creates_cli_commands(self, modules_tmp):
+    def test_no_cli_commands_created(self, modules_tmp):
         from scripts.create_module import create_module
 
-        mod_dir = create_module("strategy_pred", cli_namespace="pred")
+        mod_dir = create_module("strategy_pred")
         cli_py = mod_dir / "src" / "cli_commands.py"
-        assert cli_py.exists()
-        content = cli_py.read_text("utf-8")
-        assert "pred_app" in content
+        assert not cli_py.exists()
 
     def test_creates_gui_tab(self, modules_tmp):
         from scripts.create_module import create_module
@@ -122,12 +119,12 @@ class TestScaffoldCreation:
         manifest = json.loads((mod_dir / "manifest.json").read_text("utf-8"))
         assert manifest["display_name"] == "日志分析工具"
 
-    def test_custom_cli_namespace(self, modules_tmp):
+    def test_no_cli_namespace_in_manifest(self, modules_tmp):
         from scripts.create_module import create_module
 
-        mod_dir = create_module("trace_analysis", cli_namespace="trace")
+        mod_dir = create_module("trace_analysis")
         manifest = json.loads((mod_dir / "manifest.json").read_text("utf-8"))
-        assert manifest["cli_namespace"] == "trace"
+        assert "cli_namespace" not in manifest
 
 
 class TestScaffoldLoading:
@@ -151,7 +148,7 @@ class TestScaffoldLoading:
         pm = PluginManager(modules_tmp)
         manifests = pm.discover_modules()
         m = next(x for x in manifests if x["name"] == "field_check")
-        for key in ("name", "version", "entry", "cli_namespace"):
+        for key in ("name", "version", "entry"):
             assert key in m, f"manifest 缺少字段: {key}"
 
 

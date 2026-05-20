@@ -23,7 +23,7 @@
   - [Service 层](#service-层)
   - [日志输出规范](#日志输出规范)
   - [GUI 层](#gui-层)
-  - [CLI 层](#cli-层)
+  - [MCP 工具与 Skill](#mcp-工具与-skill)
   - [Plugin 注册](#plugin-注册)
   - [测试](#测试)
 - [Step 4 — 验收与提交](#step-4--验收与提交)
@@ -105,7 +105,7 @@ lv-game-toolkit/
 
 ```powershell
 # 格式
-python scripts/create_module.py <module_name> [--display-name "显示名称"] [--cli-ns 命名空间]
+python scripts/create_module.py <module_name> [--display-name "显示名称"]
 
 # 示例
 python scripts/create_module.py log_analysis --display-name "日志分析" --cli-ns log
@@ -114,7 +114,7 @@ python scripts/create_module.py log_analysis --display-name "日志分析" --cli
 脚手架会自动完成以下操作：
 
 1. 生成模块目录结构（`src/`、`tests/`、`specs/`、`fixtures/`）
-2. 生成骨架文件（`plugin.py`、`service.py`、`cli_commands.py`、`gui_tab.py`）
+2. 生成骨架文件（`plugin.py`、`service.py`、`gui_tab.py`）
 3. 初始化模块级 speckit（`.specify/`）
 4. 生成模块级 Constitution（继承主 Constitution）
 5. 生成 `AGENTS.md`（AI 开发规则）
@@ -160,7 +160,7 @@ spec.md 必须包含：
 - 子模块界面风格 MUST 与主模块一致
 - 输出到 `specs/<feature-id>/ui-design.md`
 
-> 纯后端/CLI 模块可跳过此步骤。
+> 纯后端模块可跳过此步骤。
 
 ### 2.4 plan — 实现计划
 
@@ -218,13 +218,13 @@ modules/my_module/
 │   ├── plugin.py          # 插件注册入口（hookimpl）
 │   ├── service.py         # 核心业务逻辑（纯同步）
 │   ├── models.py          # 数据模型
-│   ├── cli_commands.py    # CLI 子命令
 │   ├── gui_tab.py         # GUI Tab 页
 │   └── migrations/        # 数据库迁移脚本
+├── skills/                # Agent Skill 文件
+│   └── *.md               #   SKILL.md（YAML frontmatter + 内容）
 ├── tests/
 │   ├── __init__.py
 │   ├── test_service.py    # 服务层测试
-│   ├── test_cli.py        # CLI 测试
 │   └── conftest.py        # 测试固件
 ├── specs/                 # speckit 功能规格
 ├── fixtures/              # 测试数据
@@ -367,22 +367,46 @@ class _Worker(QThread):
 # ❌ 禁止在 QThread 中使用 QTimer.singleShot
 ```
 
-### CLI 层
+### MCP 工具与 Skill
 
-使用 Typer 注册子命令。
+模块通过 `register_agent_tools()` 和 `register_skills()` 向 Agent 系统暴露能力。
+
+**MCP 工具注册（`register_agent_tools()`）：**
 
 ```python
-import typer
-
-my_app = typer.Typer(help="我的模块")
-
-@my_app.command("info")
-def info():
-    """显示模块信息"""
-    svc = _get_service()
-    data = svc.get_info()
-    # 使用 rich 格式化输出
+@hookimpl
+def register_agent_tools(self):
+    return [
+        {
+            "name": "mm_do_something",
+            "description": "执行模块核心操作",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "serial": {"type": "string", "description": "设备序列号"},
+                    "option": {"type": "string", "description": "操作选项"},
+                },
+                "required": ["serial"],
+            },
+        },
+    ]
 ```
+
+工具定义使用 JSON Schema 描述参数，通过标准 MCP 协议暴露给 LLM。
+
+**Skill 注册（`register_skills()`）：**
+
+```python
+@hookimpl
+def register_skills(self):
+    from pathlib import Path
+    skills_dir = Path(__file__).parent.parent / "skills"
+    return [str(skills_dir / "my_skill.md")]
+```
+
+Skill 文件使用 YAML frontmatter 声明元信息（name、description 等），后接 Markdown 正文供 Agent 阅读参考。
+
+**MCP Server 自动收集：** 框架层 MCP Server 会在启动时收集所有模块注册的工具，通过标准 MCP 协议统一暴露给 LLM 客户端。
 
 ### Plugin 注册
 
@@ -429,6 +453,11 @@ python scripts/run_all_tests.py
 - 测试数据放在 `fixtures/` 目录
 - 新模块添加后在 `scripts/run_all_tests.py` 中注册
 
+**MCP 工具验证：**
+- 模块工具注册后，可通过 MCP 客户端调用验证工具定义正确性
+- 检查工具名称、参数 schema、description 是否符合预期
+- Skill 文件需通过 YAML frontmatter 校验（name、description 字段必填）
+
 ---
 
 ## Step 4 — 验收与提交
@@ -438,7 +467,7 @@ python scripts/run_all_tests.py
 1. 所有测试通过
 2. `spec analysis` FAIL 项清零
 3. GUI 界面验证（如有）
-4. CLI 命令验证（如有）
+4. MCP 工具与 Skill 验证（如有）
 
 ### Bug 修复规则
 

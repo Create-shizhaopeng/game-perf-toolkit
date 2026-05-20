@@ -41,13 +41,13 @@
   - [6.3 初始化流程](#63-初始化流程)
   - [6.4 协作场景](#64-协作场景)
   - [6.5 规则同步机制](#65-规则同步机制)
-- [7. CLI 设计方案](#7-cli-设计方案)
-  - [7.1 设计目标](#71-设计目标)
-  - [7.2 命令结构](#72-命令结构)
-  - [7.3 输出格式](#73-输出格式)
-  - [7.4 统一响应格式](#74-统一响应格式)
-  - [7.5 自动注册机制](#75-自动注册机制)
-  - [7.6 命名空间防冲突](#76-命名空间防冲突)
+- [7. MCP Server 与 Skill Registry 设计](#7-mcp-server-与-skill-registry-设计)
+  - [7.1 MCP Server 架构](#71-mcp-server-架构)
+  - [7.2 Skill Registry](#72-skill-registry)
+  - [7.3 工具注册流程](#73-工具注册流程)
+  - [7.4 Skill 文件规范](#74-skill-文件规范)
+  - [7.5 传输模式](#75-传输模式)
+  - [7.6 启动流程](#76-启动流程)
 - [8. GUI 框架设计](#8-gui-框架设计)
   - [8.1 主窗口布局](#81-主窗口布局)
   - [8.2 Title Bar 设计](#82-title-bar-设计)
@@ -83,30 +83,30 @@
 
 ### 1.1 设计理念
 
-本项目架构的核心理念是 **「Agent 驱动 + 模块化工具集 + 三端统一」**：
+本项目架构的核心理念是 **「Agent 驱动 + 模块化工具集 + 双端统一」**：
 
 - **Agent 驱动**：AI Agent 作为未来的主要交互入口，所有工具模块作为 Agent 可调用的能力
 - **模块化工具集**：每个功能独立开发、独立测试，通过插件机制注册到主框架
-- **三端统一**：GUI / CLI / Agent 三种交互方式共享同一套业务逻辑，不重复实现
+- **双端统一**：GUI / Agent 两种交互方式共享同一套业务逻辑，不重复实现
 
 ### 1.2 分层架构
 
 ```
      👤 人类用户                          🤖 AI Agent (speckit/Cursor)
          │                                      │
-         │ 主要通过 GUI 操作                      │ 主要通过 CLI 获取数据和执行操作
+         │ 主要通过 GUI 操作                      │ 主要通过 MCP Server 获取数据和执行操作
          │ 也可通过 GUI 内的聊天面板与 Agent 对话    │ 也可被 GUI 中的聊天模块调用
          │                                      │
     ┌────▼─────────────────┐            ┌───────▼──────────────┐
-    │      GUI (PyQt6)     │            │     CLI (Typer)       │
-    │                      │            │                      │
-    │  ┌──────────────┐    │            │  toolkit device list  │
-    │  │ 模块功能面板   │    │            │  toolkit perf push    │
-    │  │ (各模块Tab)   │    │            │  toolkit log analyze  │
-    │  ├──────────────┤    │     ◄──►   │  toolkit agent ask    │
+    │      GUI (PyQt6)     │            │   MCP Server (FastMCP) │
+    │                      │            │                       │
+    │  ┌──────────────┐    │            │  tools/list           │
+    │  │ 模块功能面板   │    │            │  tools/call           │
+    │  │ (各模块Tab)   │    │            │  resources/list       │
+    │  ├──────────────┤    │     ◄──►   │  skills/list          │
     │  │ Agent 聊天面板 │    │            │  ...                 │
-    │  │ (对话+结果展示) │    │            │                      │
-    │  └──────────────┘    │            │  输入/输出: JSON 格式   │
+    │  │ (对话+结果展示) │    │            │                       │
+    │  └──────────────┘    │            │  输入/输出: JSON RPC    │
     └──────────┬───────────┘            └──────────┬───────────┘
                │                                   │
                └───────────────┬───────────────────┘
@@ -114,7 +114,7 @@
                 ┌──────────────────────────────┐
                 │      服务层 (Service API)      │
                 │  统一的 Python API 层           │
-                │  GUI/CLI/Agent 都调用这一层     │
+                │  GUI/Agent 都调用这一层         │
                 └──────────────┬───────────────┘
                                ▼
                 ┌──────────────────────────────┐
@@ -143,7 +143,7 @@
 |------|------|
 | **依赖反转** | 模块依赖核心框架定义的接口，核心框架不依赖具体模块 |
 | **单一职责** | 每个模块只负责一个功能领域 |
-| **表现分离** | 业务逻辑不包含任何 GUI/CLI 代码，GUI/CLI 只做展示和输入 |
+| **表现分离** | 业务逻辑不包含任何 GUI 代码，GUI 只做展示和输入 |
 | **开闭原则** | 新增模块不需修改核心框架代码，通过注册机制自动发现 |
 | **外部进程桥接** | 其他技术栈的工具通过标准化的进程调用 + JSON I/O 集成 |
 
@@ -153,7 +153,7 @@
 用户/Agent
     │
     ▼
-[表现层] 接收用户意图（GUI操作 / CLI命令 / Agent指令）
+[表现层] 接收用户意图（GUI操作 / Agent指令）
     │
     ▼
 [服务API] 转化为统一的 Python 函数调用
@@ -165,7 +165,7 @@
 [模块层] 执行具体业务逻辑，返回结构化结果
     │
     ▼
-[表现层] 将结果渲染为 GUI界面 / CLI输出 / Agent可理解的文本
+[表现层] 将结果渲染为 GUI界面 / Agent可理解的文本
 ```
 
 ---
@@ -178,7 +178,8 @@
 |------|------|------|
 | **语言** | **Python 3.12+** | 性能显著提升，改进的错误提示，内置 `tomllib`，f-string 增强 |
 | **GUI 框架** | **PyQt6** | 跨平台，原生体验，支持 QML 集成 |
-| **CLI 框架** | **Typer** | 基于 click，使用类型注解，自带 Rich 美化，对 Agent 友好 |
+| **MCP Server** | **FastMCP** | 标准 MCP 协议暴露工具，支持 stdio/sse 传输 |
+| **Skill Registry** | **YAML frontmatter** | 发现和加载模块 Skill 操作指南 |
 | **插件系统** | **pluggy** | pytest 同款，成熟稳定，钩子机制灵活 |
 | **打包工具** | **PyInstaller 6+** | 支持 Win/Linux 打包，onedir 模式解压即用 |
 
@@ -187,8 +188,7 @@
 | 库 | 用途 |
 |---|------|
 | `PyQt6` | GUI 框架 |
-| `typer[all]` | CLI 框架（含 Rich 美化） |
-| `rich` | 终端美化输出 |
+| `fastmcp` | MCP Server 框架（stdio/sse/streamable-http 传输） |
 | `pydantic` | 数据模型验证 |
 | `pluggy` | 插件管理 |
 | `lxml` | XML 处理 |
@@ -237,7 +237,7 @@ lv-game-toolkit/                              # 项目根目录
 │   │   ├── spec.md
 │   │   ├── plan.md
 │   │   └── tasks.md
-│   ├── 002-cli-framework/
+│   ├── 002-mcp-server/
 │   ├── 003-gui-framework/
 │   └── 004-event-bus/
 │
@@ -305,11 +305,12 @@ lv-game-toolkit/                              # 项目根目录
 │   │       ├── dark.qss
 │   │       └── light.qss
 │   │
-│   └── cli/                                  #   CLI 框架
+│   └── mcp/                                  #   MCP Server 框架
 │       ├── __init__.py
-│       ├── main.py                           #     CLI 入口（typer app）
-│       ├── base_command.py                   #     命令基类
-│       └── formatters.py                     #     输出格式化器
+│       ├── server.py                         #     FastMCP Server 入口
+│       ├── tool_registry.py                  #     Tool 注册表
+│       ├── skill_registry.py                 #     Skill 发现与加载
+│       └── executor.py                       #     Tool 执行器
 │
 │  ━━ 功能模块目录 ━━
 ├── modules/
@@ -333,9 +334,9 @@ lv-game-toolkit/                              # 项目根目录
 │   │   │   ├── service.py                    #       业务逻辑
 │   │   │   ├── models.py                     #       数据模型
 │   │   │   ├── gui_tab.py                    #       GUI Tab
-│   │   │   ├── cli_commands.py               #       CLI 命令
 │   │   │   └── migrations/                   #       数据库迁移脚本
 │   │   │       └── 001_create_tables.sql
+│   │   ├── skills/                           #     Skill 操作指南（SKILL.md 文件）
 │   │   ├── assets/                           #     素材资源
 │   │   ├── data/                             #     运行时数据（gitignored）
 │   │   │   └── .gitkeep
@@ -375,7 +376,7 @@ lv-game-toolkit/                              # 项目根目录
 │   ├── architecture.md
 │   ├── developer-guide.md
 │   ├── module-dev-guide.md
-│   ├── cli-reference.md
+│   ├── mcp-server-guide.md
 │   ├── speckit-guide.md
 │   └── design/
 │       ├── ui-design.md
@@ -398,7 +399,7 @@ lv-game-toolkit/                              # 项目根目录
 ├── tests/                                    #   集成测试
 │   ├── conftest.py
 │   ├── test_plugin_loading.py
-│   ├── test_cli_integration.py
+│   ├── test_mcp_server.py
 │   └── test_data_pipeline.py
 │
 └── checklists/
@@ -422,7 +423,7 @@ lv-game-toolkit/                              # 项目根目录
 | `src/plugin.py` | ✅ | 插件注册入口 |
 | `src/service.py` | ✅ | 业务逻辑 |
 | `src/gui_tab.py` | ⭕ | GUI Tab（provides.gui=true 时必须） |
-| `src/cli_commands.py` | ⭕ | CLI 命令（provides.cli=true 时必须） |
+| `skills/SKILL.md` | ⭕ | Skill 操作指南（提供 agent 工具时必须） |
 | `assets/` | ⭕ | 素材资源（按需） |
 | `data/` | ⭕ | 运行时数据（gitignored） |
 | `fixtures/` | ⭕ | 测试固件（纳入 git） |
@@ -473,9 +474,9 @@ Plugin Manager 初始化
     ▼
 各模块初始化
   plugin.register()
-    → 注册 CLI 命令
     → 注册 GUI Tab
-    → 注册 Agent 工具
+    → 注册 Agent 工具 / MCP Tools
+    → 注册 Skills
     → 注册事件监听
     │
     ▼
@@ -498,16 +499,16 @@ class ToolkitHookSpec:
         """返回模块信息"""
 
     @hookspec
-    def register_cli_commands(self, cli_app) -> None:
-        """注册 CLI 子命令到 typer app"""
-
-    @hookspec
     def register_gui_tab(self) -> "BaseTab | None":
         """返回 GUI Tab 实例"""
 
     @hookspec
     def register_agent_tools(self) -> list:
-        """返回 Agent 可调用的工具列表"""
+        """返回 Agent 可调用的工具列表（自动注册为 MCP Tools）"""
+
+    @hookspec
+    def register_skills(self) -> list:
+        """返回模块 Skill 文件路径列表"""
 
     @hookspec
     def on_startup(self, context: dict) -> None:
@@ -536,17 +537,16 @@ class DeviceDisguisePlugin(BasePlugin):
         }
 
     @hookimpl
-    def register_cli_commands(self, cli_app):
-        from .cli_commands import device_app
-        cli_app.add_typer(device_app, name="device")
-
-    @hookimpl
     def register_gui_tab(self):
         from .gui_tab import DeviceDisguiseTab
         return DeviceDisguiseTab()
 
     @hookimpl
     def register_agent_tools(self) -> list:
+        return []
+
+    @hookimpl
+    def register_skills(self) -> list:
         return []
 
     @hookimpl
@@ -782,11 +782,11 @@ class DatabaseManager:
 | **最高准则** | 以 **Constitution** 为治理源；新功能优先 **Spec-Driven**（spec → plan → tasks → implement → analysis）。 |
 | **语言与编码** | **Python 3.12+**；所有源码与文本输出 **UTF-8**。 |
 | **格式与静态检查** | 遵守仓库根 [**`.editorconfig`**](../../.editorconfig)；使用 **Ruff** 做 lint（配置见根 `pyproject.toml`）。合并前对改动路径执行 `ruff check`，必要时 `ruff format`。 |
-| **分层** | 业务逻辑在 **`service.py`**（纯同步、无 GUI/CLI 依赖）；**`gui_tab.py` / `cli_commands.py`** 只做展示与参数/输出；测试优先覆盖 **Service**。 |
+| **分层** | 业务逻辑在 **`service.py`**（纯同步、无 GUI 依赖）；**`gui_tab.py`** 只做展示与参数/输出；测试优先覆盖 **Service**。 |
 | **依赖方向** | 模块 **禁止** 直接 `import` 其他模块的 `src/` 实现；跨模块通过约定接口、EventBus 等；允许依赖 **`toolkit.sdk.*`**、**`toolkit.core.hookspecs`**，**禁止**依赖 **`toolkit.core`** 内部实现模块（Constitution IV）。 |
 | **框架修改** | 普通需求 **不得** 修改 **`toolkit/core/`、`toolkit/sdk/`**；确需改动须单独评审（Constitution VI）。 |
 | **共享 context** | `plugin` 写入 `context` 的键 **必须** 带 **模块前缀**（如 `gp_service`），禁止占用通用键名（与 [P01](../experience/development-pitfalls.md#p01--插件-context-键名冲突严重) 一致）。 |
-| **数据模型** | 跨 GUI/CLI/Agent 的结构化载荷 **Pydantic v2**；纯内部算法可用标准库/dataclass，边界选型见 [P12](../experience/development-pitfalls.md#p12--pydantic-vs-dataclass-选型)。 |
+| **数据模型** | 跨 GUI/Agent 的结构化载荷 **Pydantic v2**；纯内部算法可用标准库/dataclass，边界选型见 [P12](../experience/development-pitfalls.md#p12--pydantic-vs-dataclass-选型)。 |
 | **GUI 线程** | 耗时操作在 **`QThread`**（或等价）中执行，通过 **signal/slot** 回传结果；**禁止**在工作线程直接操作控件（[P05](../experience/development-pitfalls.md#p05--qthread-信号安全gui-线程通信)）。 |
 | **子进程输出** | 读取 `AdbCmdResult` / `subprocess` 结果时 **`stdout`/`stderr` 使用 `or ""`**（[P02](../experience/development-pitfalls.md#p02--adb-命令输出可能为-none)）。 |
 | **合并前** | 相关 **`pytest`** 通过；可运行 [`scripts/run_all_tests.py`](../../scripts/doc/run_all_tests.md) 做全量回归。 |
@@ -800,13 +800,14 @@ modules/my_module/
 ├── specs/                        # 模块 Spec 文档
 ├── AGENTS.md                     # Cursor AI 开发规则
 ├── manifest.json                 # 模块元数据
+├── skills/                       # Skill 操作指南
+│   └── SKILL.md                  #   技能定义文件
 ├── src/
 │   ├── __init__.py
 │   ├── plugin.py                 # 插件注册入口（必须）
 │   ├── service.py                # 业务逻辑层（必须）
 │   ├── models.py                 # 模块数据模型
-│   ├── gui_tab.py                # GUI Tab
-│   └── cli_commands.py           # CLI 命令
+│   └── gui_tab.py                # GUI Tab
 ├── assets/
 ├── data/
 ├── fixtures/
@@ -831,11 +832,10 @@ modules/my_module/
     },
     "provides": {
         "gui": true,
-        "cli": true,
         "agent_tools": true,
+        "skills": true,
         "workflow_stages": ["analyze", "compare"]
     },
-    "cli_namespace": "device",
     "events": {
         "emits": ["device_disguise.disguised", "device_disguise.restored"],
         "listens": ["device.connected", "device.disconnected"]
@@ -858,7 +858,6 @@ modules/my_module/
 | `service_entry` | ✅ | 服务入口模块路径 |
 | `dependencies` | ✅ | 依赖声明 |
 | `provides` | ✅ | 能力声明 |
-| `cli_namespace` | ⭕ | CLI 子命令命名空间 |
 | `events` | ⭕ | 事件声明 |
 | `external_tools` | ⭕ | 外部工具集成 |
 
@@ -866,7 +865,7 @@ modules/my_module/
 
 ```
 1. 初始化模块骨架
-   python scripts/new_module.py --name my_module --display "模块名称"
+   python scripts/create_module.py <name> --display-name "模块名称"
 
 2. 初始化模块 Speckit（关键步骤）
    cd modules/my_module
@@ -885,9 +884,9 @@ modules/my_module/
 5. 实现插件注册
    plugin.py：实现 hookspecs 中定义的钩子
 
-6. 实现表现层
+6. 实现表现层与 Agent 能力
    gui_tab.py：继承 BaseTab
-   cli_commands.py：使用 typer 定义命令
+   register_skills()：定义 SKILL.md 操作指南
 
 7. 编写测试
    tests/test_service.py
@@ -898,9 +897,9 @@ modules/my_module/
 ### 5.4 service.py 编写规范
 
 核心原则：
-1. 不依赖 GUI 或 CLI（纯 Python 逻辑）
+1. 不依赖 GUI（纯 Python 逻辑）
 2. 输入/输出使用 Pydantic 模型
-3. 所有方法都可以被 GUI/CLI/Agent 调用
+3. 所有方法都可以被 GUI/Agent 调用
 4. 通过 context 获取共享服务
 
 ```python
@@ -954,12 +953,11 @@ class MyModuleService:
 ### 5.6 脚手架脚本
 
 ```
-scripts/new_module.py 功能：
+scripts/create_module.py 功能：
   --name：模块名称（snake_case）
-  --display：中文显示名称
-  --cli-namespace：CLI 命名空间（自动检查冲突）
+  --display-name：中文显示名称
 
-自动创建完整模块骨架目录并生成模板文件。
+自动创建完整模块骨架目录并生成模板文件（含空的 SKILL.md）。
 ```
 
 ---
@@ -1062,83 +1060,195 @@ function Get-RepoRoot {
 
 ---
 
-## 7. CLI 设计方案
+## 7. MCP Server 与 Skill Registry 设计
 
-### 7.1 设计目标
+### 7.1 MCP Server 架构
 
-- **完整替代 GUI**：所有 GUI 能做的操作，CLI 都能做
-- **Agent 友好**：输出结构化 JSON
-- **人类友好**：默认 Rich 美化输出
-- **模块自动注册**：新模块 CLI 命令自动挂载
-
-### 7.2 命令结构
+项目通过 **FastMCP** 实现标准 MCP 协议，向外部 Agent 暴露模块工具能力。架构采用动态注册模式：
 
 ```
-toolkit                              主命令
-├── device                           设备伪装模块
-│   ├── list                         列出设备
-│   ├── disguise                     执行伪装
-│   ├── restore                      恢复属性
-│   └── profiles list|add|delete     配置管理
-├── perf                             游戏性能模块
-│   ├── parse                        解析 XML
-│   ├── push                         推送配置
-│   ├── backup                       备份配置
-│   └── validate                     验证 XML
-├── log                              日志分析（规划）
-├── trace                            Trace 分析（规划）
-├── policy                           策略报告（规划）
-├── predict                          策略预测（规划）
-├── workflow                         工作流管理
-│   ├── list|run|create|delete
-├── config                           全局配置
-│   ├── show|set|reset
-├── plugin                           插件管理
-│   ├── list|info|status
-└── version                          版本信息
+┌─────────────────────────────────┐
+│      FastMCP Server             │
+│                                 │
+│  tools/list    → 返回所有工具     │
+│  tools/call    → 执行工具调用     │
+│  resources/list → 返回资源列表    │
+│  prompts/list   → 返回提示词      │
+└──────────┬──────────────────────┘
+           │
+    ┌──────▼──────────┐
+    │   ToolRegistry   │  收集各模块 register_agent_tools() 返回值
+    │                  │  自动将 ToolDefinition 转为 MCP tool schema
+    └──────┬──────────┘
+           │
+    ┌──────▼──────────┐
+    │   ToolExecutor   │  安全执行 + 结果序列化 + 异常处理
+    └──────┬──────────┘
+           │
+    ┌──────▼──────────┐
+    │  Module Service  │  各模块 service.py 中的实际业务方法
+    └─────────────────┘
 ```
 
-### 7.3 输出格式
+**核心组件**：
 
-每个命令支持 `--format` 参数：
+| 组件 | 职责 |
+|------|------|
+| `FastMCP` | MCP 协议服务器实例，管理 JSON-RPC 消息路由 |
+| `ToolRegistry` | 收集各模块 `register_agent_tools()` 返回值，动态注册为 MCP tool |
+| `ToolExecutor` | 桥接 MCP tool call 到 Python 方法调用，处理入参校验和结果截断 |
+| `SkillRegistry` | 发现模块 `skills/SKILL.md` 文件，解析 YAML frontmatter 并注册 |
 
-```powershell
-# 默认 Rich 美化输出
-toolkit device list
+**注册示例**：
 
-# JSON 格式（Agent 友好）
-toolkit device list --format json
+```python
+# toolkit/mcp/server.py
+from fastmcp import FastMCP
+
+mcp = FastMCP("LV Game Toolkit")
+
+def register_module_tools(module_name: str, tools: list):
+    """将模块工具注册到 MCP Server"""
+    for tool_def in tools:
+        @mcp.tool(name=tool_def["name"], description=tool_def["description"])
+        async def _(**kwargs: Any):
+            return await ToolExecutor.execute(tool_def["method"], kwargs)
 ```
 
-### 7.4 统一响应格式
+### 7.2 Skill Registry
 
-```json
+Skill Registry 负责发现和加载模块的 Skill 操作指南文件（`SKILL.md`）。
+
+**发现流程**：
+1. 插件加载时调用 `register_skills()` 钩子
+2. 返回模块 `skills/` 目录下所有 `SKILL.md` 文件路径
+3. 解析 YAML frontmatter 获取 skill 元数据（name, description, triggers）
+4. 注册到 SkillRegistry，供 Agent 发现和加载
+
+```python
+# toolkit/mcp/skill_registry.py
+@dataclass
+class SkillDefinition:
+    name: str            # 工具唯一名称
+    description: str     # 功能描述
+    triggers: list[str]  # 触发条件关键词
+    reference_path: str  # SKILL.md 文件路径
+    module: str          # 所属模块名
+
+class SkillRegistry:
+    def register(self, skill: SkillDefinition): ...
+    def find_matching(self, user_intent: str) -> list[SkillDefinition]: ...
+    def get_reference(self, name: str) -> str: ...  # 读取 SKILL.md 内容
+```
+
+### 7.3 工具注册流程
+
+```
+模块 startup
+    │
+    ▼
+register_agent_tools() 返回 ToolDefinition 列表
+    │
+    ▼
+ToolRegistry 接收列表
+    ├── 自动生成 JSON Schema（通过 inspect.signature + get_type_hints）
+    ├── 过滤 Callable 类型参数
+    └── 注册为 MCP tool（@mcp.tool 装饰）
+    │
+    ▼
+Agent 通过 tools/list 发现所有可用工具
+Agent 通过 tools/call 执行工具调用
+```
+
+**ToolDefinition 格式**：
+
+```python
 {
-    "success": true,
-    "data": {},
-    "message": "操作成功",
-    "errors": [],
-    "metadata": {
-        "timestamp": "2026-03-20T10:30:00",
-        "module": "device_disguise",
-        "command": "device list",
-        "duration_ms": 150
-    }
+    "name": "pa_analyze",
+    "description": "执行 Perfetto Trace 完整分析",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "trace_path": {"type": "string", "description": "trace 文件路径"},
+        },
+        "required": ["trace_path"],
+    },
+    "method": self._service.analyze,
 }
 ```
 
-### 7.5 自动注册机制
+### 7.4 Skill 文件规范
 
-框架通过 pluggy 钩子自动注册所有已加载模块的 CLI 命令，无需手动修改框架代码。
+模块的 Skill 操作指南以 `SKILL.md` 文件格式定义，包含 YAML frontmatter：
 
-### 7.6 命名空间防冲突
+```markdown
+---
+name: pa_analyze_trace
+description: 分析 Perfetto Trace 文件，提取帧率、Jank、渲染管线指标
+triggers:
+  - "分析 trace"
+  - "perfetto 分析"
+  - "帧率分析"
+reference: ../docs/analysis-guide.md
+---
 
-三层防护：
-1. `manifest.json` 声明 `cli_namespace`
-2. PluginManager 加载时检查唯一性
-3. 脚手架创建时预检查
+# Perfetto Trace 分析
 
-预留命名空间（模块不可使用）：`config`、`plugin`、`workflow`、`version`、`help`、`gui`
+## 前置条件
+- 设备已连接 ADB
+- trace 文件已上传到工作目录
+
+## 操作步骤
+1. 调用 `pa_analyze` 工具，传入 trace_path
+2. 查看返回结果中的 fps、jank_count、wall_clock
+3. 根据分析结果给出优化建议
+
+## 注意事项
+- 大文件分析耗时较长，建议先压缩
+- 结果中的 unmapped 指标见文档附录
+```
+
+### 7.5 传输模式
+
+MCP Server 支持三种传输模式：
+
+| 模式 | 适用场景 | 命令示例 |
+|------|---------|---------|
+| **stdio** | 本地 Agent 集成（Cursor/Claude Code） | `python -m toolkit.app mcp-serve --transport stdio` |
+| **sse** | 远程 Agent 通过 HTTP SSE 连接 | `python -m toolkit.app mcp-serve --transport sse --port 8765` |
+| **streamable-http** | 生产环境长期连接 | `python -m toolkit.app mcp-serve --transport streamable-http` |
+
+### 7.6 启动流程
+
+```
+应用启动
+    │
+    ▼
+Plugin Manager 加载所有模块
+  → on_startup() 各模块初始化
+  → register_agent_tools() 注册工具
+  → register_skills() 注册 Skill
+    │
+    ▼
+run_mcp_server()
+  ├── 创建 FastMCP Server 实例
+  ├── ToolRegistry 注册所有模块工具
+  ├── SkillRegistry 加载所有 SKILL.md
+  └── 启动指定传输模式的监听
+    │
+    ▼
+等待 Agent 连接
+```
+
+**启动命令**：
+
+```bash
+# stdio 模式（Cursor/Claude Code 自动调用）
+python -m toolkit.app mcp-serve
+
+# SSE 模式（远程 Agent 连接）
+python -m toolkit.app mcp-serve --transport sse --port 8765
+```
 
 ---
 
@@ -1237,8 +1347,7 @@ modules/agent_chat/
 ├── src/
 │   ├── models.py              ← Pydantic/dataclass 数据模型（AgentConfig, Message, ToolDefinition 等）
 │   ├── service.py             ← AgentService 对话循环核心（LLM 调用 → 工具执行 → 递归）
-│   ├── plugin.py              ← pluggy 注册入口（on_startup, register_gui_tab, register_cli 等）
-│   ├── cli_commands.py        ← Typer CLI: agent ask / agent sop list / agent sop show
+│   ├── plugin.py              ← pluggy 注册入口（on_startup, register_gui_tab, register_agent_tools 等）
 │   ├── gui_tab.py             ← PyQt6 GUI Tab（聊天、历史、SOP管理、设置）
 │   ├── llm/
 │   │   ├── base.py            ← LLMProvider 抽象基类（stream_chat, count_tokens）
@@ -1369,21 +1478,20 @@ AgentTab 继承 `BaseTab`，提供完整对话界面：
 # toolkit/app.py
 def main():
     if len(sys.argv) > 1:
-        run_cli()     # 带参数 → CLI 模式
+        run_mcp_server()  # 带参数 → MCP Server 模式
     else:
-        run_gui()     # 无参数 → GUI 模式
+        run_gui()         # 无参数 → GUI 模式
 ```
 
 使用方式：
 - 双击 `Toolkit.exe` → GUI（无控制台窗口）
-- 终端执行 `toolkit-cli plugin list` → CLI
+- 终端执行 `python -m toolkit.app mcp-serve` → MCP Server（stdio/sse 模式）
 
-### 10.3 双入口构建策略
+### 10.3 构建策略
 
 ```
 lv-game-toolkit-v1.0.0-windows/
 ├── Toolkit.exe            # console=False，GUI 入口（双击启动）
-├── toolkit-cli.exe        # console=True，CLI 入口（终端使用）
 ├── _internal/             # 共享运行时
 │   ├── modules/           #   模块文件
 │   └── assets/            #   资源文件（app.ico 等）
@@ -1452,7 +1560,7 @@ main                    稳定发布
 <type>(<scope>): <subject>
 
 type: feat / fix / refactor / docs / test / chore
-scope: framework / sdk / gui / cli / {模块名}
+scope: framework / sdk / gui / mcp / {模块名}
 
 示例：
   feat(device_disguise): 添加批量伪装功能

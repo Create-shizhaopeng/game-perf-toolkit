@@ -119,7 +119,7 @@
 | 编号 | 标题 | 严重度 | 关键词 |
 |------|------|--------|--------|
 | P06 | Windows 控制台中文编码 | 中等 | encoding、chcp、UTF-8 |
-| P08 | Typer CLI 帮助命令退出码 | 低 | SystemExit、exit code |
+| P08 | Typer CLI 帮助命令退出码 | 低 | ~~SystemExit~~、已废弃 |
 | P10 | PowerShell heredoc 语法不兼容 | 低 | heredoc、`@"`...`"@` |
 | P22 | core.autocrlf 与 .editorconfig 行尾符冲突 | 低 | CRLF、LF、幽灵修改 |
 | P27 | Speckit Skills 通用模板需项目适配 | 低 | speckit、模板裁剪、技术工具 |
@@ -134,7 +134,7 @@
 | 编码时（Perfetto） | P15, P16, P17, P26, P28 |
 | 编码时（Agent/LLM） | P23, P24, P25 |
 | 构建时 | P13, P14, P22 |
-| 环境/工具 | P06, P08, P10, P27 |
+| 环境/工具 | P06, P08(已废弃), P10, P27 |
 
 ---
 
@@ -392,6 +392,8 @@ def _on_clear(self):
 
 ## P08 — Typer CLI 帮助命令退出码
 
+> ⚠️ SUPERSEDED: CLI 已移除，此问题不再适用。保留仅作历史记录。
+
 ### 现象
 
 测试中 `assert result.exit_code == 0` 失败，实际退出码为 2。
@@ -402,21 +404,12 @@ Typer/Click 在显示帮助信息或无效命令时使用退出码 2（而非 0�
 
 ### 修复方案
 
-在测试中正确断言：
+（已废弃 — CLI 体系已全面移除，模块改用 MCP Server + Skill 暴露能力）
 
-```python
-# 无参数显示帮助
-result = runner.invoke(app)
-assert result.exit_code == 2  # Typer 帮助退出码
+### 历史备注
 
-# 或检查输出内容
-assert "Usage:" in result.output or result.exit_code == 0
-```
-
-### 预防措施
-
-- 编写 CLI 测试时，优先断言输出内容而非退出码
-- 了解 Typer 的退出码约定：0=成功、1=应用错误、2=用法错误/帮助
+- 编写 CLI 测试时，曾需断言输出内容而非退出码
+- Typer 的退出码约定：0=成功、1=应用错误、2=用法错误/帮助
 
 ---
 
@@ -547,7 +540,7 @@ if stream is not None:
 
 ### 预防措施
 
-- GUI 构建 MUST 使用 `--noconsole`，CLI 构建 MUST 使用 `--console`
+- GUI 构建 MUST 使用 `--noconsole`
 - 任何新增的日志、输出、调试功能必须假设 stdout/stderr 可能为 None
 - 推荐使用文件日志（`logging.FileHandler`）作为 GUI 模式的主要日志输出
 
@@ -930,7 +923,7 @@ def _is_callable_type(hint: Any) -> bool:
 ### 预防措施
 
 - 模块暴露给 Agent 的方法 SHOULD 避免使用 `Callable` 参数；如需回调，提供不含回调的重载版本
-- `register_agent_tools()` 中 SHOULD 显式提供 `parameters` JSON Schema 而非依赖自动推断
+- `register_agent_tools()` 返回的工具定义 SHOULD 显式提供 `parameters` JSON Schema 而非依赖自动推断
 - 自动推断 MUST 过滤掉 `Callable`、`Generator`、`Iterator` 等非序列化类型
 
 ---
@@ -1030,13 +1023,13 @@ hi_3 = bisect.bisect_right(buffer_ev_ts, pre_vt + sf_window_ns)
 Speckit 的通用 skills（specify、implement、constitution 等）基于广泛假设设计，直接使用时部分规则不适合本项目：
 
 1. `speckit-implement` 的 ignore-file matrix 包含大量非 Python 技术栈配置（如 Rust、Go、Java 相关），对纯 Python 项目无意义
-2. `speckit-specify` 要求 spec "不涉及技术实现"，但本项目的模块（Perfetto 引擎、ADB 工具）本身是技术工具，spec 中需合理包含技术约束
+2. `speckit-specify` 要求 spec "不涉及技术实现"，但本项目的模块（Perfetto 引擎、ADB 工具）本身是技术工具，spec 中需合理包含技术约束（如 MCP 工具参数格式、数据模型定义）
 3. `speckit-constitution` 的模板初始化适用于新项目，对已有成熟 constitution 的项目应做增量修订而非重建
 
 ### 应对
 
 - 使用 speckit skills 时，根据本项目技术栈（Python 3.12+ / PyQt6 / Pydantic）裁剪不适用的配置
-- 技术工具类模块的 spec 可在 Functional Requirements 中包含技术约束（如 CLI 参数格式、数据模型定义），不必严格遵循"不涉及技术实现"
+- 技术工具类模块的 spec 可在 Functional Requirements 中包含技术约束（如 MCP 工具参数格式、数据模型定义），不必严格遵循"不涉及技术实现"
 - 对已有 constitution 执行增量修订（添加新原则/更新技术栈），而非从模板重建
 
 ---

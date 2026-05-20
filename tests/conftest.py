@@ -41,7 +41,6 @@ def sample_module_dir(tmp_path: Path) -> Path:
         "version": "0.1.0",
         "description": "A test module",
         "entry": "src.plugin",
-        "cli_namespace": "testmod",
         "dependencies": {"toolkit_modules": []},
     }
     (mod_dir / "manifest.json").write_text(
@@ -61,15 +60,15 @@ class TestModulePlugin:
         return {"name": "test_module", "version": "0.1.0"}
 
     @hookimpl
-    def register_cli_commands(self, cli_app):
-        pass
-
-    @hookimpl
     def register_gui_tab(self):
         return None
 
     @hookimpl
     def register_agent_tools(self):
+        return []
+
+    @hookimpl
+    def register_skills(self):
         return []
 
     @hookimpl

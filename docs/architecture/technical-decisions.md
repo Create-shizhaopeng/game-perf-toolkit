@@ -10,7 +10,8 @@
 - [ADR-002 插件系统选型](#adr-002-插件系统选型)
 - [ADR-003 仓库管理方式](#adr-003-仓库管理方式)
 - [ADR-004 数据存放策略](#adr-004-数据存放策略)
-- [ADR-005 CLI 框架选型](#adr-005-cli-框架选型)
+- [ADR-005 CLI 框架选型](#adr-005-cli-框架选型)（已废弃）
+- [ADR-005b Agent 调用统一方案：MCP Server + Skill](#adr-005b-agent-调用统一方案mcp-server--skill)
 - [ADR-006 模块间通信方式](#adr-006-模块间通信方式)
 - [ADR-007 数据管道设计](#adr-007-数据管道设计)
 - [ADR-008 GUI 布局模式](#adr-008-gui-布局模式)
@@ -103,22 +104,46 @@
 
 ## ADR-005 CLI 框架选型
 
-**状态**：已采纳
+**状态**：已废弃（SUPERSEDED）
+
+⚠️ **已废弃**：CLI 已在 agent-tool-unification 重构中移除，Agent 调用改为 MCP Server + Skill 标准化方案（见 ADR-005b）。
 
 **上下文**：需要完整的 CLI 工具，可完全替代 GUI 操作，且对 AI Agent 友好。
 
-**决策**：使用 Typer（基于 click）。
-
-**理由**：
-- 类型注解自动生成命令参数
-- 自带 Rich 美化输出
-- 自动生成 --help 文档和 shell 补全
-- JSON 输出对 Agent 友好
+**原决策**：使用 Typer（基于 click）。
 
 **替代方案**：
 - click：需要更多样板代码
 - argparse：标准库但功能有限
 - fire：自动推断参数但控制力弱
+
+**废弃原因**：CLI 对 LLM Agent 不友好（浪费 token、协议不规范、效果不稳定），MCP 是 LLM 调用工具的标准协议。
+
+---
+
+## ADR-005b Agent 调用统一方案：MCP Server + Skill
+
+**状态**：已采纳
+
+**上下文**：Agent 工具调用需要从 CLI（Typer）迁移到标准化方案，使 LLM 能以统一协议发现和调用工具。
+
+**决策**：采用 MCP 协议（FastMCP）+ Skill 文档（YAML frontmatter）方案。
+
+**理由**：
+- MCP（Model Context Protocol）是 LLM 调用工具的行业标准协议
+- FastMCP 提供了 Python 端的 MCP Server 实现
+- Skill 文档（SKILL.md YAML frontmatter）为 Agent 提供自然语言工具描述
+- 相比 CLI 方案：Token 消耗更低、协议更规范、调用效果更稳定
+
+**架构要点**：
+- ToolRegistry 统一管理各模块暴露的工具
+- ToolExecutor 负责工具的发现、调用、错误处理
+- Skill Registry 通过 `register_skills` 钩子收集各模块 SKILL.md
+- Agent 通过 MCP 协议统一发现和调用所有工具
+
+**替代方案**：
+- 保留 CLI（Typer）：Token 浪费大，格式不稳定，已废弃
+- 直接 Function Calling：耦合度高，不够标准化
 
 ---
 
@@ -202,11 +227,10 @@
 
 **决策**：PyInstaller onedir 模式 + zip/tar.gz 分发。
 
-**双入口策略**：
+**单入口策略**：
 - `Toolkit.exe`（console=False）— GUI 入口，双击启动
-- `toolkit-cli.exe`（console=True）— CLI 入口，终端使用
 
-**理由**：PyInstaller 不能同时满足 GUI（无控制台）和 CLI（有控制台），因此构建两个 exe。GUI 版本命名为 `Toolkit` 作为用户默认双击入口，CLI 版本带 `-cli` 后缀区分。
+**理由**：CLI 入口已在 agent-tool-unification 重构中移除，Agent 调用改为 MCP Server + Skill 标准化方案。仅保留 GUI 构建入口。
 
 **注意**：`--noconsole` 模式下 `sys.stdout/stderr` 为 None，所有日志和调试代码 MUST 做 None 保护（参见踩坑指南 P13）。
 

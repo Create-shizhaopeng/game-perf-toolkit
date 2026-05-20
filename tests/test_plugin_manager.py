@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from toolkit.core.plugin_manager import PluginManager, PluginConflictError, PluginLoadError
+from toolkit.core.plugin_manager import PluginManager, PluginLoadError
 
 
 class TestPluginManager:
@@ -36,7 +36,6 @@ class TestPluginManager:
             "display_name": "Good",
             "version": "1.0.0",
             "entry": "src.plugin",
-            "cli_namespace": "good",
             "dependencies": {"toolkit_modules": []},
         }
         (good_mod / "manifest.json").write_text(
@@ -48,16 +47,27 @@ class TestPluginManager:
         names = [m["name"] for m in manifests]
         assert "good_module" in names
 
-    def test_cli_namespace_conflict_detected(self) -> None:
-        pm = PluginManager(Path("dummy"))
-        manifest_a = {"name": "mod_a", "cli_namespace": "same_ns", "_path": Path("a")}
-        manifest_b = {"name": "mod_b", "cli_namespace": "same_ns", "_path": Path("b")}
-        pm._validate_cli_namespace(manifest_a)
-        with pytest.raises(PluginConflictError, match="冲突"):
-            pm._validate_cli_namespace(manifest_b)
+    def test_topological_sort(self, tmp_path: Path) -> None:
+        mods = tmp_path / "modules"
+        mods.mkdir()
 
-    def test_reserved_namespace_rejected(self) -> None:
-        pm = PluginManager(Path("dummy"))
-        manifest = {"name": "bad_ns", "cli_namespace": "config", "_path": Path("x")}
-        with pytest.raises(PluginConflictError, match="预留"):
-            pm._validate_cli_namespace(manifest)
+        # mod_b 依赖 mod_a
+        manifest_a = {
+            "name": "mod_a",
+            "entry": "src.plugin",
+            "dependencies": {"toolkit_modules": []},
+        }
+        manifest_b = {
+            "name": "mod_b",
+            "entry": "src.plugin",
+            "dependencies": {"toolkit_modules": ["mod_a"]},
+        }
+        for name, m in [("mod_a", manifest_a), ("mod_b", manifest_b)]:
+            d = mods / name
+            d.mkdir()
+            (d / "manifest.json").write_text(json.dumps(m))
+
+        pm = PluginManager(mods)
+        manifests = pm.discover_modules()
+        names = [m["name"] for m in manifests]
+        assert names.index("mod_a") < names.index("mod_b")

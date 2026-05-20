@@ -1,13 +1,11 @@
 """
 Windows / Linux 构建脚本 — 基于 PyInstaller 打包 LV Game Toolkit。
 
-生成双入口可执行文件：
+生成 GUI 可执行文件：
   - Toolkit       (console=False)  双击启动 GUI
-  - toolkit-cli   (console=True)   终端使用 CLI
 
 优化项：
   - 排除未使用的传递依赖（botocore/grpc/hf_xet 等），节省 ~50 MB
-  - 合并双入口为单次构建 + exe 复制，速度提升 ~50%
   - 从 git tag 自动提取版本号
 """
 
@@ -165,16 +163,10 @@ def _hidden_imports() -> list[str]:
         "toolkit.core.process_bridge",
         "toolkit.core.logger",
         "toolkit.core.hookspecs",
-        "toolkit.core.perfdog",  # 添加 perfdog 模块
+        "toolkit.core.perfdog",
+        "toolkit.core.mcp_server",
+        "toolkit.core.skill_registry",
         "toolkit.sdk.base_plugin",
-        "toolkit.sdk.models",
-        "toolkit.sdk.protocols",
-        "toolkit.sdk.constants",
-        "toolkit.gui.main_window",
-        "toolkit.gui.home_tab",
-        "toolkit.gui.base_tab",
-        "toolkit.gui.styles",
-        "toolkit.cli.main",
         "pyqtgraph",
         "perfetto",
         "perfetto.trace_processor",
@@ -346,66 +338,6 @@ def build(console: bool, name: str, version: str) -> str:
     return build_name
 
 
-def _copy_as_cli(gui_dir: Path, pkg_dir: Path, os_name: str) -> None:
-    """从 GUI 构建产物中复制并重命名为 CLI 入口。
-
-    GUI (--noconsole) 和 CLI (--console) 的区别仅在于 EXE 头标志位。
-    通过 editbin 或直接修改 PE 头可避免第二次完整构建。
-    如果 editbin 不可用，则退回到构建一个轻量 CLI wrapper。
-    """
-    gui_exe = list(gui_dir.glob("*.exe"))[0] if os_name == "windows" else next(gui_dir.glob("*"))
-    cli_exe_name = "toolkit-cli.exe" if os_name == "windows" else "toolkit-cli"
-    cli_dst = pkg_dir / cli_exe_name
-
-    if not gui_exe.exists():
-        return
-
-    shutil.copy2(gui_exe, cli_dst)
-
-    if os_name == "windows":
-        try:
-            _set_pe_subsystem(cli_dst, console=True)
-            print(f"  [OK] Created CLI entry via PE header patch: {cli_exe_name}")
-            return
-        except Exception as e:
-            print(f"  [WARN] PE patch failed ({e}), CLI will use GUI subsystem")
-
-
-def _set_pe_subsystem(exe_path: Path, console: bool = True) -> None:
-    """修改 PE 可执行文件的子系统标志 (IMAGE_SUBSYSTEM)。
-
-    Windows GUI = 2, Console = 3。
-    通过直接修改 PE 头的 Subsystem 字段实现，无需 editbin。
-    """
-    SUBSYSTEM_CONSOLE = 3
-    SUBSYSTEM_WINDOWS = 2
-
-    target = SUBSYSTEM_CONSOLE if console else SUBSYSTEM_WINDOWS
-
-    with open(exe_path, "r+b") as f:
-        # PE 签名偏移在 0x3C
-        f.seek(0x3C)
-        pe_offset = int.from_bytes(f.read(4), "little")
-
-        # 验证 PE 签名 "PE\0\0"
-        f.seek(pe_offset)
-        sig = f.read(4)
-        if sig != b"PE\x00\x00":
-            raise ValueError("Not a valid PE file")
-
-        # Subsystem 在 Optional Header 的偏移 68 (0x44)
-        # Optional Header 起始 = pe_offset + 4 (sig) + 20 (COFF header)
-        subsystem_offset = pe_offset + 4 + 20 + 68
-        f.seek(subsystem_offset)
-        old_subsystem = int.from_bytes(f.read(2), "little")
-
-        if old_subsystem == target:
-            return
-
-        f.seek(subsystem_offset)
-        f.write(target.to_bytes(2, "little"))
-
-
 def package(version: str, gui_dir_name: str = "Toolkit") -> None:
     """将构建产物合并到统一目录并打包。"""
     os_name = "windows" if platform.system() == "Windows" else "linux"
@@ -438,8 +370,6 @@ def package(version: str, gui_dir_name: str = "Toolkit") -> None:
         print("  ERROR: GUI build output not found, cannot package")
         return
 
-    _copy_as_cli(gui_dir, pkg_dir, os_name)
-
     version_file = pkg_dir / "VERSION"
     version_file.write_text(version, encoding="utf-8")
 
@@ -464,12 +394,11 @@ def package(version: str, gui_dir_name: str = "Toolkit") -> None:
 
 
 def main() -> None:
-    """主流程：仅构建一次 GUI，通过 PE patch 生成 CLI 入口，然后打包。"""
+    """主流程：构建 GUI 可执行文件，然后打包。"""
     import argparse
 
     parser = argparse.ArgumentParser(description="LV Game Toolkit 构建脚本")
     parser.add_argument("--gui-only", action="store_true", help="仅构建 GUI")
-    parser.add_argument("--cli-only", action="store_true", help="仅构建 CLI")
     parser.add_argument("--no-package", action="store_true", help="不打包")
     parser.add_argument("--version", type=str, default="", help="手动指定版本号")
     args = parser.parse_args()
@@ -479,16 +408,13 @@ def main() -> None:
 
     t0 = _time.time()
 
-    if args.cli_only:
-        gui_dir_name = build(console=True, name="toolkit-cli", version=version)
-    else:
-        gui_dir_name = build(console=False, name="Toolkit", version=version)
+    gui_dir_name = build(console=False, name="Toolkit", version=version)
 
     elapsed = _time.time() - t0
     print(f"\n  Build time: {elapsed:.1f}s")
 
     if not args.no_package:
-        package(version, gui_dir_name="Toolkit" if args.cli_only else gui_dir_name)
+        package(version, gui_dir_name=gui_dir_name)
 
 
 if __name__ == "__main__":
