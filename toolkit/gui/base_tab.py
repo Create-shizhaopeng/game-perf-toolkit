@@ -5,6 +5,7 @@ from __future__ import annotations
 from PyQt6.QtWidgets import QWidget
 
 from toolkit.gui.toolkit_dialog import warning_dialog
+from toolkit.gui import strings as s
 
 
 class BaseTab(QWidget):
@@ -18,7 +19,7 @@ class BaseTab(QWidget):
     涉及设备操作的按钮。用户当前工作区的数据不会丢失。
     """
 
-    tab_title: str = "未命名"
+    tab_title: str = s.BASE_TAB_UNNAMED
     tab_icon: str = ""
 
     def __init__(self, context: dict | None = None, parent: QWidget | None = None) -> None:
@@ -88,5 +89,5 @@ class BaseTab(QWidget):
         """
         if self._device_connected:
             return True
-        warning_dialog(self, "设备已断开", "当前无可用设备，请连接设备后重试。")
+        warning_dialog(self, s.BASE_TAB_WARN_NO_DEVICE_TITLE, s.BASE_TAB_WARN_NO_DEVICE_MSG)
         return False

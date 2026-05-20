@@ -55,6 +55,8 @@ from toolkit.gui.toolkit_dialog import (
     warning_dialog,
 )
 
+from .strings_gui import *
+
 logger = logging.getLogger(__name__)
 HISTORY_SEND_TO_AGENT_EVENT = "history.send_to_agent"
 
@@ -74,7 +76,7 @@ def compose_message_with_context(text: str, contexts: list[dict[str, Any]]) -> s
     if not unique_paths:
         return text
     extra = "\n".join(f"- {p}" for p in unique_paths)
-    return f"{text}\n\n[文件上下文]\n{extra}"
+    return f"{text}\n\n{CONTEXT_FILE_CONTEXT}\n{extra}"
 
 
 # ---------------------------------------------------------------------------
@@ -188,9 +190,9 @@ class _ToolCallCard(QFrame):
         self._icon_label = QLabel("⏳")
         self._title_label = QLabel(f"📎 {tool_name}")
         self._title_label.setStyleSheet(f"color: {_DARK['accent']}; font-weight: bold; border: none;")
-        self._status_label = QLabel("执行中...")
+        self._status_label = QLabel(STATE_TOOL_RUNNING)
         self._status_label.setStyleSheet(f"color: {_DARK['fg_dim']}; border: none;")
-        self._toggle_btn = QPushButton("▶ 展开")
+        self._toggle_btn = QPushButton(STATE_TOOL_EXPAND)
         self._toggle_btn.setFixedWidth(60)
         self._toggle_btn.setStyleSheet(
             f"color: {_DARK['accent']}; border: none; font-size: 11px;"
@@ -231,14 +233,14 @@ class _ToolCallCard(QFrame):
     def set_running(self, elapsed_sec: float = 0) -> None:
         self._icon_label.setText("⏳")
         if elapsed_sec > 0:
-            self._status_label.setText(f"执行中... ({elapsed_sec:.1f}s)")
+            self._status_label.setText(STATE_TOOL_RUNNING_FMT.format(elapsed_sec))
         else:
-            self._status_label.setText("执行中...")
+            self._status_label.setText(STATE_TOOL_RUNNING)
 
     def set_complete(self, elapsed_ms: float, content_preview: str = "") -> None:
         secs = elapsed_ms / 1000
         self._icon_label.setText("✅")
-        self._status_label.setText(f"完成 ({secs:.1f}s)")
+        self._status_label.setText(STATE_TOOL_COMPLETE_FMT.format(secs))
         self._status_label.setStyleSheet(f"color: {_DARK['success']}; border: none;")
         if content_preview:
             detail_label = QLabel(content_preview)
@@ -249,7 +251,7 @@ class _ToolCallCard(QFrame):
 
     def set_failed(self, error_msg: str = "") -> None:
         self._icon_label.setText("❌")
-        self._status_label.setText("失败")
+        self._status_label.setText(STATE_TOOL_FAILED)
         self._status_label.setStyleSheet(f"color: {_DARK['error']}; border: none;")
         if error_msg:
             err_label = QLabel(error_msg)
@@ -260,11 +262,11 @@ class _ToolCallCard(QFrame):
 
     def set_cancelled(self) -> None:
         self._icon_label.setText("⛔")
-        self._status_label.setText("已取消")
+        self._status_label.setText(STATE_TOOL_CANCELLED)
         self._status_label.setStyleSheet(f"color: {_DARK['warning']}; border: none;")
 
     def add_report_button(self, report_path: str) -> None:
-        btn = QPushButton("📂 打开报告目录")
+        btn = QPushButton(BTN_OPEN_REPORT_DIR)
         btn.setFixedHeight(24)
         btn.setStyleSheet(
             f"color: {_DARK['accent']}; border: 1px solid {_DARK['border']}; "
@@ -273,7 +275,7 @@ class _ToolCallCard(QFrame):
         btn.clicked.connect(lambda: _open_path(str(Path(report_path).parent)))
         self._report_layout.addWidget(btn)
 
-        btn2 = QPushButton("📋 查看报告")
+        btn2 = QPushButton(BTN_VIEW_REPORT)
         btn2.setFixedHeight(24)
         btn2.setStyleSheet(
             f"color: {_DARK['accent']}; border: 1px solid {_DARK['border']}; "
@@ -286,7 +288,7 @@ class _ToolCallCard(QFrame):
     def _toggle_detail(self) -> None:
         self._collapsed = not self._collapsed
         self._detail_frame.setVisible(not self._collapsed)
-        self._toggle_btn.setText("▼ 收起" if not self._collapsed else "▶ 展开")
+        self._toggle_btn.setText(STATE_TOOL_COLLAPSE if not self._collapsed else STATE_TOOL_EXPAND)
 
 
 class _TokenUsageLabel(QLabel):
@@ -296,7 +298,7 @@ class _TokenUsageLabel(QLabel):
         super().__init__(parent)
         inp = usage.get("prompt_tokens", usage.get("input_tokens", 0))
         out = usage.get("completion_tokens", usage.get("output_tokens", 0))
-        text = f"↑{inp:,} ↓{out:,} tokens"
+        text = TOKEN_USAGE_FMT.format(inp, out)
         self.setText(text)
         self.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.setStyleSheet(f"color: {_DARK['fg_dim']}; font-size: 10px; padding: 2px 12px;")
@@ -326,11 +328,11 @@ class _WorkflowOverview(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(4)
-        title = QLabel(f"📋 工作流: {sop_title}")
+        title = QLabel(WORKFLOW_TITLE_FMT.format(sop_title))
         title.setStyleSheet(f"color: {_DARK['accent']}; font-weight: bold; border: none;")
         layout.addWidget(title)
         for i, step in enumerate(steps, 1):
-            lbl = QLabel(f"  Step {i}: {step}")
+            lbl = QLabel(WORKFLOW_STEP_FMT.format(i, step))
             lbl.setStyleSheet(f"color: {_DARK['fg']}; font-size: 11px; border: none;")
             layout.addWidget(lbl)
 
@@ -355,7 +357,7 @@ class _WorkflowDepositCard(QFrame):
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(6)
 
-        header = QLabel("💡 工作流沉淀")
+        header = QLabel(WORKFLOW_DEPOSIT_HEADER)
         header.setStyleSheet(
             f"color: #F59E0B; font-weight: bold; font-size: 13px; border: none;"
         )
@@ -363,7 +365,7 @@ class _WorkflowDepositCard(QFrame):
 
         tools = summary.get("unique_tools", [])
         steps = summary.get("total_steps", 0)
-        desc = QLabel(f"本次对话使用了 {len(tools)} 个工具、{steps} 个步骤")
+        desc = QLabel(WORKFLOW_DEPOSIT_DESC_FMT.format(len(tools), steps))
         desc.setStyleSheet(f"color: {_DARK['fg']}; font-size: 11px; border: none;")
         layout.addWidget(desc)
 
@@ -375,7 +377,7 @@ class _WorkflowDepositCard(QFrame):
 
         deviation = summary.get("sop_deviation", "")
         if deviation:
-            dev_text = QLabel(f"偏差: {deviation}")
+            dev_text = QLabel(WORKFLOW_DEVIATION_FMT.format(deviation))
             dev_text.setStyleSheet("color: #FB923C; font-size: 10px; border: none;")
             dev_text.setWordWrap(True)
             layout.addWidget(dev_text)
@@ -383,7 +385,7 @@ class _WorkflowDepositCard(QFrame):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
-        btn_save = QPushButton("保存为新 SOP")
+        btn_save = QPushButton(BTN_SAVE_NEW_SOP)
         btn_save.setStyleSheet(
             "QPushButton { background-color: #F59E0B; color: #1E1E2E; "
             "border: none; border-radius: 4px; padding: 5px 12px; font-size: 11px; }"
@@ -392,7 +394,7 @@ class _WorkflowDepositCard(QFrame):
         btn_save.clicked.connect(self._on_save_new)
         btn_row.addWidget(btn_save)
 
-        btn_skip = QPushButton("跳过")
+        btn_skip = QPushButton(BTN_SKIP)
         btn_skip.setStyleSheet(
             f"QPushButton {{ background-color: {_DARK['card_bg']}; color: {_DARK['fg_dim']}; "
             "border: 1px solid #555; border-radius: 4px; padding: 5px 12px; font-size: 11px; }"
@@ -406,16 +408,16 @@ class _WorkflowDepositCard(QFrame):
 
     def _on_save_new(self) -> None:
         self.save_new.emit(self._summary)
-        self._show_done("SOP 保存中...")
+        self._show_done(STATE_SAVING)
 
     def _on_skip(self) -> None:
         self.skipped.emit()
-        self._show_done("已跳过")
+        self._show_done(STATE_SKIPPED)
 
     def _show_done(self, msg: str) -> None:
         for child in self.findChildren(QPushButton):
             child.setEnabled(False)
-        done_label = QLabel(f"✓ {msg}")
+        done_label = QLabel(STATE_DONE_FMT.format(msg))
         done_label.setStyleSheet(f"color: {_DARK['fg_dim']}; font-size: 10px; border: none;")
         self.layout().addWidget(done_label)
 
@@ -475,7 +477,7 @@ class _AgentWorker(QThread):
             logger.debug("[DIAG] AgentWorker._run_async: chat() 返回, text_len=%d", len(response.text))
             self.finished_ok.emit(response.text, self._conv_id or "")
         except Exception as exc:
-            logger.error("AgentWorker 异常: %s", exc, exc_info=True)
+            logger.error(LOG_WORKER_EXCEPTION, exc, exc_info=True)
             try:
                 self.error.emit(str(exc))
             except RuntimeError:
@@ -504,7 +506,7 @@ class _AgentWorker(QThread):
             elif chunk.type == StreamChunkType.ERROR:
                 self.error.emit(str(chunk.data))
         except RuntimeError:
-            logger.debug("_on_chunk: 信号发射失败 (对象可能已销毁)")
+            logger.debug(LOG_ON_CHUNK_FAILED)
 
     def cancel(self) -> None:
         if self._service:
@@ -542,7 +544,7 @@ class _ChatInput(QTextEdit):
         super().__init__(parent)
         self.setObjectName("agentChatInput")
         self.setAcceptDrops(True)
-        self.setPlaceholderText("描述你的任务...")
+        self.setPlaceholderText(PLACEHOLDER_CHAT_INPUT)
         self._min_lines = 1
         self._max_lines = 5
         self.textChanged.connect(self._adjust_height)
@@ -599,7 +601,7 @@ class _SettingsDialog(ToolkitDialog):
         mcp_manager: Any | None = None,
         parent: QWidget | None = None,
     ) -> None:
-        super().__init__("⚙ Agent 设置", parent, min_width=560)
+        super().__init__(DLG_TITLE_AGENT_SETTINGS, parent, min_width=560)
         self.setMinimumHeight(460)
         self._config = config
         self._sop_manager = sop_manager
@@ -608,18 +610,18 @@ class _SettingsDialog(ToolkitDialog):
 
     def _init_ui(self) -> None:
         tabs = QTabWidget()
-        tabs.addTab(self._build_sop_tab(), "SOP 管理")
-        tabs.addTab(self._build_mcp_tab(), "MCP 管理")
-        tabs.addTab(self._build_advanced_tab(), "高级设置")
+        tabs.addTab(self._build_sop_tab(), GROUP_SOP_MANAGEMENT)
+        tabs.addTab(self._build_mcp_tab(), GROUP_MCP_MANAGEMENT)
+        tabs.addTab(self._build_advanced_tab(), GROUP_ADVANCED_SETTINGS)
         self.content_layout.addWidget(tabs)
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        btn_save = QPushButton("保存")
+        btn_save = QPushButton(BTN_SAVE)
         btn_save.setObjectName("primaryBtn")
         btn_save.setFixedWidth(80)
         btn_save.clicked.connect(self._on_save)
-        btn_cancel = QPushButton("取消")
+        btn_cancel = QPushButton(BTN_CANCEL)
         btn_cancel.setObjectName("secondaryBtn")
         btn_cancel.setFixedWidth(80)
         btn_cancel.clicked.connect(self.reject)
@@ -632,11 +634,11 @@ class _SettingsDialog(ToolkitDialog):
         layout = QVBoxLayout(w)
         layout.setSpacing(12)
 
-        grp = QGroupBox("LLM Provider")
+        grp = QGroupBox(GROUP_LLM_PROVIDER)
         grp_layout = QHBoxLayout(grp)
-        self._rb_glm = QPushButton("GLM (智谱)")
+        self._rb_glm = QPushButton(BTN_GLM)
         self._rb_glm.setCheckable(True)
-        self._rb_claude = QPushButton("Claude (Anthropic)")
+        self._rb_claude = QPushButton(BTN_CLAUDE)
         self._rb_claude.setCheckable(True)
         if self._config.provider == "claude":
             self._rb_claude.setChecked(True)
@@ -649,7 +651,7 @@ class _SettingsDialog(ToolkitDialog):
         layout.addWidget(grp)
 
         key_layout = QHBoxLayout()
-        key_layout.addWidget(QLabel("API Key"))
+        key_layout.addWidget(QLabel(LABEL_API_KEY))
         self._key_input = QLineEdit()
         self._key_input.setEchoMode(QLineEdit.EchoMode.Password)
         current_key = self._config.api_key
@@ -660,14 +662,14 @@ class _SettingsDialog(ToolkitDialog):
                 current_key = self._config.claude_api_key
         self._key_input.setText(current_key)
         key_layout.addWidget(self._key_input, 1)
-        self._btn_toggle_key = QPushButton("👁")
+        self._btn_toggle_key = QPushButton(BTN_TOGGLE_KEY_SHOW)
         self._btn_toggle_key.setFixedWidth(30)
         self._btn_toggle_key.clicked.connect(self._toggle_key_visibility)
         key_layout.addWidget(self._btn_toggle_key)
         layout.addLayout(key_layout)
 
         model_layout = QHBoxLayout()
-        model_layout.addWidget(QLabel("模型"))
+        model_layout.addWidget(QLabel(LABEL_MODEL))
         self._model_combo = QComboBox()
         self._model_combo.setEditable(True)
         glm_models = ["glm-4-plus", "glm-4-flash", "glm-4-long", "glm-4"]
@@ -678,7 +680,7 @@ class _SettingsDialog(ToolkitDialog):
         layout.addLayout(model_layout)
 
         lang_layout = QHBoxLayout()
-        lang_layout.addWidget(QLabel("回复语言"))
+        lang_layout.addWidget(QLabel(LABEL_REPLY_LANGUAGE))
         self._lang_combo = QComboBox()
         self._lang_combo.addItems(["中文", "English"])
         self._lang_combo.setCurrentIndex(0 if self._config.language == "zh" else 1)
@@ -687,7 +689,7 @@ class _SettingsDialog(ToolkitDialog):
         layout.addLayout(lang_layout)
 
         temp_layout = QHBoxLayout()
-        temp_layout.addWidget(QLabel("Temperature"))
+        temp_layout.addWidget(QLabel(LABEL_TEMPERATURE))
         self._temp_slider = QSlider(Qt.Orientation.Horizontal)
         self._temp_slider.setRange(0, 100)
         self._temp_slider.setValue(int(self._config.temperature * 100))
@@ -699,7 +701,7 @@ class _SettingsDialog(ToolkitDialog):
         temp_layout.addWidget(self._temp_value)
         layout.addLayout(temp_layout)
 
-        self._chk_smart = QCheckBox("智能切换: 复杂任务自动使用 Claude（需双 Key）")
+        self._chk_smart = QCheckBox(CHECK_SMART_SWITCH)
         self._chk_smart.setChecked(self._config.smart_switch)
         layout.addWidget(self._chk_smart)
 
@@ -711,14 +713,14 @@ class _SettingsDialog(ToolkitDialog):
         layout = QVBoxLayout(w)
 
         self._sop_tree = QTreeWidget()
-        self._sop_tree.setHeaderLabels(["名称", "来源", "操作"])
+        self._sop_tree.setHeaderLabels([LABEL_SOP_NAME, LABEL_SOP_SOURCE, LABEL_SOP_ACTION])
         self._sop_tree.setColumnWidth(0, 200)
         self._sop_tree.setColumnWidth(1, 60)
         self._refresh_sop_tree()
         layout.addWidget(self._sop_tree, 1)
 
         btn_row = QHBoxLayout()
-        btn_import = QPushButton("📥 导入 SOP")
+        btn_import = QPushButton(BTN_IMPORT_SOP)
         btn_import.clicked.connect(self._on_import_sop)
         btn_row.addWidget(btn_import)
         btn_row.addStretch()
@@ -729,24 +731,24 @@ class _SettingsDialog(ToolkitDialog):
         w = QWidget()
         layout = QVBoxLayout(w)
 
-        desc = QLabel("管理 MCP 服务器连接，已连接的服务器工具会自动注入 Agent。")
+        desc = QLabel(MCP_DESC)
         desc.setWordWrap(True)
         desc.setStyleSheet(f"color: {_DARK['fg_dim']}; font-size: 11px; padding: 4px;")
         layout.addWidget(desc)
 
         self._mcp_tree = QTreeWidget()
-        self._mcp_tree.setHeaderLabels(["服务器", "状态", "工具数"])
+        self._mcp_tree.setHeaderLabels([LABEL_MCP_SERVER, LABEL_MCP_STATUS, LABEL_MCP_TOOL_COUNT])
         self._mcp_tree.setColumnWidth(0, 200)
         self._mcp_tree.setColumnWidth(1, 80)
         self._refresh_mcp_tree()
         layout.addWidget(self._mcp_tree, 1)
 
         btn_row = QHBoxLayout()
-        btn_add = QPushButton("➕ 添加")
+        btn_add = QPushButton(BTN_ADD_MCP_SERVER)
         btn_add.clicked.connect(self._on_add_mcp_server)
-        btn_remove = QPushButton("🗑 移除")
+        btn_remove = QPushButton(BTN_REMOVE_MCP_SERVER)
         btn_remove.clicked.connect(self._on_remove_mcp_server)
-        btn_toggle = QPushButton("⏯ 启用/禁用")
+        btn_toggle = QPushButton(BTN_TOGGLE_MCP_SERVER)
         btn_toggle.clicked.connect(self._on_toggle_mcp_server)
         for btn in (btn_add, btn_remove, btn_toggle):
             btn.setFixedHeight(24)
@@ -764,7 +766,7 @@ class _SettingsDialog(ToolkitDialog):
     def _refresh_mcp_tree(self) -> None:
         self._mcp_tree.clear()
         if not self._mcp_manager:
-            item = QTreeWidgetItem(self._mcp_tree, ["MCP SDK 未安装", "--", "0"])
+            item = QTreeWidgetItem(self._mcp_tree, [LABEL_MCP_SDK_NOT_INSTALLED, "--", "0"])
             return
 
         servers = self._mcp_manager.get_servers()
@@ -777,24 +779,24 @@ class _SettingsDialog(ToolkitDialog):
                 status_text = conn.status.value
                 tools_count = str(len(conn.available_tools))
             else:
-                status_text = "未连接" if cfg.enabled else "已禁用"
+                status_text = STATE_CONNECTING if cfg.enabled else STATE_DISABLED
                 tools_count = "0"
             item = QTreeWidgetItem(self._mcp_tree, [name, status_text, tools_count])
             if conn and conn.available_tools:
                 for t in conn.available_tools:
-                    QTreeWidgetItem(item, [f"  🔧 {t}", "", ""])
+                    QTreeWidgetItem(item, [MCP_TOOL_PREFIX.format(t), "", ""])
 
     def _on_add_mcp_server(self) -> None:
         if not self._mcp_manager:
-            warning_dialog(self, "MCP", "MCP SDK 未安装")
+            warning_dialog(self, DLG_TITLE_MCP, MSG_MCP_NOT_INSTALLED)
             return
-        name, ok = input_dialog(self, "添加 MCP 服务器", "服务器名称:")
+        name, ok = input_dialog(self, DLG_TITLE_ADD_MCP_SERVER, MSG_SOP_SERVER_NAME)
         if not ok or not name.strip():
             return
-        cmd, ok = input_dialog(self, "添加 MCP 服务器", "启动命令 (如 npx):")
+        cmd, ok = input_dialog(self, DLG_TITLE_ADD_MCP_SERVER, MSG_SOP_START_CMD)
         if not ok or not cmd.strip():
             return
-        args_str, ok = input_dialog(self, "添加 MCP 服务器", "参数 (空格分隔):")
+        args_str, ok = input_dialog(self, DLG_TITLE_ADD_MCP_SERVER, MSG_SOP_ARGS)
         args = args_str.strip().split() if args_str.strip() else []
 
         from .models import MCPServerConfig
@@ -828,10 +830,10 @@ class _SettingsDialog(ToolkitDialog):
         layout = QVBoxLayout(w)
         layout.setSpacing(12)
 
-        grp_hist = QGroupBox("对话历史")
+        grp_hist = QGroupBox(GROUP_CONVERSATION_HISTORY)
         hist_layout = QVBoxLayout(grp_hist)
         row1 = QHBoxLayout()
-        row1.addWidget(QLabel("最大保存会话数:"))
+        row1.addWidget(QLabel(LABEL_MAX_CONVERSATIONS))
         self._spin_max_conv = QSpinBox()
         self._spin_max_conv.setRange(5, 200)
         self._spin_max_conv.setValue(self._config.max_conversations)
@@ -840,10 +842,10 @@ class _SettingsDialog(ToolkitDialog):
         hist_layout.addLayout(row1)
         layout.addWidget(grp_hist)
 
-        grp_ctx = QGroupBox("上下文管理")
+        grp_ctx = QGroupBox(GROUP_CONTEXT_MANAGEMENT)
         ctx_layout = QVBoxLayout(grp_ctx)
         row2 = QHBoxLayout()
-        row2.addWidget(QLabel("最大上下文消息数:"))
+        row2.addWidget(QLabel(LABEL_MAX_CONTEXT_MESSAGES))
         self._spin_max_ctx = QSpinBox()
         self._spin_max_ctx.setRange(5, 100)
         self._spin_max_ctx.setValue(self._config.max_context_messages)
@@ -851,27 +853,27 @@ class _SettingsDialog(ToolkitDialog):
         row2.addStretch()
         ctx_layout.addLayout(row2)
         row3 = QHBoxLayout()
-        row3.addWidget(QLabel("工具结果最大长度:"))
+        row3.addWidget(QLabel(LABEL_TOOL_RESULT_MAX_LENGTH))
         self._spin_tool_len = QSpinBox()
         self._spin_tool_len.setRange(500, 10000)
         self._spin_tool_len.setSingleStep(500)
         self._spin_tool_len.setValue(self._config.tool_result_max_length)
         row3.addWidget(self._spin_tool_len)
-        row3.addWidget(QLabel("字符"))
+        row3.addWidget(QLabel(LABEL_CHARACTERS))
         row3.addStretch()
         ctx_layout.addLayout(row3)
         layout.addWidget(grp_ctx)
 
-        grp_wf = QGroupBox("工作流学习")
+        grp_wf = QGroupBox(GROUP_WORKFLOW_LEARNING)
         wf_layout = QVBoxLayout(grp_wf)
-        self._chk_wf_learn = QCheckBox("对话结束时检测可沉淀工作流")
+        self._chk_wf_learn = QCheckBox(CHECK_WORKFLOW_LEARNING)
         self._chk_wf_learn.setChecked(self._config.workflow_learning_enabled)
         wf_layout.addWidget(self._chk_wf_learn)
         layout.addWidget(grp_wf)
 
-        grp_lang = QGroupBox("语言")
+        grp_lang = QGroupBox(GROUP_LANGUAGE)
         lang_layout = QHBoxLayout(grp_lang)
-        lang_layout.addWidget(QLabel("回复语言:"))
+        lang_layout.addWidget(QLabel(LABEL_REPLY_LANGUAGE))
         self._lang_combo = QComboBox()
         self._lang_combo.addItems(["中文", "English"])
         self._lang_combo.setCurrentIndex(0 if self._config.language == "zh" else 1)
@@ -885,10 +887,10 @@ class _SettingsDialog(ToolkitDialog):
     def _toggle_key_visibility(self) -> None:
         if self._key_input.echoMode() == QLineEdit.EchoMode.Password:
             self._key_input.setEchoMode(QLineEdit.EchoMode.Normal)
-            self._btn_toggle_key.setText("🔒")
+            self._btn_toggle_key.setText(BTN_TOGGLE_KEY_HIDE)
         else:
             self._key_input.setEchoMode(QLineEdit.EchoMode.Password)
-            self._btn_toggle_key.setText("👁")
+            self._btn_toggle_key.setText(BTN_TOGGLE_KEY_SHOW)
 
     def _refresh_sop_tree(self) -> None:
         self._sop_tree.clear()
@@ -896,10 +898,10 @@ class _SettingsDialog(ToolkitDialog):
             return
         from .models import SOPSource
         sops = self._sop_manager.load_all()
-        builtin_root = QTreeWidgetItem(self._sop_tree, ["📁 内置", "", ""])
-        custom_root = QTreeWidgetItem(self._sop_tree, ["📁 自定义", "", ""])
+        builtin_root = QTreeWidgetItem(self._sop_tree, [SOP_BUILTIN_FOLDER, "", ""])
+        custom_root = QTreeWidgetItem(self._sop_tree, [SOP_CUSTOM_FOLDER, "", ""])
         for doc in sops:
-            source_text = "内置" if doc.source == SOPSource.BUILTIN else "自定义"
+            source_text = SOP_BUILT_IN if doc.source == SOPSource.BUILTIN else SOP_CUSTOM
             parent = builtin_root if doc.source == SOPSource.BUILTIN else custom_root
             item = QTreeWidgetItem(parent, [f"📄 {doc.title}", source_text, ""])
             item.setData(0, Qt.ItemDataRole.UserRole, doc)
@@ -910,7 +912,7 @@ class _SettingsDialog(ToolkitDialog):
         if not self._sop_manager:
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, "导入 SOP", "", "Markdown (*.md);;所有文件 (*)"
+            self, DLG_TITLE_IMPORT_SOP, "", FILE_FILTER_MARKDOWN
         )
         if path:
             self._sop_manager.import_sop(Path(path))
@@ -944,8 +946,8 @@ class _SettingsDialog(ToolkitDialog):
 class AgentTab(BaseTab):
     """Agent 智能助手 Tab — 完整聊天界面。"""
 
-    tab_title = "Agent 智能助手"
-    tab_icon = "🤖"
+    tab_title = TAB_TITLE
+    tab_icon = TAB_ICON
 
     def __init__(self, context: dict | None = None, parent: QWidget | None = None) -> None:
         super().__init__(context, parent)
@@ -1004,10 +1006,10 @@ class AgentTab(BaseTab):
         self._conv_tab_bar.customContextMenuRequested.connect(self._on_conv_context_menu)
         bar_layout.addWidget(self._conv_tab_bar, 1)
 
-        self._btn_new_conv = QPushButton("+")
+        self._btn_new_conv = QPushButton(BTN_NEW_CONVERSATION)
         self._btn_new_conv.setObjectName("agentBtnNewConv")
         self._btn_new_conv.setFixedSize(28, 24)
-        self._btn_new_conv.setToolTip("新建会话")
+        self._btn_new_conv.setToolTip(TOOLTIP_NEW_CONVERSATION)
         self._btn_new_conv.clicked.connect(self._on_new_conversation)
         bar_layout.addWidget(self._btn_new_conv)
 
@@ -1029,7 +1031,7 @@ class AgentTab(BaseTab):
         self._toolbar.setFixedHeight(36)
         tb_layout = QHBoxLayout(self._toolbar)
         tb_layout.setContentsMargins(12, 0, 12, 0)
-        self._lbl_title = QLabel("🤖 Agent 智能助手")
+        self._lbl_title = QLabel(LABEL_TITLE)
         self._lbl_title.setObjectName("agentLblTitle")
         tb_layout.addWidget(self._lbl_title)
         tb_layout.addStretch()
@@ -1058,7 +1060,7 @@ class AgentTab(BaseTab):
         self._chat_input = _ChatInput()
         ib_layout.addWidget(self._chat_input, 1)
 
-        self._btn_send = QPushButton("发送")
+        self._btn_send = QPushButton(BTN_SEND)
         self._btn_send.setObjectName("agentBtnSend")
         self._btn_send.setFixedSize(60, 36)
         self._btn_send.clicked.connect(self._on_send)
@@ -1076,7 +1078,7 @@ class AgentTab(BaseTab):
         layout.setContentsMargins(12, 6, 12, 6)
         layout.setSpacing(4)
 
-        title = QLabel("上下文区域")
+        title = QLabel(LABEL_CONTEXT_AREA)
         title.setObjectName("agentContextTitle")
         layout.addWidget(title)
 
@@ -1084,7 +1086,7 @@ class AgentTab(BaseTab):
         self._context_list.setObjectName("agentContextList")
         self._context_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         self._context_list.setMaximumHeight(90)
-        self._context_list.setToolTip("选中后可按 Backspace/Delete 删除")
+        self._context_list.setToolTip(TOOLTIP_CONTEXT_LIST)
         self._context_list.installEventFilter(self)
         self._context_list.itemSelectionChanged.connect(self._on_context_selection_changed)
         layout.addWidget(self._context_list)
@@ -1098,12 +1100,12 @@ class AgentTab(BaseTab):
         center = QVBoxLayout()
         center.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self._welcome_title = QLabel("🤖 Agent 智能助手")
+        self._welcome_title = QLabel(WELCOME_TITLE)
         self._welcome_title.setObjectName("agentWelcomeTitle")
         self._welcome_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         center.addWidget(self._welcome_title)
 
-        self._welcome_subtitle = QLabel("描述你的任务，我将自动匹配工作流完成分析。")
+        self._welcome_subtitle = QLabel(WELCOME_SUBTITLE)
         self._welcome_subtitle.setObjectName("agentWelcomeSubtitle")
         self._welcome_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         center.addWidget(self._welcome_subtitle)
@@ -1112,10 +1114,10 @@ class AgentTab(BaseTab):
         btn_grid.setSpacing(8)
         btn_grid.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         shortcuts = [
-            ("🔍 Trace 分析", "帮我分析 Perfetto trace 文件中的卡顿问题"),
-            ("📊 PerfDog 分析", "帮我分析 PerfDog 导出的性能数据"),
-            ("⚙ 策略审查", "帮我审查当前的游戏性能策略配置"),
-            ("🔬 综合卡顿分析", "帮我做一次完整的游戏卡顿综合分析"),
+            (WELCOME_SHORTCUT_TRACE, "帮我分析 Perfetto trace 文件中的卡顿问题"),
+            (WELCOME_SHORTCUT_PERFDog, "帮我分析 PerfDog 导出的性能数据"),
+            (WELCOME_SHORTCUT_POLICY, "帮我审查当前的游戏性能策略配置"),
+            (WELCOME_SHORTCUT_JANK, "帮我做一次完整的游戏卡顿综合分析"),
         ]
         self._shortcut_btns: list[QPushButton] = []
         for label, prompt in shortcuts:
@@ -1129,7 +1131,7 @@ class AgentTab(BaseTab):
             self._shortcut_btns.append(btn)
         center.addLayout(btn_grid)
 
-        self._welcome_hint = QLabel("💡 提示: 你也可以直接描述需求，无需选择具体分析类型")
+        self._welcome_hint = QLabel(WELCOME_HINT)
         self._welcome_hint.setObjectName("agentWelcomeHint")
         self._welcome_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         center.addWidget(self._welcome_hint)
@@ -1297,11 +1299,11 @@ class AgentTab(BaseTab):
             logger.debug("_refresh_conv_list: %d 个会话, current=%s", len(convs), self._current_conv_id)
 
             for c in convs:
-                title = c.get("title") or "新对话"
+                title = c.get("title") or CONVERSATION_NEW
                 if len(title) > 16:
                     title = title[:16] + "…"
                 idx = self._conv_tab_bar.addTab(title)
-                self._conv_tab_bar.setTabToolTip(idx, c.get("title") or "新对话")
+                self._conv_tab_bar.setTabToolTip(idx, c.get("title") or CONVERSATION_NEW)
                 self._conv_ids.append(c["id"])
                 self._add_tab_close_btn(idx)
                 if c["id"] == self._current_conv_id:
@@ -1310,7 +1312,7 @@ class AgentTab(BaseTab):
             if active_idx >= 0 and not self._new_conv_mode:
                 self._conv_tab_bar.setCurrentIndex(active_idx)
             else:
-                new_idx = self._conv_tab_bar.insertTab(0, "新对话")
+                new_idx = self._conv_tab_bar.insertTab(0, CONVERSATION_NEW_TAB)
                 self._conv_ids.insert(0, "__new__")
                 self._add_tab_close_btn(0)
                 self._conv_tab_bar.setCurrentIndex(0)
@@ -1366,8 +1368,8 @@ class AgentTab(BaseTab):
 
         if self._is_running:
             ok = confirm_dialog(
-                self, "切换会话",
-                "当前有任务在执行中，切换会话将停止当前任务。是否继续？",
+                self, DLG_TITLE_SWITCH_CONVERSATION,
+                MSG_SWITCH_STOP_TASK,
             )
             if not ok:
                 old_idx = self._conv_ids.index(self._current_conv_id) if self._current_conv_id in self._conv_ids else -1
@@ -1391,8 +1393,8 @@ class AgentTab(BaseTab):
             self._refresh_conv_list()
             return
         ok = confirm_dialog(
-            self, "删除对话", "确认删除该对话？",
-            confirm_text="删除", danger=True,
+            self, DLG_TITLE_DELETE_CONVERSATION, MSG_CONFIRM_DELETE_CONVERSATION,
+            confirm_text=BTN_DELETE, danger=True,
         )
         if ok and self._store:
             self._store.delete_conversation(conv_id)
@@ -1411,19 +1413,19 @@ class AgentTab(BaseTab):
         conv_id = self._conv_ids[index]
 
         menu = QMenu(self)
-        action_rename = menu.addAction("重命名")
-        action_delete = menu.addAction("删除")
+        action_rename = menu.addAction(BTN_RENAME)
+        action_delete = menu.addAction(BTN_DELETE)
 
         action = menu.exec(self._conv_tab_bar.mapToGlobal(pos))
         if action == action_rename:
-            new_name, ok = input_dialog(self, "重命名对话", "新名称:")
+            new_name, ok = input_dialog(self, DLG_TITLE_RENAME_CONVERSATION, MSG_RENAME_PLACEHOLDER)
             if ok and new_name.strip() and self._store:
                 self._store.rename_conversation(conv_id, new_name.strip())
                 self._refresh_conv_list()
         elif action == action_delete:
             ok = confirm_dialog(
-                self, "删除对话", "确认删除该对话？",
-                confirm_text="删除", danger=True,
+                self, DLG_TITLE_DELETE_CONVERSATION, MSG_CONFIRM_DELETE_CONVERSATION,
+                confirm_text=BTN_DELETE, danger=True,
             )
             if ok and self._store:
                 self._store.delete_conversation(conv_id)
@@ -1440,8 +1442,8 @@ class AgentTab(BaseTab):
         self._new_conv_mode = True
         if self._is_running:
             ok = confirm_dialog(
-                self, "新建对话",
-                "当前有任务在执行中，新建对话将停止当前任务。是否继续？",
+                self, DLG_TITLE_NEW_CONVERSATION,
+                MSG_NEW_CONV_STOP_TASK,
             )
             if not ok:
                 return
@@ -1505,7 +1507,7 @@ class AgentTab(BaseTab):
 
         all_meta = self._skills_manager.get_all_metadata()
         if not all_meta:
-            QTreeWidgetItem(self._skill_tree, ["暂无 Skill"])
+            QTreeWidgetItem(self._skill_tree, [SOP_NO_SKILLS])
             return
 
         for meta in all_meta:
@@ -1559,11 +1561,11 @@ class AgentTab(BaseTab):
 
         self._ensure_service()
         if not self._service:
-            warning_dialog(self, "Agent 未就绪", "请先在设置中配置 API Key。")
+            warning_dialog(self, DLG_TITLE_AGENT_NOT_READY, MSG_AGENT_NOT_READY_NO_KEY)
             return
 
         if not self._service.is_ready:
-            warning_dialog(self, "Agent 未就绪", "API Key 未配置或无效，请在设置中检查。")
+            warning_dialog(self, DLG_TITLE_AGENT_NOT_READY, MSG_AGENT_NOT_READY_INVALID_KEY)
             return
 
         self._new_conv_mode = False
@@ -1603,7 +1605,7 @@ class AgentTab(BaseTab):
         for card in self._current_tool_cards.values():
             card.set_cancelled()
         self._insert_message_widget(
-            _SystemNotice("⚠️ 工作已中断。你可以继续发送消息。")
+            _SystemNotice(MSG_STOPPED_HINT)
         )
         self._scroll_to_bottom()
 
@@ -1650,7 +1652,7 @@ class AgentTab(BaseTab):
             self._current_agent_widget = _AgentTextWidget()
             self._insert_message_widget(self._current_agent_widget)
         except RuntimeError:
-            logger.warning("_on_tool_start: widget 已销毁, 忽略")
+            logger.warning(LOG_ON_TOOL_START_DESTROYED)
 
     def _on_tool_end(self, data: dict) -> None:
         tool_id = data.get("id", data.get("name", ""))
@@ -1666,7 +1668,7 @@ class AgentTab(BaseTab):
             else:
                 card.set_complete(elapsed_ms, content_preview)
         except RuntimeError:
-            logger.warning("_on_tool_end: widget 已销毁, 忽略")
+            logger.warning(LOG_ON_TOOL_END_DESTROYED)
 
     def _on_usage(self, usage: dict) -> None:
         self._last_usage = usage
@@ -1698,27 +1700,27 @@ class AgentTab(BaseTab):
                 convs = self._store.list_conversations()
                 if convs:
                     self._current_conv_id = convs[0]["id"]
-                    first_msg = full_text[:20] if full_text else "新对话"
+                    first_msg = full_text[:20] if full_text else CONVERSATION_NEW
                     self._store.rename_conversation(self._current_conv_id, first_msg)
                     self._refresh_conv_list()
         except RuntimeError:
-            logger.warning("_on_finished: widget 已销毁, 忽略")
+            logger.warning(LOG_ON_FINISHED_DESTROYED)
 
     def _on_error(self, msg: str) -> None:
         try:
             self._set_running(False)
-            err_label = _SystemNotice(f"❌ 错误: {msg}")
+            err_label = _SystemNotice(MSG_ERROR_FMT.format(msg))
             err_label.setStyleSheet(f"color: {_DARK['error']}; font-size: 12px; padding: 8px;")
             self._insert_message_widget(err_label)
             self._scroll_to_bottom()
         except RuntimeError:
-            logger.warning("_on_error: widget 已销毁, 忽略")
+            logger.warning(LOG_ON_ERROR_DESTROYED)
 
     def _on_workflow_deposit(self, summary: dict) -> None:
         """工作流满足沉淀条件时显示沉淀卡片。"""
         card = _WorkflowDepositCard(summary, parent=self)
         card.save_new.connect(self._on_deposit_save_new)
-        card.skipped.connect(lambda: logger.debug("用户跳过工作流沉淀"))
+        card.skipped.connect(lambda: logger.debug(LOG_SKIP_WORKFLOW_DEPOSIT))
         self._insert_message_widget(card)
         self._scroll_to_bottom()
 
@@ -1741,9 +1743,9 @@ class AgentTab(BaseTab):
         self._refresh_skill_tree()
 
         ok = confirm_dialog(
-            self, "SOP 已保存",
-            f"SOP 已保存到:\n{saved_path}\n\n是否打开编辑？",
-            confirm_text="打开",
+            self, DLG_TITLE_SOP_SAVED,
+            MSG_SOP_SAVED_FMT.format(saved_path),
+            confirm_text=BTN_OPEN,
         )
         if ok:
             open_sop_file(saved_path)
@@ -1821,7 +1823,7 @@ class AgentTab(BaseTab):
             self._context_bar.setVisible(False)
             return
         for ctx in contexts:
-            suffix = " [文件不存在]" if ctx.get("missing") else ""
+            suffix = CONTEXT_FILE_MISSING if ctx.get("missing") else ""
             text = f"{ctx.get('file_name')} — {ctx.get('file_path')}{suffix}"
             item = QListWidgetItem(text)
             item.setData(Qt.ItemDataRole.UserRole, ctx.get("file_path"))
@@ -1894,7 +1896,7 @@ class AgentTab(BaseTab):
         self._is_running = running
         self._chat_input.setEnabled(not running)
         if running:
-            self._btn_send.setText("停止")
+            self._btn_send.setText(BTN_STOP)
             self._btn_send.setStyleSheet(
                 f"background-color: {_DARK['btn_stop_bg']};"
                 "color: #1e1e2e;"
@@ -1904,7 +1906,7 @@ class AgentTab(BaseTab):
             self._btn_send.clicked.disconnect()
             self._btn_send.clicked.connect(self._on_stop)
         else:
-            self._btn_send.setText("发送")
+            self._btn_send.setText(BTN_SEND)
             self._btn_send.setStyleSheet(
                 f"background-color: {_DARK['btn_send_bg']};"
                 "color: #1e1e2e;"
@@ -1970,4 +1972,4 @@ def _open_path(path: str) -> None:
         else:
             os.system(f'xdg-open "{p}"')  # noqa: S605
     except Exception as exc:
-        logger.error("打开路径失败 '%s': %s", path, exc)
+        logger.error(LOG_OPEN_PATH_FAILED_FMT, path, exc)

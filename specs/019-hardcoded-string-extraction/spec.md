@@ -66,8 +66,8 @@
 ### Functional Requirements
 
 - **FR-001**: 每个模块 `modules/<name>/` 根据入口文件按需创建字符串文件：有 gui_tab.py 则创建 strings_gui.py，有 cli_commands.py 则创建 strings_cli.py，有 service.py 则创建 strings_service.py
-- **FR-002**: `strings.py` 中的字符串必须按类别分组（如 `GUI_DIALOGS`、`CLI_HELP`、`PROGRESS_MSG`、`ERROR_MSG`）
-- **FR-003**: 字符串存储结构统一使用 `dict[str, str]` 或 `Final[str]` 常量形式，确保 IDE 自动补全支持
+- **FR-002**: `strings_*.py` 中的字符串必须按功能前缀分组（如 `BTN_`、`LABEL_`、`MSG_`、`DLG_TITLE_`、`LOG_`、`CLI_HELP_`），使用 `Final[str]` 常量，并通过 section 注释分隔不同类别
+- **FR-003**: 字符串存储结构统一使用 `Final[str]` 常量形式，确保 IDE 自动补全支持
 - **FR-004**: 迁移过程中，所有 GUI 对话框标题/正文、按钮文字、分组标题、CLI help 文本、Rich console 消息必须被提取
 - **FR-005**: 迁移完成后，模块的功能行为（界面文案、CLI 帮助输出、错误提示）必须与迁移前完全一致
 - **FR-006**: 包含变量的动态字符串（如 `f"设备 {serial} 未连接"`）应提取为模板字符串，使用 `.format()` 方法在运行时插值
@@ -82,7 +82,7 @@
 - `strings_cli.py` — CLI 帮助文本、Rich console 消息
 - `strings_service.py` — Service 层进度消息、日志文案
 
-原阈值规则（50 个拆三文件、30 个以下单文件）已废弃。所有模块统一采用三文件结构。`device_disguise` 按三文件拆分。
+所有模块统一采用三文件结构，不再保留单文件选项。`device_disguise` 按三文件拆分。
 
 ### Session 2026-05-19
 
@@ -109,7 +109,7 @@
 
 
 
-- **模块字符串表 (Module String Table)**: 存放于 `modules/<name>/src/strings.py`，按功能类别组织的字符串常量集合
+- **模块字符串表 (Module String Table)**: 存放于 `modules/<name>/src/strings_*.py`（按需创建 `strings_gui.py`、`strings_cli.py`、`strings_service.py`），按功能前缀分组的 `Final[str]` 常量集合
 - **框架字符串表 (Framework String Table)**: 存放于 `toolkit/gui/strings.py`，框架级 UI 文案
 
 ## Success Criteria *(mandatory)*
@@ -117,7 +117,7 @@
 ### Measurable Outcomes
 
 - **SC-001**: 项目中不再有模块级文件中的中文硬编码字符串（GUI 标题、按钮、对话框、CLI help），可通过 grep 验证
-- **SC-002**: 每个模块至少包含一个 `src/strings.py` 文件，且覆盖该模块所有 GUI 和 CLI 中文字符串
+- **SC-002**: 每个模块在 `src/` 下按需创建 `strings_gui.py`、`strings_cli.py`、`strings_service.py`，且覆盖该模块所有 GUI 和 CLI 中文字符串
 - **SC-003**: 迁移后所有模块的 GUI Tab 能正常加载，中文文案显示正确
 - **SC-004**: 迁移后所有 CLI 命令的 `--help` 输出与迁移前完全一致
 - **SC-005**: 迁移后全量测试通过，无回归
@@ -127,5 +127,5 @@
 - 仅提取用户可见的字符串（GUI 文案、CLI 帮助、错误提示），不涉及日志格式字符串、内部状态标识、SQL 语句等
 - 不引入国际化（i18n）框架，仅做字符串集中管理，降低复杂度
 - 字符串使用 Python 原生 `dict` 或 `Final[str]` 常量存储，不依赖外部依赖
-- 模块按受影响字符串数量从高到低顺序迁移：perfetto_capture → agent_chat → game_perf → perfetto_analysis → device_disguise → perfdog_insights → workspace_tools
+- 模块按受影响字符串数量从高到低顺序迁移：perfetto_capture → agent_chat → perfetto_analysis → perfdog_insights → workspace_tools
 - 框架层 `toolkit/gui/` 字符串在所有模块迁移完成后处理

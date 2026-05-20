@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
 )
 
 from toolkit.gui.base_tab import BaseTab
+from . import strings_gui as s
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ class _AnalysisWorker(QThread):
             if not self._abort:
                 self.finished.emit(result)
         except _AbortedError:
-            self.progress.emit("分析已中止（已完成的数据已保留）")
+            self.progress.emit(s.WORKER_ABORTED)
         except Exception as e:
             if not self._abort:
                 self.error.emit(str(e))
@@ -105,14 +106,14 @@ class _DimensionSelector(QPushButton):
     """维度多选控件，外观模仿 QComboBox 下拉箭头样式。"""
 
     DIMS = [
-        ("cpu", "CPU"), ("thread", "线程"), ("binder", "Binder"),
+        ("cpu", "CPU"), ("thread", s.DIM_LABEL_THREAD), ("binder", "Binder"),
         ("io", "IO"), ("gc", "GC"), ("gpu", "GPU"),
         ("sf", "SF"), ("input", "Input"), ("lock", "Lock"),
-        ("summary", "整体"),
+        ("summary", s.DIM_LABEL_SUMMARY),
     ]
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__("全部维度 ▾", parent)
+        super().__init__(s.DIM_SELECTOR_ALL, parent)
         self.setFixedWidth(120)
         self.setObjectName("dimensionSelector")
 
@@ -125,9 +126,9 @@ class _DimensionSelector(QPushButton):
             action.toggled.connect(self._update_label)
             self._actions[dim_id] = action
         self._menu.addSeparator()
-        all_action = self._menu.addAction("全选")
+        all_action = self._menu.addAction(s.BTN_SELECT_ALL)
         all_action.triggered.connect(self._select_all)
-        none_action = self._menu.addAction("全不选")
+        none_action = self._menu.addAction(s.BTN_SELECT_NONE)
         none_action.triggered.connect(self._select_none)
 
         self.clicked.connect(self._show_menu)
@@ -142,11 +143,11 @@ class _DimensionSelector(QPushButton):
     def _update_label(self) -> None:
         sel = self.selected_dims()
         if len(sel) == len(self.DIMS):
-            self.setText("全部维度 ▾")
+            self.setText(s.DIM_SELECTOR_ALL)
         elif sel:
-            self.setText(f"{len(sel)} 个维度 ▾")
+            self.setText(s.DIM_SELECTOR_COUNT_FMT.format(len(sel)))
         else:
-            self.setText("未选维度 ▾")
+            self.setText(s.DIM_SELECTOR_NONE)
 
     def _select_all(self) -> None:
         for a in self._actions.values():
@@ -163,7 +164,7 @@ class _DimensionSelector(QPushButton):
 
 class PerfettoAnalysisTab(BaseTab):
 
-    tab_title = "Perfetto 分析"
+    tab_title = s.TAB_TITLE
     tab_icon = "📊"
 
     def __init__(self, context: dict | None = None, parent: QWidget | None = None) -> None:
@@ -197,17 +198,17 @@ class PerfettoAnalysisTab(BaseTab):
         layout = QVBoxLayout(panel)
 
         # --- Trace 文件选择 ---
-        grp_file = QGroupBox("Trace 文件")
+        grp_file = QGroupBox(s.GROUP_TRACE_FILE)
         file_layout = QVBoxLayout(grp_file)
         row = QHBoxLayout()
         self._trace_input = QLineEdit()
-        self._trace_input.setPlaceholderText("选择或拖拽 .perfetto-trace 文件")
+        self._trace_input.setPlaceholderText(s.PLACEHOLDER_TRACE_FILE)
         self._trace_input.setFixedWidth(320)
         self._trace_input.textChanged.connect(
             lambda text: self._trace_input.setToolTip(text),
         )
         row.addWidget(self._trace_input)
-        btn_browse = QPushButton("浏览")
+        btn_browse = QPushButton(s.BTN_BROWSE)
         btn_browse.setFixedWidth(60)
         btn_browse.clicked.connect(self._on_browse_trace)
         row.addWidget(btn_browse)
@@ -216,28 +217,28 @@ class PerfettoAnalysisTab(BaseTab):
         layout.addWidget(grp_file)
 
         # --- 分析配置 ---
-        grp_cfg = QGroupBox("分析配置")
+        grp_cfg = QGroupBox(s.GROUP_ANALYSIS_CONFIG)
         cfg_layout = QVBoxLayout(grp_cfg)
 
         row1 = QHBoxLayout()
-        row1.addWidget(QLabel("目标进程"))
+        row1.addWidget(QLabel(s.LABEL_TARGET_PROCESS))
         self._process_input = QLineEdit()
-        self._process_input.setPlaceholderText("留空自动识别")
+        self._process_input.setPlaceholderText(s.PLACEHOLDER_PROCESS)
         self._process_input.setFixedWidth(240)
         row1.addWidget(self._process_input)
         row1.addStretch()
         cfg_layout.addLayout(row1)
 
         row2 = QHBoxLayout()
-        row2.addWidget(QLabel("App 类型"))
+        row2.addWidget(QLabel(s.LABEL_APP_TYPE))
         self._app_type_combo = QComboBox()
         self._app_type_combo.addItems(["auto", "app", "game", "camera"])
         self._app_type_combo.setFixedWidth(100)
         row2.addWidget(self._app_type_combo)
 
-        row2.addWidget(QLabel("分析模式"))
+        row2.addWidget(QLabel(s.LABEL_ANALYSIS_MODE))
         self._mode_combo = QComboBox()
-        self._mode_combo.addItems(["完整分析", "仅解析", "独立维度"])
+        self._mode_combo.addItems([s.MODE_ITEM_FULL, s.MODE_ITEM_PARSE, s.MODE_ITEM_DIMENSIONS])
         self._mode_combo.setFixedWidth(100)
         self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         row2.addWidget(self._mode_combo)
@@ -257,15 +258,15 @@ class PerfettoAnalysisTab(BaseTab):
         style = self.style()
 
         ctrl_row = QHBoxLayout()
-        self._status_label = QLabel("● 就绪")
+        self._status_label = QLabel(s.LABEL_STATUS_READY)
         ctrl_row.addWidget(self._status_label)
 
-        self._btn_start = QPushButton("开始分析")
+        self._btn_start = QPushButton(s.BTN_START_ANALYSIS)
         self._btn_start.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
         self._btn_start.setFixedWidth(_BTN_W)
         self._btn_start.clicked.connect(self._on_start)
         ctrl_row.addWidget(self._btn_start)
-        self._btn_stop = QPushButton("停止")
+        self._btn_stop = QPushButton(s.BTN_STOP)
         self._btn_stop.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_MediaStop))
         self._btn_stop.setFixedWidth(_BTN_W)
         self._btn_stop.setEnabled(False)
@@ -284,10 +285,17 @@ class PerfettoAnalysisTab(BaseTab):
         layout.addWidget(self._progress_label)
 
         # --- 分析历史 ---
-        layout.addWidget(QLabel("📜 分析历史"))
+        layout.addWidget(QLabel(s.LABEL_HISTORY_TITLE))
         self._history_table = QTableWidget(0, 6)
         self._history_table.setHorizontalHeaderLabels(
-            ["Trace", "目标进程", "模式", "时间", "状态", "操作"],
+            [
+                s.HISTORY_HEADER_TRACE,
+                s.HISTORY_HEADER_TARGET_PROCESS,
+                s.HISTORY_HEADER_MODE,
+                s.HISTORY_HEADER_TIME,
+                s.HISTORY_HEADER_STATUS,
+                s.HISTORY_HEADER_OPERATION,
+            ],
         )
         self._history_table.cellDoubleClicked.connect(self._on_history_double_click)
         self._history_table.verticalHeader().setVisible(False)
@@ -316,11 +324,11 @@ class PerfettoAnalysisTab(BaseTab):
         layout = QVBoxLayout(panel)
 
         # --- 分析结果预览 ---
-        self._result_group = QGroupBox("分析结果")
+        self._result_group = QGroupBox(s.GROUP_ANALYSIS_RESULT)
         result_layout = QVBoxLayout(self._result_group)
         self._result_text = QTextEdit()
         self._result_text.setReadOnly(True)
-        self._result_text.setPlaceholderText("分析完成后显示结果概览")
+        self._result_text.setPlaceholderText(s.PLACEHOLDER_RESULT)
         result_layout.addWidget(self._result_text)
         self._result_group.setVisible(False)
         layout.addWidget(self._result_group)
@@ -347,8 +355,8 @@ class PerfettoAnalysisTab(BaseTab):
 
     def _on_browse_trace(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "选择 Trace 文件", "",
-            "Perfetto Trace (*.perfetto-trace *.perfetto);;所有文件 (*)",
+            self, s.DLG_TITLE_SELECT_TRACE, "",
+            s.FILE_FILTER_PERFETTO_TRACE,
         )
         if path:
             self._trace_input.setText(path)
@@ -359,15 +367,15 @@ class PerfettoAnalysisTab(BaseTab):
     def _on_start(self) -> None:
         trace_path = self._trace_input.text().strip()
         if not trace_path:
-            self._log("请先选择 Trace 文件")
+            self._log(s.LOG_SELECT_TRACE_FIRST)
             return
         if not Path(trace_path).exists():
-            self._log(f"文件不存在: {trace_path}")
+            self._log(s.LOG_FILE_NOT_FOUND_FMT.format(trace_path))
             return
 
         svc = self._get_service()
         if not svc:
-            self._log("服务未初始化")
+            self._log(s.LOG_SERVICE_NOT_INIT)
             return
 
         cfg = svc.get_config()
@@ -392,7 +400,7 @@ class PerfettoAnalysisTab(BaseTab):
         else:  # 独立维度
             dims = self._dim_selector.selected_dims()
             if not dims:
-                self._log("请至少选择一个分析维度")
+                self._log(s.LOG_SELECT_DIMENSION)
                 self._set_running(False)
                 return
             self._worker = _AnalysisWorker(
@@ -405,12 +413,12 @@ class PerfettoAnalysisTab(BaseTab):
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
         self._worker.start()
-        self._log(f"开始分析: {Path(trace_path).name}")
+        self._log(s.LOG_START_ANALYSIS_FMT.format(Path(trace_path).name))
 
     def _on_stop(self) -> None:
         if self._worker:
             self._worker.abort()
-            self._log("正在停止分析...")
+            self._log(s.LOG_STOPPING_ANALYSIS)
             self._set_running(False)
 
     def _on_worker_progress_emit(self, msg: str) -> None:
@@ -434,27 +442,27 @@ class PerfettoAnalysisTab(BaseTab):
         detected = getattr(result, "detected_process", "") or ""
         lines = []
         if detected:
-            lines.append(f"目标进程: {detected}")
+            lines.append(s.RESULT_TARGET_PROCESS_FMT.format(detected))
         report_path = getattr(result, "report_path", "")
         if report_path:
-            lines.append(f"报告路径: {report_path}")
-        lines.append(f"丢帧次数: {result.jank_times}")
-        lines.append(f"总帧数: {result.frame_num}")
-        lines.append(f"刷新率: {result.refresh_rate_hz}Hz")
+            lines.append(s.RESULT_REPORT_PATH_FMT.format(report_path))
+        lines.append(s.RESULT_JANK_TIMES_FMT.format(result.jank_times))
+        lines.append(s.RESULT_FRAME_NUM_FMT.format(result.frame_num))
+        lines.append(s.RESULT_REFRESH_RATE_FMT.format(result.refresh_rate_hz))
         if result.app_type:
-            lines.append(f"App 类型: {result.app_type}")
-        lines.append(f"分析耗时: {result.elapsed_seconds}s")
+            lines.append(s.RESULT_APP_TYPE_FMT.format(result.app_type))
+        lines.append(s.RESULT_ELAPSED_FMT.format(result.elapsed_seconds))
         if result.dimensions_completed:
-            lines.append(f"\n维度完成: {', '.join(result.dimensions_completed)}")
+            lines.append(s.RESULT_DIMENSIONS_COMPLETED_FMT.format(", ".join(result.dimensions_completed)))
         if result.dimensions_skipped:
-            lines.append(f"维度跳过: {', '.join(result.dimensions_skipped)}")
+            lines.append(s.RESULT_DIMENSIONS_SKIPPED_FMT.format(", ".join(result.dimensions_skipped)))
         self._result_text.setPlainText("\n".join(lines))
-        self._log(f"✅ 分析完成 ({result.elapsed_seconds}s)")
+        self._log(s.LOG_ANALYSIS_COMPLETE_FMT.format(result.elapsed_seconds))
         self._refresh_history()
 
     def _on_error(self, msg: str) -> None:
         self._set_running(False)
-        self._log(f"❌ 分析失败: {msg}")
+        self._log(s.LOG_ANALYSIS_FAILED_FMT.format(msg))
 
     # ------------------------------------------------------------------
     # 拖拽支持
@@ -479,12 +487,14 @@ class PerfettoAnalysisTab(BaseTab):
         self._btn_start.setEnabled(not running)
         self._btn_stop.setEnabled(running)
         self._progress_bar.setVisible(running)
-        self._status_label.setText("● 分析中..." if running else "● 就绪")
+        self._status_label.setText(
+            s.LABEL_STATUS_ANALYZING if running else s.LABEL_STATUS_READY,
+        )
         if not running:
             self._progress_label.setText("")
 
     def _log(self, msg: str, level: str = "info") -> None:
-        if "❌" in msg or "失败" in msg:
+        if "❌" in msg or s.FAILURE_KEYWORD in msg:
             level = "error"
         elif "✅" in msg:
             level = "success"
@@ -528,13 +538,12 @@ class PerfettoAnalysisTab(BaseTab):
 
             mode_raw = r.get("mode", "full") or "full"
             dims_raw = r.get("dimensions", "") or ""
-            mode_labels = {"full": "完整", "parse": "仅解析", "dimensions": "独立维度"}
+            mode_labels = s.MODE_LABELS
             mode_text = mode_labels.get(mode_raw, mode_raw)
             mode_item = QTableWidgetItem(mode_text)
             if mode_raw == "dimensions" and dims_raw:
-                mode_item.setToolTip(f"维度: {dims_raw}")
-            else:
-                mode_item.setToolTip(mode_text)
+                mode_item.setToolTip(s.MODE_DIMS_TIP_FMT.format(dims_raw))
+            mode_item.setToolTip(mode_text)
             self._history_table.setItem(row, 2, mode_item)
 
             created_at = r.get("created_at")
@@ -575,7 +584,7 @@ class PerfettoAnalysisTab(BaseTab):
 
             btn_redo = QPushButton()
             btn_redo.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
-            btn_redo.setToolTip("从数据库重新生成报告")
+            btn_redo.setToolTip(s.TOOLTIP_REGENERATE_REPORT)
             btn_redo.setFixedSize(26, 22)
             btn_redo.setEnabled(trace_exists)
             btn_redo.clicked.connect(
@@ -585,7 +594,7 @@ class PerfettoAnalysisTab(BaseTab):
 
             btn_report = QPushButton()
             btn_report.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_FileIcon))
-            btn_report.setToolTip("打开分析报告")
+            btn_report.setToolTip(s.TOOLTIP_OPEN_REPORT)
             btn_report.setFixedSize(26, 22)
             btn_report.setEnabled(bool(has_report))
             rp = str(report_file) if report_file else ""
@@ -596,7 +605,7 @@ class PerfettoAnalysisTab(BaseTab):
 
             btn_open = QPushButton()
             btn_open.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
-            btn_open.setToolTip("打开报告所在目录")
+            btn_open.setToolTip(s.TOOLTIP_OPEN_REPORT_DIR)
             btn_open.setFixedSize(26, 22)
             btn_open.setEnabled(report_exists)
             btn_open.clicked.connect(
@@ -606,7 +615,7 @@ class PerfettoAnalysisTab(BaseTab):
 
             btn_del = QPushButton()
             btn_del.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DialogCloseButton))
-            btn_del.setToolTip("删除该分析报告")
+            btn_del.setToolTip(s.TOOLTIP_DELETE_REPORT)
             btn_del.setObjectName("dangerIconBtn")
             btn_del.setFixedSize(26, 22)
             btn_del.setEnabled(report_exists)
@@ -624,9 +633,9 @@ class PerfettoAnalysisTab(BaseTab):
         """从数据库重新生成报告（不重新分析 trace）。"""
         svc = self._get_service()
         if not svc:
-            self._log("服务未初始化")
+            self._log(s.LOG_SERVICE_NOT_INIT)
             return
-        self._log(f"重新生成报告: {Path(trace_path).name}")
+        self._log(s.LOG_REGENERATE_REPORT_FMT.format(Path(trace_path).name))
         result = svc.regenerate_report(
             trace_path,
             on_progress=lambda msg: self._log(msg),
@@ -634,25 +643,25 @@ class PerfettoAnalysisTab(BaseTab):
         if result:
             QTimer.singleShot(100, self._refresh_history)
         else:
-            self._log("重新生成报告失败（数据库中可能无该 trace 数据）")
+            self._log(s.LOG_REGENERATE_FAIL)
 
     def _open_report_file(self, report_path: str) -> None:
         try:
             if report_path and Path(report_path).exists():
                 QDesktopServices.openUrl(QUrl.fromLocalFile(report_path))
             else:
-                self._log("报告文件不存在")
+                self._log(s.LOG_REPORT_NOT_FOUND)
         except Exception as e:
-            self._log(f"打开报告失败: {e}")
+            self._log(s.LOG_OPEN_REPORT_FAIL_FMT.format(e))
 
     def _open_report_dir(self, report_dir: str) -> None:
         try:
             if report_dir and Path(report_dir).exists():
                 QDesktopServices.openUrl(QUrl.fromLocalFile(report_dir))
             else:
-                self._log("报告目录不存在或未生成")
+                self._log(s.LOG_REPORT_DIR_NOT_FOUND)
         except Exception as e:
-            self._log(f"打开目录失败: {e}")
+            self._log(s.LOG_OPEN_DIR_FAIL_FMT.format(e))
 
     def _delete_report(
         self, report_dir: str, trace_path: str = "", task_id: str = "",
@@ -677,14 +686,14 @@ class PerfettoAnalysisTab(BaseTab):
                 shutil.rmtree(report_dir)
                 deleted_files = True
             except Exception as e:
-                self._log(f"删除文件失败: {e}")
+                self._log(s.LOG_DELETE_FILE_FAIL_FMT.format(e))
 
         if deleted_files:
-            self._log(f"已删除: {dir_name}")
+            self._log(s.LOG_DELETED_FMT.format(dir_name))
         elif can_delete_dir:
-            self._log(f"已删除记录: {dir_name or trace_path}")
+            self._log(s.LOG_DELETED_RECORD_FMT.format(dir_name or trace_path))
         else:
-            self._log(f"已删除记录（报告目录保留，其他模式仍在使用）")
+            self._log(s.LOG_DELETED_RECORD_KEEP_DIR)
         QTimer.singleShot(100, self._refresh_history)
 
     def _on_history_double_click(self, row: int, col: int) -> None:

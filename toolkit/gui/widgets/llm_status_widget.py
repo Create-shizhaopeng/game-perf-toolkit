@@ -13,6 +13,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from toolkit.gui import strings as s
+
 
 def _format_tokens(n: int) -> str:
     if n >= 1_000_000:
@@ -88,7 +90,7 @@ class LLMStatusWidget(QWidget):
         self._token_label.setObjectName("llmTokenLabel")
         layout.addWidget(self._token_label)
 
-        self._model_label = QLabel("未配置")
+        self._model_label = QLabel(s.LLM_STATUS_NOT_CONFIGURED)
         self._model_label.setObjectName("llmModelLabel")
         self._model_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self._model_label.mousePressEvent = self._on_model_clicked
@@ -107,7 +109,7 @@ class LLMStatusWidget(QWidget):
         mgr = self._llm_manager
         if hasattr(mgr, "get_config"):
             cfg = mgr.get_config()  # type: ignore[union-attr]
-            self._model_label.setText(cfg.model_name if cfg.is_configured() else "未配置")
+            self._model_label.setText(cfg.model_name if cfg.is_configured() else s.LLM_STATUS_NOT_CONFIGURED)
             budget_str = _format_tokens(cfg.token_budget)
             self._token_label.setText(f"0 / {budget_str}")
 

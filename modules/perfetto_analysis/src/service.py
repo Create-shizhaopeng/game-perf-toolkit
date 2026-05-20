@@ -20,6 +20,8 @@ from .models import (
     load_config, save_config,
 )
 
+from . import strings_service as s
+
 ProgressCallback = Callable[[str], None] | None
 
 
@@ -67,7 +69,7 @@ class PerfettoAnalysisService:
     def get_service_info(self) -> dict[str, str]:
         return {
             "name": "perfetto_analysis",
-            "display_name": "Perfetto 解析分析",
+            "display_name": s.SERVICE_DISPLAY_NAME,
             "version": "0.1.0",
         }
 
@@ -94,13 +96,13 @@ class PerfettoAnalysisService:
 
         t0 = time.perf_counter()
         try:
-            self._notify(on_progress, "正在加载 trace 文件...")
+            self._notify(on_progress, s.PROGRESS_LOADING_TRACE)
             self._update_task_status(task, "running")
 
             from .engine import parser, analyzer, export, report_writer
 
             # Phase 1: 解析
-            self._notify(on_progress, "Phase 1: 丢帧解析中...")
+            self._notify(on_progress, s.PROGRESS_PHASE1_PARSING)
             parse_result, tp = parser.parse_trace_with_tp(
                 trace_path,
                 self._cfg.refresh_rate_preset,
@@ -115,18 +117,18 @@ class PerfettoAnalysisService:
             hz = parse_result.get("inferred_refresh_rate_hz", 60)
             self._notify(
                 on_progress,
-                f"Phase 1 完成: {jt} 次丢帧, {fn} 帧, {hz}Hz",
+                s.PROGRESS_PHASE1_COMPLETE_FMT.format(jt, fn, hz),
             )
 
             # Phase 2: 分析
-            self._notify(on_progress, "Phase 2: 卡顿归因分析中...")
+            self._notify(on_progress, s.PROGRESS_PHASE2_ANALYZING)
             track_name = parse_result.get("buffer_track_name", "")
             auto_process = self._extract_process_from_track(track_name)
             effective_process_for_analysis = process_name or auto_process
             if effective_process_for_analysis and not process_name:
                 self._notify(
                     on_progress,
-                    f"自动识别进程: {effective_process_for_analysis}",
+                    s.PROGRESS_AUTO_DETECT_PROCESS_FMT.format(effective_process_for_analysis),
                 )
                 logger.info("BufferTX 轨道: %s → 进程: %s", track_name, auto_process)
             analysis_result = analyzer.analyze_jank(
@@ -138,10 +140,10 @@ class PerfettoAnalysisService:
                 slow_binder_ms=self._cfg.slow_binder_threshold_ms,
                 sched_latency_ms=self._cfg.sched_latency_threshold_ms,
             )
-            self._notify(on_progress, "Phase 2 分析完成")
+            self._notify(on_progress, s.PROGRESS_PHASE2_COMPLETE)
 
             # 导出报告
-            self._notify(on_progress, "导出报告中...")
+            self._notify(on_progress, s.PROGRESS_EXPORTING_REPORT)
             report_dir = report_writer.ensure_report_dir(
                 trace_path, self._get_output_dir(),
             )
@@ -203,14 +205,14 @@ class PerfettoAnalysisService:
             self._update_task_status(task, "completed")
             self._notify(
                 on_progress,
-                f"分析完成 ({elapsed:.1f}s), 报告: {report_path}",
+                s.PROGRESS_ANALYSIS_COMPLETE_FMT.format(elapsed, report_path),
             )
             return result
 
         except Exception as e:
             task.error_message = str(e)
             self._update_task_status(task, "failed", str(e))
-            self._notify(on_progress, f"分析失败: {e}")
+            self._notify(on_progress, s.PROGRESS_ANALYSIS_FAIL_FMT.format(e))
             raise
 
     def parse_only(
@@ -226,7 +228,7 @@ class PerfettoAnalysisService:
 
         t0 = time.perf_counter()
         try:
-            self._notify(on_progress, "Phase 1: 丢帧解析中...")
+            self._notify(on_progress, s.PROGRESS_PHASE1_PARSING)
             self._update_task_status(task, "running")
 
             from .engine import parser
@@ -266,13 +268,13 @@ class PerfettoAnalysisService:
             self._update_task_status(task, "completed")
             self._notify(
                 on_progress,
-                f"解析完成 ({elapsed:.1f}s): {jt} 次丢帧, {fn} 帧",
+                s.PROGRESS_PARSE_COMPLETE_FMT.format(elapsed, jt, fn),
             )
             return result
 
         except Exception as e:
             self._update_task_status(task, "failed", str(e))
-            self._notify(on_progress, f"解析失败: {e}")
+            self._notify(on_progress, s.PROGRESS_PARSE_FAIL_FMT.format(e))
             raise
 
     def analyze_dimensions(
@@ -299,7 +301,7 @@ class PerfettoAnalysisService:
         if auto_added:
             self._notify(
                 on_progress,
-                f"自动补全依赖维度: {', '.join(auto_added)}",
+                s.PROGRESS_AUTO_DIMS_FMT.format(", ".join(auto_added)),
             )
 
         task = self._create_task(trace_path, process_name, "dimensions")
@@ -307,7 +309,7 @@ class PerfettoAnalysisService:
 
         t0 = time.perf_counter()
         try:
-            self._notify(on_progress, "正在加载 trace...")
+            self._notify(on_progress, s.PROGRESS_LOADING_TRACE_2)
             self._update_task_status(task, "running")
 
             from .engine import parser, analyzer, report_writer
@@ -322,7 +324,7 @@ class PerfettoAnalysisService:
             self._save_phase1_to_db(parse_result, trace_path, db_path)
 
             for dim in resolved:
-                self._notify(on_progress, f"分析维度: {dim}...")
+                self._notify(on_progress, s.PROGRESS_ANALYZING_DIM_FMT.format(dim))
 
             analysis_result = analyzer.analyze_dimensions(
                 tp,
@@ -378,13 +380,13 @@ class PerfettoAnalysisService:
             self._update_task_status(task, "completed")
             self._notify(
                 on_progress,
-                f"维度分析完成 ({elapsed:.1f}s): {', '.join(resolved)}",
+                s.PROGRESS_DIM_ANALYSIS_COMPLETE_FMT.format(elapsed, ", ".join(resolved)),
             )
             return result
 
         except Exception as e:
             self._update_task_status(task, "failed", str(e))
-            self._notify(on_progress, f"维度分析失败: {e}")
+            self._notify(on_progress, s.PROGRESS_DIM_ANALYSIS_FAIL_FMT.format(e))
             raise
 
     def list_dimensions(self) -> str:
@@ -550,9 +552,9 @@ class PerfettoAnalysisService:
         from .engine import export
         db_path = self._get_db_path()
         out = output_dir or self._get_output_dir()
-        self._notify(on_progress, "导出 Markdown 报告中...")
+        self._notify(on_progress, s.PROGRESS_EXPORTING_MD)
         result = export.export_to_markdown(db_path, out)
-        self._notify(on_progress, "导出完成" if result else "导出失败")
+        self._notify(on_progress, s.PROGRESS_EXPORT_DONE if result else s.PROGRESS_EXPORT_FAIL)
         return result
 
     def regenerate_report(
@@ -568,7 +570,7 @@ class PerfettoAnalysisService:
         from .engine import export, report_writer, storage
 
         db_path = self._get_db_path()
-        self._notify(on_progress, "从数据库读取分析数据...")
+        self._notify(on_progress, s.PROGRESS_READING_DB)
 
         try:
             conn = storage.get_connection(db_path)
@@ -580,7 +582,7 @@ class PerfettoAnalysisService:
                     break
 
             if not target_run:
-                self._notify(on_progress, "数据库中未找到该 trace 的分析数据")
+                self._notify(on_progress, s.PROGRESS_TRACE_NOT_IN_DB)
                 conn.close()
                 return ""
 
@@ -590,7 +592,7 @@ class PerfettoAnalysisService:
             jank_records = storage.get_jank_records(conn, tid)
             conn.close()
 
-            self._notify(on_progress, "重新生成报告文件...")
+            self._notify(on_progress, s.PROGRESS_REGENERATING)
             report_dir = report_writer.ensure_report_dir(
                 trace_path, self._get_output_dir(),
             )
@@ -600,10 +602,10 @@ class PerfettoAnalysisService:
             report_path = report_dir / "jank_report.md"
             report_path.write_text("\n".join(lines), encoding="utf-8")
 
-            self._notify(on_progress, f"报告已重新生成: {report_path}")
+            self._notify(on_progress, s.PROGRESS_REGENERATED_FMT.format(report_path))
             return str(report_path)
         except Exception as e:
-            self._notify(on_progress, f"重新生成报告失败: {e}")
+            self._notify(on_progress, s.PROGRESS_REGENERATE_FAIL_FMT.format(e))
             return ""
 
     # ------------------------------------------------------------------
@@ -990,7 +992,7 @@ class PerfettoAnalysisService:
         """设置分析模式并持久化到 config.json。"""
         from .models import AnalysisMode
         if mode not in [m.value for m in AnalysisMode]:
-            raise ValueError(f"无效的分析模式: {mode}，可选: {[m.value for m in AnalysisMode]}")
+            raise ValueError(s.ERR_INVALID_ANALYSIS_MODE_FMT.format(mode, [m.value for m in AnalysisMode]))
         self._cfg.analysis_mode = mode
         if dimension_overrides is not None:
             self._cfg.dimension_overrides = dimension_overrides

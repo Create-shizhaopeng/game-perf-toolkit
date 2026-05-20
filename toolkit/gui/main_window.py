@@ -60,6 +60,7 @@ from toolkit.gui.panels.left_panel import LeftPanel
 from toolkit.gui.panels.right_panel import RightPanel
 from toolkit.gui.styles import get_theme_stylesheet
 from toolkit.gui.widgets.title_bar import TitleBar
+from toolkit.gui import strings as s
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +176,7 @@ class MainWindow(QWidget):
         sb_layout.setContentsMargins(12, 0, 12, 0)
         sb_layout.setSpacing(12)
 
-        self._status_text = QLabel("就绪")
+        self._status_text = QLabel(s.MAIN_WINDOW_STATUS_READY)
         self._status_text.setObjectName("statusBarText")
         sb_layout.addWidget(self._status_text)
 
@@ -298,9 +299,12 @@ class MainWindow(QWidget):
         if self._agent_tab:
             self._agent_tab.on_devices_changed(devices)
 
-        status = f"已连接: {devices[0]}" if len(devices) == 1 else (
-            f"{len(devices)} 台设备已连接" if devices else "未连接设备"
-        )
+        if len(devices) == 1:
+            status = s.MAIN_WINDOW_STATUS_CONNECTED_FMT.format(device=devices[0])
+        elif devices:
+            status = s.MAIN_WINDOW_STATUS_MULTIPLE_FMT.format(count=len(devices))
+        else:
+            status = s.MAIN_WINDOW_STATUS_NO_DEVICE
         self._status_text.setText(status)
 
     def _on_disguise_state_changed(self, **kwargs) -> None:
@@ -308,8 +312,16 @@ class MainWindow(QWidget):
         serial = kwargs.get("serial", "")
         is_disguised = kwargs.get("is_disguised", False)
         if serial:
-            disguise_info = "已伪装" if is_disguised else "未伪装"
-            self._status_text.setText(f"已连接: {serial} ({disguise_info})")
+            disguise_info = (
+                s.MAIN_WINDOW_STATUS_DISGUISED
+                if is_disguised
+                else s.MAIN_WINDOW_STATUS_NOT_DISGUISED
+            )
+            self._status_text.setText(
+                s.MAIN_WINDOW_STATUS_DISGUISED_FMT.format(
+                    serial=serial, disguise=disguise_info
+                )
+            )
 
     def _toggle_maximize(self, center_on_cursor: bool = False) -> None:
         if self._is_maximized:
@@ -544,10 +556,9 @@ class MainWindow(QWidget):
         pct = int(ratio * 100)
         ok = confirm_dialog(
             self,
-            "Token 预算告警",
-            f"当前会话 Token 用量已达预算的 {pct}%。\n\n"
-            "是否继续后续请求？",
-            confirm_text="继续",
+            s.MAIN_WINDOW_BUDGET_ALERT_TITLE,
+            s.MAIN_WINDOW_BUDGET_ALERT_MSG_FMT.format(pct=pct),
+            confirm_text=s.MAIN_WINDOW_BUDGET_CONTINUE,
         )
         llm_mgr = self.context.get("llm_manager")
         if llm_mgr and hasattr(llm_mgr, "set_budget_paused"):
@@ -558,7 +569,11 @@ class MainWindow(QWidget):
         from PyQt6.QtCore import QTimer
 
         original = self._status_text.text()
-        self._status_text.setText(f"⚠ LLM 已降级: {from_provider} → {to_provider}")
+        self._status_text.setText(
+            s.MAIN_WINDOW_LLM_DEGRADED_FMT.format(
+                from_provider=from_provider, to_provider=to_provider
+            )
+        )
         QTimer.singleShot(3000, lambda: self._status_text.setText(original))
 
     def _open_llm_settings(self) -> None:

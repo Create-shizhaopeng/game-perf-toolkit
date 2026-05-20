@@ -29,13 +29,14 @@ from toolkit.gui.base_tab import BaseTab
 
 from .analysis_worker import PerfDogAnalysisWorker
 from .models import AnalysisReport
+from . import strings_gui as s
 from .service import PerfdogInsightsService
 
 
 class PerfdogInsightsTab(BaseTab):
     """PerfDog Excel 导入与报告展示。"""
 
-    tab_title = "PerfDog分析"
+    tab_title = s.TAB_TITLE
     tab_icon = "📈"
 
     def __init__(self, context: dict | None = None, parent: QWidget | None = None) -> None:
@@ -63,32 +64,32 @@ class PerfdogInsightsTab(BaseTab):
         dc_layout.setSpacing(6)
 
         title_row = QHBoxLayout()
-        t1 = QLabel("PerfDog 导出")
+        t1 = QLabel(s.LABEL_PERFDOG_EXPORT)
         t1.setProperty("class", "sectionTitleBlue")
         title_row.addWidget(t1)
-        hint = QLabel("拖拽 .xlsx / .xlsm，或使用「选择文件」")
+        hint = QLabel(s.HINT_DRAG_DROP)
         hint.setObjectName("fieldHint")
         title_row.addWidget(hint)
         title_row.addStretch()
         dc_layout.addLayout(title_row)
 
         path_row = QHBoxLayout()
-        self._path_edit = QLabel("未选择文件")
+        self._path_edit = QLabel(s.LABEL_NO_FILE_SELECTED)
         self._path_edit.setWordWrap(True)
         self._path_edit.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse,
         )
         path_row.addWidget(self._path_edit, 1)
-        self._browse_btn = QPushButton("选择文件…")
+        self._browse_btn = QPushButton(s.BTN_SELECT_FILE)
         self._browse_btn.setFixedHeight(28)
         self._browse_btn.setFixedWidth(96)
         path_row.addWidget(self._browse_btn)
-        self._import_btn = QPushButton("开始分析")
+        self._import_btn = QPushButton(s.BTN_START_ANALYSIS)
         self._import_btn.setObjectName("primaryButton")
         self._import_btn.setFixedHeight(28)
         self._import_btn.setEnabled(False)
         path_row.addWidget(self._import_btn)
-        self._clear_btn = QPushButton("清除当前分析")
+        self._clear_btn = QPushButton(s.BTN_CLEAR_ANALYSIS)
         self._clear_btn.setFixedHeight(28)
         path_row.addWidget(self._clear_btn)
         dc_layout.addLayout(path_row)
@@ -108,10 +109,10 @@ class PerfdogInsightsTab(BaseTab):
         root.addWidget(drop_card)
 
         actions = QHBoxLayout()
-        self._export_btn = QPushButton("导出报告…")
+        self._export_btn = QPushButton(s.BTN_EXPORT_REPORT)
         self._export_btn.setFixedHeight(28)
         self._export_btn.setEnabled(False)
-        self._copy_btn = QPushButton("复制报告")
+        self._copy_btn = QPushButton(s.BTN_COPY_REPORT)
         self._copy_btn.setFixedHeight(28)
         self._copy_btn.setEnabled(False)
         actions.addWidget(self._export_btn)
@@ -168,7 +169,7 @@ class PerfdogInsightsTab(BaseTab):
             self._set_selected_path(path)
             event.acceptProposedAction()
         else:
-            warning_dialog(self, "格式不支持", "请拖入 .xlsx 或 .xlsm 文件。")
+            warning_dialog(self, s.DLG_TITLE_UNSUPPORTED_FORMAT, s.DLG_MSG_UNSUPPORTED_FORMAT)
             event.ignore()
 
     def _set_selected_path(self, path: str) -> None:
@@ -188,7 +189,7 @@ class PerfdogInsightsTab(BaseTab):
 
     def _on_import(self) -> None:
         path = self._path_edit.text().strip()
-        if path == "未选择文件" or not path:
+        if path == s.LABEL_NO_FILE_SELECTED or not path:
             return
         if not Path(path).is_file():
             warning_dialog(self, "文件无效", "所选路径不是有效文件。")
@@ -232,7 +233,7 @@ class PerfdogInsightsTab(BaseTab):
         self._progress.setVisible(False)
         self._browse_btn.setEnabled(True)
         p = self._path_edit.text().strip()
-        self._import_btn.setEnabled(bool(p) and p != "未选择文件")
+        self._import_btn.setEnabled(bool(p) and p != s.LABEL_NO_FILE_SELECTED)
 
     def _render_report(self, report: AnalysisReport) -> None:
         html_parts: list[str] = []
@@ -467,7 +468,7 @@ class PerfdogInsightsTab(BaseTab):
         self._report = None
         self._last_good_report = None
         self._browser.clear()
-        self._path_edit.setText("未选择文件")
+        self._path_edit.setText(s.LABEL_NO_FILE_SELECTED)
         self._export_btn.setEnabled(False)
         self._copy_btn.setEnabled(False)
         self._status_lbl.setText("")
@@ -478,9 +479,9 @@ class PerfdogInsightsTab(BaseTab):
             return
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "导出 Markdown 报告",
-            "perfdog_report.md",
-            "Markdown (*.md);;文本 (*.txt)",
+            s.DLG_TITLE_EXPORT_REPORT,
+            s.DLG_DEFAULT_EXPORT_NAME,
+            s.DLG_FILE_FILTER_MD,
         )
         if not path:
             return
@@ -488,7 +489,7 @@ class PerfdogInsightsTab(BaseTab):
         try:
             Path(path).write_text(text, encoding="utf-8")
         except OSError as e:
-            warning_dialog(self, "导出失败", str(e))
+            warning_dialog(self, s.DLG_TITLE_EXPORT_FAIL, str(e))
 
     def _on_copy(self) -> None:
         if self._report is None:

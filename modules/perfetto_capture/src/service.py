@@ -27,6 +27,7 @@ from .models import (
     TraceItem,
     TraceKind,
 )
+from .strings_service import *
 from .utils import (
     build_export_session_dirname,
     build_trace_filename,
@@ -52,7 +53,7 @@ class PerfettoCaptureService:
         self._session: CaptureSession | None = None
 
     def get_service_info(self) -> dict:
-        return {"name": "perfetto_capture", "display_name": "Perfetto 卡顿抓取", "version": "1.0.0"}
+        return {"name": "perfetto_capture", "display_name": SERVICE_DISPLAY_NAME, "version": "1.0.0"}
 
     @property
     def config(self) -> CaptureConfig:
@@ -244,7 +245,7 @@ class PerfettoCaptureService:
                     return ts
             elif is_device_unavailable(res):
                 raise DeviceUnavailableError(
-                    (res.stderr or "").strip() or (res.stdout or "").strip() or "设备不可用"
+                    (res.stderr or "").strip() or (res.stdout or "").strip() or ERR_DEVICE_UNAVAILABLE
                 )
         raise RuntimeError("读取设备时间失败")
 

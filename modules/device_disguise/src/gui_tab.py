@@ -34,6 +34,8 @@ from toolkit.gui.toolkit_dialog import (
 
 
 
+from . import strings_gui as sg
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,7 +69,7 @@ class _BackgroundWorker(QThread):
 class DeviceDisguiseTab(BaseTab):
     """设备伪装 Tab — 方案 A 左右分栏布局"""
 
-    tab_title = "设备伪装"
+    tab_title = sg.TAB_TITLE
     tab_icon = "🎭"
 
     def __init__(self, context: dict | None = None, parent: QWidget | None = None) -> None:
@@ -107,36 +109,36 @@ class DeviceDisguiseTab(BaseTab):
         return panel
 
     def _build_status_group(self) -> QGroupBox:
-        group = QGroupBox("设备状态")
+        group = QGroupBox(sg.GROUP_DEVICE_STATUS)
         form = QFormLayout(group)
         form.setSpacing(6)
 
-        self._lbl_brand = QLabel("--")
-        self._lbl_manufacturer = QLabel("--")
-        self._lbl_model = QLabel("--")
-        self._lbl_status = QLabel("未连接设备")
-        self._lbl_disguise = QLabel("--")
+        self._lbl_brand = QLabel(sg.DASH)
+        self._lbl_manufacturer = QLabel(sg.DASH)
+        self._lbl_model = QLabel(sg.DASH)
+        self._lbl_status = QLabel(sg.STATUS_NOT_CONNECTED)
+        self._lbl_disguise = QLabel(sg.DASH)
 
-        form.addRow("品牌:", self._lbl_brand)
-        form.addRow("厂商:", self._lbl_manufacturer)
-        form.addRow("型号:", self._lbl_model)
-        form.addRow("连接:", self._lbl_status)
-        form.addRow("伪装:", self._lbl_disguise)
+        form.addRow(sg.LABEL_BRAND + ":", self._lbl_brand)
+        form.addRow(sg.LABEL_MANUFACTURER + ":", self._lbl_manufacturer)
+        form.addRow(sg.LABEL_MODEL + ":", self._lbl_model)
+        form.addRow(sg.LABEL_CONNECTION + ":", self._lbl_status)
+        form.addRow(sg.LABEL_DISGUISE + ":", self._lbl_disguise)
 
         return group
 
     def _build_input_group(self) -> QGroupBox:
-        group = QGroupBox("伪装设置")
+        group = QGroupBox(sg.GROUP_DISGUISE_SETTINGS)
         form = QFormLayout(group)
         form.setSpacing(8)
 
-        self._combo_brand = self._make_combo("品牌", "ro.product.odm.brand")
-        self._combo_manufacturer = self._make_combo("厂商", "ro.product.odm.manufacturer")
-        self._combo_model = self._make_combo("型号", "ro.product.odm.model")
+        self._combo_brand = self._make_combo(sg.LABEL_BRAND, "ro.product.odm.brand")
+        self._combo_manufacturer = self._make_combo(sg.LABEL_MANUFACTURER, "ro.product.odm.manufacturer")
+        self._combo_model = self._make_combo(sg.LABEL_MODEL, "ro.product.odm.model")
 
-        form.addRow("目标品牌:", self._combo_brand)
-        form.addRow("目标厂商:", self._combo_manufacturer)
-        form.addRow("目标型号:", self._combo_model)
+        form.addRow(sg.LABEL_TARGET_BRAND + ":", self._combo_brand)
+        form.addRow(sg.LABEL_TARGET_MANUFACTURER + ":", self._combo_manufacturer)
+        form.addRow(sg.LABEL_TARGET_MODEL + ":", self._combo_model)
 
         return group
 
@@ -144,7 +146,7 @@ class DeviceDisguiseTab(BaseTab):
         combo = QComboBox()
         combo.setEditable(True)
         combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        combo.lineEdit().setPlaceholderText(f"通过 '{prop_name}' 属性获取")
+        combo.lineEdit().setPlaceholderText(sg.PLACEHOLDER_PROP_HINT_FMT.format(prop_name))
         combo.lineEdit().textChanged.connect(self._on_input_changed)
         return combo
 
@@ -152,24 +154,22 @@ class DeviceDisguiseTab(BaseTab):
         bar = QHBoxLayout()
         bar.setSpacing(8)
 
-        self._btn_profile = QPushButton("选择档案")
+        self._btn_profile = QPushButton(sg.BTN_SELECT_PROFILE)
         self._btn_profile.clicked.connect(self._on_select_profile)
 
-        self._btn_save_profile = QPushButton("保存档案")
+        self._btn_save_profile = QPushButton(sg.BTN_SAVE_PROFILE)
         self._btn_save_profile.clicked.connect(self._on_save_profile)
 
-        self._btn_import_config = QPushButton("导入配置")
-        self._btn_import_config.setToolTip(
-            "从 JSON 文件导入设备档案（合并到当前列表，重复项跳过）"
-        )
+        self._btn_import_config = QPushButton(sg.BTN_IMPORT_CONFIG)
+        self._btn_import_config.setToolTip(sg.TOOLTIP_IMPORT_CONFIG)
         self._btn_import_config.clicked.connect(self._on_import_config)
 
-        self._btn_disguise = QPushButton("伪装")
+        self._btn_disguise = QPushButton(sg.BTN_DISGUISE)
         self._btn_disguise.setObjectName("primaryBtn")
         self._btn_disguise.setEnabled(False)
         self._btn_disguise.clicked.connect(self._on_disguise)
 
-        self._btn_reset = QPushButton("还原")
+        self._btn_reset = QPushButton(sg.BTN_RESET)
         self._btn_reset.setObjectName("secondaryBtn")
         self._btn_reset.setEnabled(False)
         self._btn_reset.clicked.connect(self._on_reset)
@@ -201,21 +201,21 @@ class DeviceDisguiseTab(BaseTab):
         self._on_input_changed()
 
         if has_device:
-            self._lbl_status.setText(f"已连接 ({len(devices)})")
+            self._lbl_status.setText(sg.STATUS_CONNECTED_FMT.format(len(devices)))
             self._async_refresh_state(devices[0])
         else:
-            self._lbl_status.setText("未连接设备")
-            self._lbl_brand.setText("--")
-            self._lbl_manufacturer.setText("--")
-            self._lbl_model.setText("--")
-            self._lbl_disguise.setText("--")
+            self._lbl_status.setText(sg.STATUS_NOT_CONNECTED)
+            self._lbl_brand.setText(sg.DASH)
+            self._lbl_manufacturer.setText(sg.DASH)
+            self._lbl_model.setText(sg.DASH)
+            self._lbl_disguise.setText(sg.DASH)
 
     def _refresh_device_state(self, state) -> None:
         """更新 UI 上的设备状态显示（必须在 GUI 线程调用）"""
-        self._lbl_brand.setText(state.current_brand or "--")
-        self._lbl_manufacturer.setText(state.current_manufacturer or "--")
-        self._lbl_model.setText(state.current_model or "--")
-        self._lbl_disguise.setText("已伪装" if state.is_disguised else "未伪装")
+        self._lbl_brand.setText(state.current_brand or sg.DASH)
+        self._lbl_manufacturer.setText(state.current_manufacturer or sg.DASH)
+        self._lbl_model.setText(state.current_model or sg.DASH)
+        self._lbl_disguise.setText(sg.STATUS_DISGUISED if state.is_disguised else sg.STATUS_NOT_DISGUISED)
 
     def _async_refresh_state(self, serial: str) -> None:
         """在后台线程获取设备状态，避免阻塞 GUI"""
@@ -302,9 +302,9 @@ class DeviceDisguiseTab(BaseTab):
         if profile_mgr and not profile_mgr.exists(brand, mfr, model):
             choice = three_button_dialog(
                 self,
-                "保存档案",
-                f"目标组合 {brand}/{mfr}/{model} 不在档案库中。\n是否保存为新档案？",
-                "保存", "不保存", "取消",
+                sg.DLG_TITLE_SAVE_PROFILE,
+                sg.MSG_PROFILE_NOT_EXISTS_FMT.format(brand, mfr, model),
+                sg.BTN_SAVE, sg.BTN_DONT_SAVE, sg.BTN_CANCEL,
             )
             if choice == 2:
                 return
@@ -348,7 +348,7 @@ class DeviceDisguiseTab(BaseTab):
 
     def _on_worker_done(self, state: object) -> None:
         self._set_buttons_enabled(True)
-        self._append_log("✓ 操作完成", success=True)
+        self._append_log(sg.LOG_ACTION_COMPLETE, success=True)
         serial = self._get_serial()
         if serial:
             self._async_refresh_state(serial)
@@ -358,7 +358,7 @@ class DeviceDisguiseTab(BaseTab):
 
     def _on_worker_error(self, msg: str) -> None:
         self._set_buttons_enabled(True)
-        self._append_log(f"✗ {msg}", error=True)
+        self._append_log(sg.LOG_ACTION_FAILED_FMT.format(msg), error=True)
 
     def _set_buttons_enabled(self, enabled: bool) -> None:
         self._btn_disguise.setEnabled(enabled and self.device_connected)
@@ -389,7 +389,7 @@ class DeviceDisguiseTab(BaseTab):
 
         profiles = profile_mgr.get_all()
         if not profiles:
-            info_dialog(self, "档案库", "档案库为空，请先添加档案。")
+            info_dialog(self, sg.DLG_TITLE_LIBRARY, sg.MSG_PROFILE_LIBRARY_EMPTY)
             return
 
         dlg = _ProfileSelectDialog(profile_mgr, self._theme, self)
@@ -405,7 +405,7 @@ class DeviceDisguiseTab(BaseTab):
         mfr = self._combo_manufacturer.currentText().strip()
         model = self._combo_model.currentText().strip()
         if not (brand and mfr and model):
-            warning_dialog(self, "保存档案", "请先填写品牌、厂商和型号。")
+            warning_dialog(self, sg.DLG_TITLE_SAVE_PROFILE, sg.MSG_FILL_ALL_FIELDS)
             return
 
         dlg = _ProfileSaveDialog(brand, mfr, model, self._theme, self)
@@ -419,29 +419,26 @@ class DeviceDisguiseTab(BaseTab):
             return
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "导入设备配置 (JSON)",
+            sg.DLG_TITLE_IMPORT_FILE,
             "",
-            "JSON 文件 (*.json);;所有文件 (*.*)",
+            sg.FILE_FILTER_JSON,
         )
         if not path:
             return
         try:
             result = profile_mgr.import_from(path)
         except (OSError, json.JSONDecodeError, ValueError) as e:
-            warning_dialog(self, "导入失败", str(e))
-            self._append_log(f"✗ 导入配置失败: {e}", ok=False)
+            warning_dialog(self, sg.DLG_TITLE_IMPORT_FAILED, str(e))
+            self._append_log(sg.LOG_IMPORT_FAILED_FMT.format(e), ok=False)
             return
         except Exception as e:
-            warning_dialog(self, "导入失败", str(e))
-            self._append_log(f"✗ 导入配置失败: {e}", ok=False)
+            warning_dialog(self, sg.DLG_TITLE_IMPORT_FAILED, str(e))
+            self._append_log(sg.LOG_IMPORT_FAILED_FMT.format(e), ok=False)
             return
-        msg = (
-            f"已导入 {result['imported']} 条，跳过 {result['skipped']} 条。\n"
-            "档案已同步写入配置文件。"
-        )
-        info_dialog(self, "导入完成", msg)
+        msg = sg.MSG_IMPORT_RESULT_FMT.format(result['imported'], result['skipped'])
+        info_dialog(self, sg.DLG_TITLE_IMPORT_COMPLETE, msg)
         self._append_log(
-            f"✓ 导入配置: 新增 {result['imported']} 条, 跳过 {result['skipped']} 条"
+            sg.LOG_IMPORT_SUCCEEDED_FMT.format(result['imported'], result['skipped'])
         )
         self.refresh_completers()
 
@@ -458,9 +455,9 @@ class DeviceDisguiseTab(BaseTab):
                 DeviceProfile(brand=brand, manufacturer=mfr, model=model, notes=notes)
             )
             self.refresh_completers()
-            self._append_log(f"档案已保存: {brand}/{mfr}/{model}")
+            self._append_log(sg.LOG_PROFILE_SAVED_FMT.format(brand, mfr, model))
         except ValueError as e:
-            self._append_log(f"保存失败: {e}", error=True)
+            self._append_log(sg.LOG_SAVE_FAILED_FMT.format(e), error=True)
 
     def _emit_state_event(self, state) -> None:
         """通过 EventBus 通知主框架伪装状态变化（解耦方式，不直接操作主窗口）"""
@@ -488,7 +485,7 @@ class _ProfileSelectDialog(ToolkitDialog):
     """档案选取弹窗：搜索 + 列表 + 选取 / 编辑 / 删除"""
 
     def __init__(self, profile_mgr, theme: str, parent=None):
-        super().__init__("选择设备档案", parent, min_width=480)
+        super().__init__(sg.DLG_TITLE_SELECT_PROFILE, parent, min_width=480)
         self.setMinimumHeight(360)
         self.selected = None
         self._profile_mgr = profile_mgr
@@ -497,7 +494,7 @@ class _ProfileSelectDialog(ToolkitDialog):
 
     def _init_ui(self) -> None:
         self._search = QLineEdit()
-        self._search.setPlaceholderText("搜索档案...")
+        self._search.setPlaceholderText(sg.PLACEHOLDER_SEARCH_PROFILE)
         self._search.textChanged.connect(self._filter)
         self.content_layout.addWidget(self._search)
 
@@ -532,14 +529,14 @@ class _ProfileSelectDialog(ToolkitDialog):
                 select_btn.setToolTip(p.notes)
             select_btn.clicked.connect(lambda checked, profile=p: self._select(profile))
 
-            edit_btn = QPushButton("编辑")
+            edit_btn = QPushButton(sg.BTN_EDIT)
             edit_btn.setObjectName("secondaryBtn")
             edit_btn.setFixedWidth(64)
             edit_btn.setStyleSheet("padding: 4px 8px;")
             edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             edit_btn.clicked.connect(lambda checked, profile=p: self._edit(profile))
 
-            del_btn = QPushButton("删除")
+            del_btn = QPushButton(sg.BTN_DELETE)
             del_btn.setObjectName("dangerBtn")
             del_btn.setFixedWidth(64)
             del_btn.setStyleSheet("padding: 4px 8px;")
@@ -582,21 +579,21 @@ class _ProfileSelectDialog(ToolkitDialog):
                 self._profile_mgr.update(profile, new_profile)
                 self._populate(self._get_filtered_profiles())
             except ValueError as e:
-                warning_dialog(self, "编辑失败", str(e))
+                warning_dialog(self, sg.DLG_TITLE_EDIT_FAILED, str(e))
 
     def _delete(self, profile) -> None:
         ok = confirm_dialog(
             self,
-            "确认删除",
-            f"确认删除档案 {profile.brand}/{profile.manufacturer}/{profile.model}？",
-            confirm_text="删除", danger=True,
+            sg.DLG_TITLE_CONFIRM_DELETE,
+            sg.MSG_CONFIRM_DELETE_FMT.format(profile.brand, profile.manufacturer, profile.model),
+            confirm_text=sg.BTN_DELETE, danger=True,
         )
         if ok:
             try:
                 self._profile_mgr.delete(profile)
                 self._populate(self._get_filtered_profiles())
             except ValueError as e:
-                warning_dialog(self, "删除失败", str(e))
+                warning_dialog(self, sg.DLG_TITLE_DELETE_FAILED, str(e))
 
 
 # ======================================================================
@@ -608,7 +605,7 @@ class _ProfileEditDialog(ToolkitDialog):
     """编辑设备档案对话框"""
 
     def __init__(self, profile, theme: str, parent=None):
-        super().__init__("编辑设备档案", parent, min_width=380)
+        super().__init__(sg.DLG_TITLE_EDIT_PROFILE, parent, min_width=380)
         self.result_profile = None
         self._original = profile
         self._init_ui(profile)
@@ -621,21 +618,21 @@ class _ProfileEditDialog(ToolkitDialog):
         self._model_input = QLineEdit(profile.model)
         self._notes_input = QLineEdit(profile.notes)
 
-        form.addRow("品牌:", self._brand_input)
-        form.addRow("厂商:", self._mfr_input)
-        form.addRow("型号:", self._model_input)
-        form.addRow("备注:", self._notes_input)
+        form.addRow(sg.LABEL_BRAND + ":", self._brand_input)
+        form.addRow(sg.LABEL_MANUFACTURER + ":", self._mfr_input)
+        form.addRow(sg.LABEL_MODEL + ":", self._model_input)
+        form.addRow(sg.LABEL_NOTES + ":", self._notes_input)
 
         self.content_layout.addLayout(form)
 
         btn_bar = QHBoxLayout()
         btn_bar.addStretch()
 
-        cancel_btn = QPushButton("取消")
+        cancel_btn = QPushButton(sg.BTN_CANCEL)
         cancel_btn.setObjectName("secondaryBtn")
         cancel_btn.clicked.connect(self.reject)
 
-        ok_btn = QPushButton("保存")
+        ok_btn = QPushButton(sg.BTN_SAVE)
         ok_btn.setObjectName("primaryBtn")
         ok_btn.clicked.connect(self._on_ok)
 
@@ -652,7 +649,7 @@ class _ProfileEditDialog(ToolkitDialog):
         notes = self._notes_input.text().strip()
 
         if not (brand and mfr and model):
-            warning_dialog(self, "编辑档案", "品牌、厂商和型号不能为空。")
+            warning_dialog(self, sg.DLG_TITLE_EDIT_PROFILE, sg.MSG_EMPTY_FIELDS)
             return
 
         self.result_profile = DeviceProfile(
@@ -670,30 +667,30 @@ class _ProfileSaveDialog(ToolkitDialog):
     """保存档案对话框"""
 
     def __init__(self, brand: str, mfr: str, model: str, theme: str, parent=None):
-        super().__init__("保存设备档案", parent, min_width=380)
+        super().__init__(sg.DLG_TITLE_SAVE_PROFILE, parent, min_width=380)
         self.notes_text = ""
         self._init_ui(brand, mfr, model)
 
     def _init_ui(self, brand: str, mfr: str, model: str) -> None:
         form = QFormLayout()
-        form.addRow("品牌:", QLabel(brand))
-        form.addRow("厂商:", QLabel(mfr))
-        form.addRow("型号:", QLabel(model))
+        form.addRow(sg.LABEL_BRAND + ":", QLabel(brand))
+        form.addRow(sg.LABEL_MANUFACTURER + ":", QLabel(mfr))
+        form.addRow(sg.LABEL_MODEL + ":", QLabel(model))
 
         self._notes_input = QLineEdit()
-        self._notes_input.setPlaceholderText("可选备注...")
-        form.addRow("备注:", self._notes_input)
+        self._notes_input.setPlaceholderText(sg.PLACEHOLDER_NOTES)
+        form.addRow(sg.LABEL_NOTES + ":", self._notes_input)
 
         self.content_layout.addLayout(form)
 
         btn_bar = QHBoxLayout()
         btn_bar.addStretch()
 
-        cancel_btn = QPushButton("取消")
+        cancel_btn = QPushButton(sg.BTN_CANCEL)
         cancel_btn.setObjectName("secondaryBtn")
         cancel_btn.clicked.connect(self.reject)
 
-        ok_btn = QPushButton("保存")
+        ok_btn = QPushButton(sg.BTN_SAVE)
         ok_btn.setObjectName("primaryBtn")
         ok_btn.clicked.connect(self._on_ok)
 

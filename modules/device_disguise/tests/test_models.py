@@ -47,7 +47,7 @@ class TestProfileManager:
     def test_add_duplicate_raises(self, pm: ProfileManager):
         p = DeviceProfile(brand="Samsung", manufacturer="Samsung", model="SM-G991B")
         pm.add(p)
-        with pytest.raises(ValueError, match="已存在"):
+        with pytest.raises(ValueError, match="设备档案已存在"):
             pm.add(p)
 
     def test_exists(self, pm: ProfileManager):
@@ -74,7 +74,7 @@ class TestProfileManager:
     def test_update_not_found(self, pm: ProfileManager):
         old = DeviceProfile(brand="A", manufacturer="B", model="C")
         new = DeviceProfile(brand="X", manufacturer="Y", model="Z")
-        with pytest.raises(ValueError, match="未找到"):
+        with pytest.raises(ValueError, match="未找到要更新的档案"):
             pm.update(old, new)
 
     def test_delete(self, pm: ProfileManager):
@@ -85,7 +85,7 @@ class TestProfileManager:
 
     def test_delete_not_found(self, pm: ProfileManager):
         p = DeviceProfile(brand="A", manufacturer="B", model="C")
-        with pytest.raises(ValueError, match="未找到"):
+        with pytest.raises(ValueError, match="未找到要删除的档案"):
             pm.delete(p)
 
     def test_import_from(self, pm: ProfileManager, tmp_path: Path):
@@ -125,7 +125,7 @@ class TestProfileManager:
     ) -> None:
         bad = tmp_path / "bad.json"
         bad.write_text('{"brand":"A"}', encoding="utf-8")
-        with pytest.raises(ValueError, match="数组"):
+        with pytest.raises(ValueError, match="根节点须为数组"):
             pm.import_from(str(bad))
 
     def test_persistence(self, tmp_path: Path):

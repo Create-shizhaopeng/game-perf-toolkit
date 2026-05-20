@@ -1,0 +1,64 @@
+{
+  "atrace_categories": [
+    "sched",
+    "freq",
+    "am",
+    "wm",
+    "gfx",
+    "view",
+    "input"
+  ],
+  "duration_sec": 15,
+  "buffer_manual_override": false,
+  "buffer_safety_factor": 1.05,
+  "device_trace_dir": "/data/misc/perfetto-traces",
+  "output_dir": "output",
+  "target": {
+    "mode": "global",
+    "packages": []
+  },
+  "advanced": {
+    "available_ftrace_events": [
+      "sched/sched_switch",
+      "sched/sched_wakeup",
+      "power/cpu_frequency",
+      "power/cpu_idle",
+      "power/suspend_resume",
+      "irq/irq_handler_entry",
+      "irq/irq_handler_exit",
+      "irq/softirq_entry",
+      "irq/softirq_exit",
+      "block/block_rq_issue",
+      "block/block_rq_complete",
+      "filemap/mm_filemap_add_to_page_cache",
+      "vmscan/mm_vmscan_direct_reclaim_begin",
+      "gpu_mem/gpu_mem_total",
+      "mali/mali_PM_MCU_HCTL_CORES_NOTIFY_PEND",
+      "thermal/thermal_temperature"
+    ],
+    "ftrace_events": [],
+    "sampling": {},
+    "enable_raw_perfetto_config": false,
+    "raw_perfetto_config_text": ""
+  },
+  "export": {
+    "cleanup_device_files": false
+  },
+  "logging": {
+    "debug": false
+  },
+  "history": {
+    "max_history_days": 30,
+    "max_history_count": 50,
+    "auto_cleanup_on_start": true
+  },
+  "jank": {
+    "enabled": false,
+    "target_package": "",
+    "jank_threshold": 3,
+    "max_captures": 3,
+    "stabilize_delay_sec": 2,
+    "max_stabilize_sec": 8,
+    "max_duration_hours": 3
+  }
+}

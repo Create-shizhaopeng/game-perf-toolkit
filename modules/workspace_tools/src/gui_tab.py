@@ -35,6 +35,7 @@ from toolkit.gui.toolkit_dialog import (
     warning_dialog,
 )
 
+from . import strings_gui as s
 from .gameperf_diff_errors import DiffValidationError, GamePerfDevicePullError
 from .gameperf_diff_models import DiffItem
 from .gameperf_diff_service import GamePerfConfigDiffService
@@ -131,8 +132,8 @@ class _ComparatorDropArea(QFrame):
 class WorkspaceToolsTab(BaseTab):
     """性能配置对比 Tab：说明页 + gameperfconfig 多文件对比与合并。"""
 
-    tab_title = "性能配置对比"
-    tab_icon = "🧰"
+    tab_title = s.TAB_TITLE
+    tab_icon = s.TAB_ICON
 
     def __init__(self, context: dict | None = None, parent=None) -> None:
         super().__init__(context, parent)
@@ -159,19 +160,15 @@ class WorkspaceToolsTab(BaseTab):
         page = QWidget()
         lay = QVBoxLayout(page)
         lay.setContentsMargins(16, 16, 16, 16)
-        title = QLabel("性能配置对比")
+        title = QLabel(s.INTRO_TITLE)
         title.setProperty("class", "sectionTitleBlue")
         lay.addWidget(title)
-        body = QLabel(
-            "本模块用于多份游戏性能策略 XML（gameperfconfig*.xml）的对比与合并。\n\n"
-            "「配置对比」页支持选定基准与多个对比源、语义差异展示、按条采纳、另存为（原子写盘），"
-            "以及从已连接设备拉取标准路径配置参与对比。"
-        )
+        body = QLabel(s.MSG_INTRO_BODY)
         body.setWordWrap(True)
         body.setProperty("class", "fieldLabel")
         lay.addWidget(body)
         lay.addStretch()
-        self._tabs.addTab(page, "工具说明")
+        self._tabs.addTab(page, s.TAB_INTRO_LABEL)
 
     def _build_diff_tab(self) -> None:
         page = QWidget()
@@ -179,8 +176,8 @@ class WorkspaceToolsTab(BaseTab):
         page_lay.setContentsMargins(4, 4, 4, 4)
 
         if self._gp_svc is None:
-            page_lay.addWidget(QLabel("未注入 wo_gameperf_diff_service，配置对比不可用。"))
-            self._tabs.addTab(page, "配置对比")
+            page_lay.addWidget(QLabel(s.MSG_SERVICE_UNAVAILABLE))
+            self._tabs.addTab(page, s.TAB_DIFF_LABEL)
             return
 
         # —— 左栏：基准、对比文件、操作、摘要、日志 ——
@@ -189,28 +186,28 @@ class WorkspaceToolsTab(BaseTab):
         left_lay = QVBoxLayout(left_col)
         left_lay.setContentsMargins(0, 0, 6, 0)
 
-        base_box = QGroupBox("基准文件")
+        base_box = QGroupBox(s.GROUP_BASELINE)
         base_lay = QHBoxLayout(base_box)
         self._baseline_edit = QLineEdit()
-        self._baseline_edit.setPlaceholderText("选择包含 gameperfconfig 的 .xml 作为基准")
-        btn_browse_base = QPushButton("浏览…")
+        self._baseline_edit.setPlaceholderText(s.PLACEHOLDER_BASELINE)
+        btn_browse_base = QPushButton(s.BTN_BROWSE)
         btn_browse_base.clicked.connect(self._on_browse_baseline)
         base_lay.addWidget(self._baseline_edit, 1)
         base_lay.addWidget(btn_browse_base)
         left_lay.addWidget(base_box)
 
-        cmp_box = QGroupBox("对比文件（可拖拽 gameperfconfig*.xml 到下方区域）")
+        cmp_box = QGroupBox(s.GROUP_COMPARATORS)
         cmp_lay = QVBoxLayout(cmp_box)
         row = QHBoxLayout()
         self._cmp_list = QListWidget()
         self._cmp_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        btn_add = QPushButton("添加本地…")
+        btn_add = QPushButton(s.BTN_ADD_LOCAL)
         btn_add.clicked.connect(self._on_add_comparator)
-        btn_rm = QPushButton("移除选中")
+        btn_rm = QPushButton(s.BTN_REMOVE)
         btn_rm.clicked.connect(self._on_remove_comparator)
-        btn_as_base = QPushButton("设为基准")
+        btn_as_base = QPushButton(s.BTN_SET_BASELINE)
         btn_as_base.clicked.connect(self._on_set_baseline_from_list)
-        btn_device = QPushButton("从当前设备添加")
+        btn_device = QPushButton(s.BTN_ADD_FROM_DEVICE)
         btn_device.clicked.connect(self._on_pull_device)
         row.addWidget(btn_add)
         row.addWidget(btn_rm)
@@ -228,25 +225,25 @@ class WorkspaceToolsTab(BaseTab):
         drop.file_dropped.connect(self._on_drop_comparator)
         drop.setMinimumHeight(48)
         drop_l = QVBoxLayout(drop)
-        drop_l.addWidget(QLabel("拖拽文件到此处添加为对比项"))
+        drop_l.addWidget(QLabel(s.HINT_DROP))
         cmp_lay.addWidget(drop)
         left_lay.addWidget(cmp_box, 1)
 
         op_row = QHBoxLayout()
-        op_row.addWidget(QLabel("当前对比："))
+        op_row.addWidget(QLabel(s.LABEL_ACTIVE_COMP))
         self._active_combo = QComboBox()
         self._active_combo.currentIndexChanged.connect(self._on_active_comparator_changed)
         op_row.addWidget(self._active_combo, 1)
-        self._btn_start_diff = QPushButton("开始对比")
+        self._btn_start_diff = QPushButton(s.BTN_START_DIFF)
         self._btn_start_diff.clicked.connect(self._on_start_diff)
-        self._btn_cancel_diff = QPushButton("取消")
+        self._btn_cancel_diff = QPushButton(s.BTN_CANCEL_DIFF)
         self._btn_cancel_diff.setEnabled(False)
         self._btn_cancel_diff.clicked.connect(self._on_cancel_diff)
         op_row.addWidget(self._btn_start_diff)
         op_row.addWidget(self._btn_cancel_diff)
         left_lay.addLayout(op_row)
 
-        sum_box = QGroupBox("各对比文件差异条数")
+        sum_box = QGroupBox(s.GROUP_SUMMARY)
         sum_lay = QVBoxLayout(sum_box)
         self._summary_list = QListWidget()
         self._summary_list.setMaximumHeight(72)
@@ -254,7 +251,7 @@ class WorkspaceToolsTab(BaseTab):
         left_lay.addWidget(sum_box)
 
         pull_row = QHBoxLayout()
-        self._btn_cancel_pull = QPushButton("取消拉取")
+        self._btn_cancel_pull = QPushButton(s.BTN_CANCEL_PULL)
         self._btn_cancel_pull.setEnabled(False)
         self._btn_cancel_pull.clicked.connect(self._on_cancel_pull)
         pull_row.addWidget(self._btn_cancel_pull)
@@ -267,11 +264,11 @@ class WorkspaceToolsTab(BaseTab):
         right_lay = QVBoxLayout(right_col)
         right_lay.setContentsMargins(6, 0, 0, 0)
 
-        tree_box = QGroupBox("差异明细（选中一行后采纳一侧）")
+        tree_box = QGroupBox(s.GROUP_DIFF_DETAIL)
         tree_lay = QVBoxLayout(tree_box)
         self._diff_tree = QTreeWidget()
         self._diff_tree.setObjectName("gameperfDiffTree")
-        self._diff_tree.setHeaderLabels(["语义路径", "基准侧", "对比侧"])
+        self._diff_tree.setHeaderLabels([s.TABLE_HEADER_SEMANTIC_PATH, s.TABLE_HEADER_BASELINE_SIDE, s.TABLE_HEADER_COMP_SIDE])
         self._diff_tree.setMinimumHeight(200)
         self._diff_tree.setSizePolicy(
             QSizePolicy.Policy.Expanding,
@@ -290,11 +287,11 @@ class WorkspaceToolsTab(BaseTab):
         # QSS 样式由全局 styles.py 通过 #gameperfDiffTree 管理
         tree_lay.addWidget(self._diff_tree, 1)
         btn_row = QHBoxLayout()
-        self._btn_adopt_base = QPushButton("采纳基准侧")
-        self._btn_adopt_comp = QPushButton("采纳对比侧")
-        self._btn_undo = QPushButton("撤销上次采纳")
-        self._btn_reset = QPushButton("重置合并")
-        self._btn_save = QPushButton("另存为…")
+        self._btn_adopt_base = QPushButton(s.BTN_ADOPT_BASE)
+        self._btn_adopt_comp = QPushButton(s.BTN_ADOPT_COMP)
+        self._btn_undo = QPushButton(s.BTN_UNDO)
+        self._btn_reset = QPushButton(s.BTN_RESET)
+        self._btn_save = QPushButton(s.BTN_SAVE_AS)
         self._btn_adopt_base.clicked.connect(lambda: self._on_adopt("baseline"))
         self._btn_adopt_comp.clicked.connect(lambda: self._on_adopt("comparator"))
         self._btn_undo.clicked.connect(self._on_undo)
@@ -319,7 +316,7 @@ class WorkspaceToolsTab(BaseTab):
         splitter.setSizes([400, 720])
 
         page_lay.addWidget(splitter, 1)
-        self._tabs.addTab(page, "配置对比")
+        self._tabs.addTab(page, s.TAB_DIFF_LABEL)
         self._update_buttons_state()
 
     def _append_log(self, msg: str) -> None:
@@ -362,14 +359,14 @@ class WorkspaceToolsTab(BaseTab):
             return
         path, _ = QFileDialog.getOpenFileName(
             self.window(),
-            "选择基准 gameperfconfig XML",
+            s.DLG_TITLE_SELECT_BASELINE,
             "",
-            "XML (*.xml)",
+            s.FILE_FILTER_XML,
         )
         if not path:
             return
         if not is_valid_gameperf_config_filename(os.path.basename(path)):
-            warning_dialog(self.window(), "文件名无效", "须为文件名包含 gameperfconfig 的 .xml")
+            warning_dialog(self.window(), s.DLG_TITLE_INVALID_FILENAME, s.MSG_INVALID_FILENAME_BASELINE)
             return
         try:
             self._gp_svc.load_session(path)
@@ -377,29 +374,29 @@ class WorkspaceToolsTab(BaseTab):
             self._diff_tree.clear()
             self._summary_list.clear()
             self._last_items.clear()
-            self._append_log(f"已载入基准：{path}")
+            self._append_log(s.LOG_BASELINE_LOADED_FMT.format(path=path))
         except Exception as e:
-            warning_dialog(self.window(), "载入失败", str(e))
+            warning_dialog(self.window(), s.DLG_TITLE_LOAD_FAILED, str(e))
         self._refresh_comparator_ui()
 
     def _on_add_comparator(self) -> None:
         if not self._gp_svc:
             return
         if self._gp_svc.get_session() is None:
-            info_dialog(self.window(), "提示", "请先选择基准文件。")
+            info_dialog(self.window(), s.DLG_TITLE_HINT, s.MSG_SELECT_BASELINE_FIRST)
             return
         path, _ = QFileDialog.getOpenFileName(
             self.window(),
-            "添加对比文件",
+            s.DLG_TITLE_ADD_COMP,
             "",
-            "XML (*.xml)",
+            s.FILE_FILTER_XML,
         )
         if path:
             self._add_comparator_path(path)
 
     def _on_drop_comparator(self, path: str) -> None:
         if not self._gp_svc or self._gp_svc.get_session() is None:
-            info_dialog(self.window(), "提示", "请先选择基准文件。")
+            info_dialog(self.window(), s.DLG_TITLE_HINT, s.MSG_SELECT_BASELINE_FIRST)
             return
         self._add_comparator_path(path)
 
@@ -420,7 +417,7 @@ class WorkspaceToolsTab(BaseTab):
         try:
             self._gp_svc.remove_comparator(row)
         except DiffValidationError as e:
-            warning_dialog(self.window(), "移除失败", str(e))
+            warning_dialog(self.window(), s.DLG_TITLE_REMOVE_FAILED, str(e))
         self._diff_tree.clear()
         self._summary_list.clear()
         self._refresh_comparator_ui()
@@ -430,14 +427,14 @@ class WorkspaceToolsTab(BaseTab):
             return
         row = self._cmp_list.currentRow()
         if row < 0:
-            info_dialog(self.window(), "提示", "请先在列表中选中一个对比文件。")
+            info_dialog(self.window(), s.DLG_TITLE_HINT, s.MSG_SELECT_COMPARATOR_FIRST)
             return
         try:
             self._gp_svc.set_baseline_from_comparator(row)
             self._baseline_edit.setText(self._gp_svc.get_session().baseline_path if self._gp_svc.get_session() else "")
-            self._append_log("已将该对比文件设为基准，对比列表已清空。")
+            self._append_log(s.LOG_SET_BASELINE)
         except Exception as e:
-            warning_dialog(self.window(), "操作失败", str(e))
+            warning_dialog(self.window(), s.DLG_TITLE_OPERATION_FAILED, str(e))
         self._diff_tree.clear()
         self._summary_list.clear()
         self._refresh_comparator_ui()
@@ -462,14 +459,14 @@ class WorkspaceToolsTab(BaseTab):
         self._diff_thread.finished_ok.connect(self._on_diff_ok)
         self._diff_thread.finished_err.connect(self._on_diff_err)
         self._diff_thread.finished.connect(self._on_diff_thread_finished)
-        self._append_log("开始语义对比…")
+        self._append_log(s.LOG_START_DIFF)
         self._btn_start_diff.setEnabled(False)
         self._btn_cancel_diff.setEnabled(True)
         self._diff_thread.start()
 
     def _on_cancel_diff(self) -> None:
         self._diff_cancel.set()
-        self._append_log("已请求取消对比（步骤间隙生效）…")
+        self._append_log(s.LOG_CANCEL_DIFF_REQUESTED)
 
     def _on_diff_ok(self, items: list) -> None:
         assert self._gp_svc is not None
@@ -479,12 +476,12 @@ class WorkspaceToolsTab(BaseTab):
             self._populate_diff_tree(self._gp_svc.get_diff_for_comparator(int(ci)))
         self._summary_list.clear()
         for label, n in self._gp_svc.diff_counts_summary():
-            self._summary_list.addItem(f"{label}：{n} 条差异" if n else f"{label}：无差异")
-        self._append_log("对比完成。")
+            self._summary_list.addItem(s.SUMMARY_DIFF_COUNT_FMT.format(label=label, n=n) if n else s.SUMMARY_NO_DIFF.format(label=label))
+        self._append_log(s.LOG_DIFF_COMPLETE)
 
     def _on_diff_err(self, msg: str) -> None:
-        self._append_log(f"对比失败：{msg}")
-        warning_dialog(self.window(), "对比失败", msg)
+        self._append_log(s.LOG_DIFF_FAILED_FMT.format(msg=msg))
+        warning_dialog(self.window(), s.DLG_TITLE_DIFF_FAILED, msg)
 
     def _on_diff_thread_finished(self) -> None:
         self._btn_cancel_diff.setEnabled(False)
@@ -496,8 +493,8 @@ class WorkspaceToolsTab(BaseTab):
             twi = QTreeWidgetItem(
                 [
                     it.semantic_path,
-                    it.left_snippet or "—",
-                    it.right_snippet or "—",
+                    it.left_snippet or s.DASH,
+                    it.right_snippet or s.DASH,
                 ]
             )
             twi.setData(0, Qt.ItemDataRole.UserRole, it.id)
@@ -509,21 +506,21 @@ class WorkspaceToolsTab(BaseTab):
             return
         twi = self._diff_tree.currentItem()
         if twi is None:
-            info_dialog(self.window(), "提示", "请在差异树中选择一行。")
+            info_dialog(self.window(), s.DLG_TITLE_HINT, s.MSG_SELECT_DIFF_ROW)
             return
         did = twi.data(0, Qt.ItemDataRole.UserRole)
         mergeable = twi.data(0, Qt.ItemDataRole.UserRole + 1)
         if not did or not mergeable:
-            info_dialog(self.window(), "提示", "该项不可一键采纳。")
+            info_dialog(self.window(), s.DLG_TITLE_HINT, s.MSG_NOT_MERGEABLE)
             return
         ci = self._active_combo.currentData()
         if ci is None:
             return
         try:
             self._gp_svc.apply_merge(str(did), side, int(ci))
-            self._append_log(f"已采纳：{side} ← {twi.text(0)}")
+            self._append_log(s.LOG_ADOPT_FMT.format(side=side, path=twi.text(0)))
         except Exception as e:
-            warning_dialog(self.window(), "采纳失败", str(e))
+            warning_dialog(self.window(), s.DLG_TITLE_ADOPT_FAILED, str(e))
 
     def _on_undo(self) -> None:
         if not self._gp_svc:
@@ -531,17 +528,17 @@ class WorkspaceToolsTab(BaseTab):
         ok, detail = self._gp_svc.undo_merge()
         if ok:
             if detail:
-                self._append_log(f"已撤销上次采纳。{detail}")
+                self._append_log(s.LOG_UNDO_WITH_DETAIL_FMT.format(detail=detail))
             else:
-                self._append_log("已撤销上次采纳。")
+                self._append_log(s.LOG_UNDO)
         else:
-            self._append_log("无可撤销操作。")
+            self._append_log(s.LOG_NOTHING_TO_UNDO)
 
     def _on_reset(self) -> None:
         if not self._gp_svc:
             return
         self._gp_svc.reset_merge()
-        self._append_log("已重置合并为基准副本。")
+        self._append_log(s.LOG_RESET_MERGE)
 
     def _on_save_as(self) -> None:
         if not self._gp_svc:
@@ -549,26 +546,25 @@ class WorkspaceToolsTab(BaseTab):
         dirty = self._gp_svc.get_merge_dirty()
         path, _ = QFileDialog.getSaveFileName(
             self.window(),
-            "另存为 gameperfconfig",
+            s.DLG_TITLE_SAVE_AS,
             "",
-            "XML (*.xml)",
+            s.FILE_FILTER_XML,
         )
         if not path:
             return
         if not is_valid_gameperf_config_filename(os.path.basename(path)):
-            warning_dialog(self.window(), "文件名无效", "建议文件名包含 gameperfconfig 且为 .xml")
+            warning_dialog(self.window(), s.DLG_TITLE_INVALID_FILENAME, s.MSG_INVALID_FILENAME_SAVE)
             return
         initial_stat = None
         if os.path.isfile(path):
             initial_stat = GamePerfConfigDiffService.stat_path(path)
         overwrite = os.path.isfile(path)
-        msg = (
-            f"目标路径：\n{path}\n\n"
-            f"{'将覆盖已存在文件。' if overwrite else '将创建新文件。'}\n"
-            f"合并脏状态（相对基准已修改）：{'是' if dirty else '否'}\n\n"
-            f"确认保存？"
+        msg = s.MSG_CONFIRM_SAVE_FMT.format(
+            path=path,
+            will_overwrite=s.MSG_FILE_OVERWRITE_YES if overwrite else s.MSG_FILE_OVERWRITE_NO,
+            dirty=s.MSG_DIRTY_YES if dirty else s.MSG_DIRTY_NO,
         )
-        if not confirm_dialog(self.window(), "确认保存", msg):
+        if not confirm_dialog(self.window(), s.DLG_TITLE_CONFIRM_SAVE, msg):
             return
         if initial_stat is not None:
             now_stat = GamePerfConfigDiffService.stat_path(path)
@@ -577,26 +573,26 @@ class WorkspaceToolsTab(BaseTab):
                 or now_stat.st_size != initial_stat.st_size
             ):
                 if not confirm_dialog(
-                    self.window(), "文件已变化",
-                    "目标文件在操作过程中已被外部修改，仍要覆盖写入吗？",
+                    self.window(), s.DLG_TITLE_FILE_CHANGED,
+                    s.MSG_FILE_CHANGED,
                 ):
                     return
         try:
             self._gp_svc.save_merged_as(path, atomic=True)
-            self._append_log(f"已保存：{path}")
-            info_dialog(self.window(), "完成", "保存成功。")
+            self._append_log(s.LOG_SAVED_FMT.format(path=path))
+            info_dialog(self.window(), s.DLG_TITLE_COMPLETE, s.MSG_SAVE_SUCCESS)
         except Exception as e:
-            warning_dialog(self.window(), "保存失败", str(e))
+            warning_dialog(self.window(), s.DLG_TITLE_SAVE_FAILED, str(e))
 
     def _on_pull_device(self) -> None:
         if not self.require_device() or not self._gp_svc:
             return
         if self._gp_svc.get_session() is None:
-            info_dialog(self.window(), "提示", "请先选择基准文件。")
+            info_dialog(self.window(), s.DLG_TITLE_HINT, s.MSG_SELECT_BASELINE_FIRST)
             return
         serial = self._devices[0] if self._devices else ""
         if not serial:
-            warning_dialog(self.window(), "设备", "无当前设备序列号。")
+            warning_dialog(self.window(), s.DLG_TITLE_DEVICE, s.MSG_NO_SERIAL)
             return
         self._pull_cancel.clear()
         self._pull_thread = _PullThread(self._gp_svc, serial, self._pull_cancel)
@@ -606,19 +602,19 @@ class WorkspaceToolsTab(BaseTab):
         self._pull_thread.finished.connect(self._on_pull_finished)
         self._btn_cancel_pull.setEnabled(True)
         self._pull_thread.start()
-        self._append_log(f"[设备] 开始拉取 {serial} …")
+        self._append_log(s.LOG_PULL_START_FMT.format(serial=serial))
 
     def _on_cancel_pull(self) -> None:
         self._pull_cancel.set()
-        self._append_log("已请求取消拉取（步骤间隙生效）…")
+        self._append_log(s.LOG_CANCEL_PULL_REQUESTED)
 
     def _on_pull_ok(self) -> None:
-        self._append_log("设备配置已加入对比列表。")
+        self._append_log(s.LOG_PULL_SUCCESS)
         self._refresh_comparator_ui()
 
     def _on_pull_err(self, msg: str) -> None:
-        self._append_log(f"拉取失败：{msg}")
-        warning_dialog(self.window(), "拉取失败", msg)
+        self._append_log(s.LOG_PULL_FAILED_FMT.format(msg=msg))
+        warning_dialog(self.window(), s.DLG_TITLE_PULL_FAILED, msg)
 
     def _on_pull_finished(self) -> None:
         self._btn_cancel_pull.setEnabled(False)

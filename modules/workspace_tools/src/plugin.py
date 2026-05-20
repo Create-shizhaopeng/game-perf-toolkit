@@ -5,6 +5,8 @@ from __future__ import annotations
 from toolkit.core.hookspecs import hookimpl
 from toolkit.sdk.base_plugin import BasePlugin
 
+from . import strings_gui as s
+
 
 class WorkspaceToolsPlugin(BasePlugin):
 
@@ -12,7 +14,7 @@ class WorkspaceToolsPlugin(BasePlugin):
     def get_plugin_info(self) -> dict:
         return {
             "name": "workspace_tools",
-            "display_name": "性能配置对比",
+            "display_name": s.SERVICE_DISPLAY_NAME,
             "version": "0.2.0",
         }
 

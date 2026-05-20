@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 )
 
 from toolkit.gui.codicons import codicon_font, icon_char
+from toolkit.gui import strings as s
 
 
 _LOGO_STYLES = {
@@ -149,7 +150,7 @@ class ThemeButton(QPushButton):
         super().__init__(parent)
         self.setFixedSize(36, 28)
         self.setObjectName("themeBtn")
-        self.setToolTip("切换主题")
+        self.setToolTip(s.TITLEBAR_TOOLTIP_THEME)
         self._is_dark = True
         self._fg = QColor("#a6adc8")
         self._hover_bg = QColor("#313244")
@@ -273,7 +274,7 @@ class SettingsButton(QPushButton):
         super().__init__(parent)
         self.setFixedSize(36, 28)
         self.setObjectName("settingsBtn")
-        self.setToolTip("设置")
+        self.setToolTip(s.TITLEBAR_TOOLTIP_SETTINGS)
         self._is_dark = True
         self._fg = QColor("#a6adc8")
         self._hover_bg = QColor("#313244")
@@ -289,13 +290,13 @@ class SettingsButton(QPushButton):
         menu = QMenu(self)
         menu.setObjectName("settingsMenu")
 
-        theme_action = menu.addAction("主题切换")
+        theme_action = menu.addAction(s.TITLEBAR_MENU_THEME)
         theme_action.triggered.connect(self.theme_toggled.emit)
 
-        llm_action = menu.addAction("LLM 模型设置")
+        llm_action = menu.addAction(s.TITLEBAR_MENU_LLM_SETTINGS)
         llm_action.triggered.connect(self.llm_settings_requested.emit)
 
-        agent_action = menu.addAction("Agent 设置")
+        agent_action = menu.addAction(s.TITLEBAR_MENU_AGENT_SETTINGS)
         agent_action.triggered.connect(self.agent_settings_requested.emit)
 
         menu.exec(self.mapToGlobal(self.rect().bottomLeft()))
@@ -350,7 +351,7 @@ class DeviceComboBox(QComboBox):
         self.setEditable(True)
         self.lineEdit().setReadOnly(True)
         self.lineEdit().setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lineEdit().setPlaceholderText("未连接设备")
+        self.lineEdit().setPlaceholderText(s.TITLEBAR_NO_DEVICE)
         self.lineEdit().installEventFilter(self)
 
     def eventFilter(self, obj, event) -> bool:
@@ -449,7 +450,7 @@ class TitleBar(QWidget):
 
         self._nav_toggle = _LayoutToggleButton(
             "layout-sidebar-left", "layout-sidebar-left-off",
-            "navToggleBtn", "左侧导航", active=True, parent=self,
+            "navToggleBtn", s.TITLEBAR_NAV_PANEL, active=True, parent=self,
         )
         self._nav_toggle.clicked.connect(
             lambda: self.toggle_nav_panel.emit(self._nav_toggle.active)
@@ -458,7 +459,7 @@ class TitleBar(QWidget):
 
         self._bottom_toggle = _LayoutToggleButton(
             "layout-panel", "layout-panel-off",
-            "bottomToggleBtn", "底部面板", active=False, parent=self,
+            "bottomToggleBtn", s.TITLEBAR_BOTTOM_PANEL, active=False, parent=self,
         )
         self._bottom_toggle.clicked.connect(
             lambda: self.toggle_bottom_panel.emit(self._bottom_toggle.active)
@@ -467,7 +468,7 @@ class TitleBar(QWidget):
 
         self._right_toggle = _LayoutToggleButton(
             "layout-sidebar-right", "layout-sidebar-right-off",
-            "rightToggleBtn", "右侧面板", active=False, parent=self,
+            "rightToggleBtn", s.TITLEBAR_RIGHT_PANEL, active=False, parent=self,
         )
         self._right_toggle.clicked.connect(
             lambda: self.toggle_right_panel.emit(self._right_toggle.active)
@@ -556,7 +557,7 @@ class TitleBar(QWidget):
         self._device_combo.clear()
 
         if not devices:
-            self._device_combo.setPlaceholderText("未连接设备")
+            self._device_combo.setPlaceholderText(s.TITLEBAR_NO_DEVICE)
         elif len(devices) == 1:
             self._device_combo.addItem(devices[0])
             self._device_combo.setCurrentIndex(0)
@@ -574,13 +575,13 @@ class TitleBar(QWidget):
         """更新状态指示灯颜色。"""
         if not devices:
             self._device_combo.set_dot_color("#e74c3c")
-            self._device_combo.setToolTip("未连接设备")
+            self._device_combo.setToolTip(s.TITLEBAR_NO_DEVICE)
         elif len(devices) == 1:
             self._device_combo.set_dot_color("#2ecc71")
-            self._device_combo.setToolTip(f"已连接: {devices[0]}")
+            self._device_combo.setToolTip(s.TITLEBAR_CONNECTED_FMT.format(device=devices[0]))
         else:
             self._device_combo.set_dot_color("#3498db")
-            self._device_combo.setToolTip(f"{len(devices)} 台设备已连接")
+            self._device_combo.setToolTip(s.TITLEBAR_DEVICES_CONNECTED_FMT.format(count=len(devices)))
 
     def _on_device_changed(self, index: int) -> None:
         if index >= 0:

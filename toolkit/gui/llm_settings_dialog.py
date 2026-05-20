@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 )
 
 from toolkit.gui.toolkit_dialog import DialogCloseButton
+from toolkit.gui import strings as s
 from toolkit.sdk.models import LLMConfig
 
 _GLM_MODELS = ["glm-4-plus", "glm-4-flash", "glm-4-long"]
@@ -37,11 +38,11 @@ class _ApiKeyRow(QWidget):
 
         self._edit = QLineEdit()
         self._edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self._edit.setPlaceholderText("输入 API Key")
+        self._edit.setPlaceholderText(s.LLM_SETTINGS_API_KEY_PLACEHOLDER)
         self._edit.setObjectName("apiKeyEdit")
         layout.addWidget(self._edit, 1)
 
-        self._toggle_btn = QPushButton("显示")
+        self._toggle_btn = QPushButton(s.LLM_SETTINGS_TOGGLE_SHOW)
         self._toggle_btn.setFixedWidth(48)
         self._toggle_btn.setObjectName("apiKeyToggle")
         self._toggle_btn.clicked.connect(self._toggle_echo)
@@ -50,10 +51,10 @@ class _ApiKeyRow(QWidget):
     def _toggle_echo(self) -> None:
         if self._edit.echoMode() == QLineEdit.EchoMode.Password:
             self._edit.setEchoMode(QLineEdit.EchoMode.Normal)
-            self._toggle_btn.setText("隐藏")
+            self._toggle_btn.setText(s.LLM_SETTINGS_TOGGLE_HIDE)
         else:
             self._edit.setEchoMode(QLineEdit.EchoMode.Password)
-            self._toggle_btn.setText("显示")
+            self._toggle_btn.setText(s.LLM_SETTINGS_TOGGLE_SHOW)
 
     def text(self) -> str:
         return self._edit.text()
@@ -95,7 +96,7 @@ class LLMSettingsDialog(QDialog):
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(16, 0, 4, 0)
 
-        title_label = QLabel("⚙ LLM 模型设置")
+        title_label = QLabel(s.LLM_SETTINGS_TITLE)
         title_label.setObjectName("llmDialogTitle")
         title_layout.addWidget(title_label)
         title_layout.addStretch()
@@ -154,7 +155,7 @@ class LLMSettingsDialog(QDialog):
 
         # --- 模型选择 ---
         model_row = QHBoxLayout()
-        model_label = QLabel("模型:")
+        model_label = QLabel(s.LLM_SETTINGS_MODEL_LABEL)
         model_label.setFixedWidth(90)
         model_row.addWidget(model_label)
 
@@ -188,20 +189,20 @@ class LLMSettingsDialog(QDialog):
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         form.setHorizontalSpacing(12)
 
-        self._smart_switch = QCheckBox("启用失败自动降级")
-        form.addRow("智能切换:", self._smart_switch)
+        self._smart_switch = QCheckBox(s.LLM_SETTINGS_SMART_SWITCH)
+        form.addRow(s.LLM_SETTINGS_FORM_SMART_SWITCH, self._smart_switch)
 
         self._budget_spin = QSpinBox()
         self._budget_spin.setRange(1000, 10_000_000)
         self._budget_spin.setSingleStep(10000)
         self._budget_spin.setSuffix(" tokens")
-        form.addRow("Token 预算:", self._budget_spin)
+        form.addRow(s.LLM_SETTINGS_FORM_TOKEN_BUDGET, self._budget_spin)
 
         self._alert_spin = QSpinBox()
         self._alert_spin.setRange(10, 100)
         self._alert_spin.setSingleStep(10)
         self._alert_spin.setSuffix(" %")
-        form.addRow("告警阈值:", self._alert_spin)
+        form.addRow(s.LLM_SETTINGS_FORM_ALERT_THRESHOLD, self._alert_spin)
 
         root.addLayout(form)
 
@@ -221,13 +222,13 @@ class LLMSettingsDialog(QDialog):
         btn_row = QHBoxLayout()
         btn_row.addStretch()
 
-        self._save_btn = QPushButton("保存")
+        self._save_btn = QPushButton(s.LLM_SETTINGS_BTN_SAVE)
         self._save_btn.setObjectName("llmSaveBtn")
         self._save_btn.setDefault(True)
         self._save_btn.clicked.connect(self._on_save)
         btn_row.addWidget(self._save_btn)
 
-        self._cancel_btn = QPushButton("取消")
+        self._cancel_btn = QPushButton(s.LLM_SETTINGS_BTN_CANCEL)
         self._cancel_btn.setObjectName("llmCancelBtn")
         self._cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(self._cancel_btn)

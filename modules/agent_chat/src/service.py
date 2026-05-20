@@ -28,6 +28,7 @@ from .tools.executor import ToolExecutor
 from .tools.registry import ToolRegistry
 from .knowledge.report_index import ReportIndex
 from .workflow.tracker import WorkflowTracker
+from .strings_service import *
 
 logger = logging.getLogger(__name__)
 
@@ -92,13 +93,13 @@ class AgentService:
             self._provider = self._llm_manager.get_provider()  # type: ignore[union-attr]
             if self._provider:
                 return
-            logger.info("LLMManager 未配置 Provider，尝试本地初始化")
+            logger.info(ERR_LLM_MANAGER_NO_PROVIDER)
 
         provider = self._config.provider
         api_key = self._resolve_api_key(provider)
 
         if not api_key:
-            logger.warning("Provider '%s' 无可用 API Key", provider)
+            logger.warning(ERR_PROVIDER_NO_API_KEY_FMT, provider)
             return
 
         try:
@@ -110,7 +111,7 @@ class AgentService:
                 provider=provider,
             )
         except Exception as exc:
-            logger.error("Provider 初始化失败: %s", exc)
+            logger.error(ERR_PROVIDER_INIT_FAILED_FMT, exc)
 
     def _resolve_api_key(self, provider: str) -> str:
         """解析 API Key（优先 api_key → 分 provider 的 key）。"""
@@ -128,7 +129,7 @@ class AgentService:
             new_provider = self._llm_manager.get_provider()  # type: ignore[union-attr]
             if new_provider:
                 self._provider = new_provider
-                logger.info("Agent Provider 已切换至: %s", provider_name)
+                logger.info(LOG_AGENT_PROVIDER_SWITCHED_FMT, provider_name)
 
     @property
     def is_ready(self) -> bool:
@@ -160,7 +161,7 @@ class AgentService:
         self._tracker = WorkflowTracker()
 
         if not self._provider:
-            error_msg = "LLM Provider 未初始化，请检查 API Key 配置"
+            error_msg = ERR_PROVIDER_NOT_INIT
             if on_chunk:
                 on_chunk(StreamChunk(type=StreamChunkType.ERROR, data=error_msg))
             return LLMResponse(text=error_msg)
@@ -277,46 +278,38 @@ class AgentService:
         """构建系统提示词。"""
         parts = []
 
-        parts.append(
-            "你是 LV Game Toolkit 的 Agent 智能助手，专注于游戏性能分析。"
-            "请用简洁专业的中文回复用户。"
-        )
+        parts.append(SYS_PROMPT_IDENTITY_ZH)
 
         if self._config.language == "en":
-            parts[0] = (
-                "You are the Agent assistant of LV Game Toolkit, "
-                "specialized in game performance analysis. "
-                "Reply concisely and professionally in English."
-            )
+            parts[0] = SYS_PROMPT_IDENTITY_EN
 
         if self._tools:
             tool_list = ", ".join(t.name for t in self._tools)
-            parts.append(f"可用工具: {tool_list}")
+            parts.append(SYS_PROMPT_TOOLS_FMT.format(tool_list))
 
         if self._skills_manager:
             all_meta = self._skills_manager.get_all_metadata()
             if all_meta:
                 skill_summary = "\n".join(
-                    f"- {m.name}: {m.description} (tags: {', '.join(m.tags)})"
+                    SYS_PROMPT_SOP_SKILL_FMT.format(m.name, m.description, ", ".join(m.tags))
                     for m in all_meta
                 )
                 parts.append(
-                    "可用 Skills：\n" + skill_summary + "\n"
-                    "使用 skill_list / skill_load / skill_load_resource 工具获取详细知识。"
-                    "根据用户意图自主编排工具调用流程。"
+                    SYS_PROMPT_SKILLS_HEADER + skill_summary + "\n"
+                    + SYS_PROMPT_SKILLS_FOOTER
                 )
         elif self._sop_manager:
             sop_meta = self._sop_manager.get_all_metadata()
             if sop_meta:
                 sop_summary = "\n".join(
-                    f"- {s['name']}: {s['description']} "
-                    f"(关键词: {', '.join(s['keywords'])})"
+                    SYS_PROMPT_SOP_ENTRY_FMT.format(
+                        s["name"], s["description"], ", ".join(s["keywords"])
+                    )
                     for s in sop_meta
                 )
                 parts.append(
-                    "可用 SOP 工作流：\n" + sop_summary + "\n"
-                    "当用户意图匹配某 SOP 时，按 SOP 步骤引导用户完成任务。"
-                    "如无匹配 SOP，以自由对话 + 工具调用方式协助用户。"
+                    SYS_PROMPT_SOP_HEADER + sop_summary + "\n"
+                    + SYS_PROMPT_SOP_FOOTER
                 )
 
         report_ctx = self._report_index.get_context_text(top_n=5)
@@ -365,13 +358,13 @@ class AgentService:
         """核心对话循环：调用 LLM → 处理工具 → 递归。"""
         if loop_count >= _MAX_TOOL_LOOP:
             logger.warning("工具调用循环达到上限 (%d)", _MAX_TOOL_LOOP)
-            text = "工具调用次数已达上限，请检查任务是否合理。"
+            text = ERR_TOOL_LOOP_LIMIT_FMT
             if on_chunk:
                 on_chunk(StreamChunk(type=StreamChunkType.TEXT, data=text))
             return LLMResponse(text=text)
 
         if self._cancelled:
-            return LLMResponse(text="[已取消]")
+            return LLMResponse(text=CANCELLED_MARK)
 
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []
@@ -381,7 +374,7 @@ class AgentService:
         assert self._provider is not None
 
         if on_chunk:
-            hint = "正在思考..." if loop_count == 0 else "正在分析工具结果..."
+            hint = PROGRESS_THINKING_FIRST if loop_count == 0 else PROGRESS_THINKING_LOOP
             on_chunk(StreamChunk(type=StreamChunkType.THINKING, data=hint))
 
         async for chunk in self._provider.stream_chat(
@@ -390,7 +383,7 @@ class AgentService:
             system_prompt=system_prompt if loop_count == 0 else "",
         ):
             if self._cancelled:
-                return LLMResponse(text="".join(text_parts) + "\n[已取消]")
+                return LLMResponse(text="".join(text_parts) + CANCELLED_APPEND)
 
             if chunk.type == StreamChunkType.TEXT:
                 text_parts.append(str(chunk.data))
@@ -522,7 +515,7 @@ class AgentService:
             if self._cancelled:
                 results.append(ToolResult(
                     tool_call_id=tc.id,
-                    content="[已取消]",
+                    content=CANCELLED_MARK,
                     is_error=True,
                 ))
                 continue
@@ -530,7 +523,7 @@ class AgentService:
             result = await self._execute_single_tool(tc, on_chunk)
 
             if result.is_error and _TOOL_RETRY_COUNT > 0:
-                logger.info("工具 '%s' 失败，重试 1 次", tc.name)
+                logger.info(LOG_TOOL_RETRY_FMT, tc.name)
                 result = await self._execute_single_tool(tc, on_chunk)
 
             if self._tracker:
@@ -551,7 +544,7 @@ class AgentService:
         if not self._tool_executor:
             return ToolResult(
                 tool_call_id=tc.id,
-                content=f"工具 '{tc.name}' 无可用执行器",
+                content=ERR_TOOL_NO_EXECUTOR_FMT.format(tc.name),
                 is_error=True,
             )
 
@@ -561,10 +554,10 @@ class AgentService:
         try:
             result = await self._tool_executor.execute(tc)
         except Exception as exc:
-            logger.error("工具 '%s' 执行异常: %s", tc.name, exc)
+            logger.error(LOG_TOOL_EXEC_ERROR_FMT, tc.name, exc)
             result = ToolResult(
                 tool_call_id=tc.id,
-                content=f"工具执行异常: {exc}",
+                content=ERR_TOOL_EXEC_EXCEPTION_FMT.format(exc),
                 is_error=True,
             )
 
@@ -578,7 +571,7 @@ class AgentService:
         if len(result.content) > self._config.tool_result_max_length:
             result.content = (
                 result.content[: self._config.tool_result_max_length]
-                + "\n... [结果已截断]"
+                + TOOL_RESULT_TRUNCATED
             )
 
         if on_chunk:

@@ -18,6 +18,7 @@ from toolkit.core.perfdog import (
     report_to_plain_dict,
 )
 
+from . import strings_service as s
 from .models import AnalysisReport
 
 
@@ -27,7 +28,7 @@ class PerfdogInsightsService:
     def get_service_info(self) -> dict:
         return {
             "name": "perfdog_insights",
-            "display_name": "PerfDog分析",
+            "display_name": s.SERVICE_DISPLAY_NAME,
             "version": "0.1.0",
         }
 

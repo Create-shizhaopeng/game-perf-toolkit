@@ -11,6 +11,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from . import strings_service as ss
+
 logger = logging.getLogger(__name__)
 
 DEVICE_INFO_FILENAME = "device_info.json"
@@ -28,7 +30,7 @@ def resolve_device_info_json_path() -> Path:
 
 
 class DeviceProfile(BaseModel):
-    """设备档案记录"""
+    """Device profile record"""
 
     brand: str
     manufacturer: str
@@ -119,7 +121,7 @@ class ProfileManager:
     def add(self, profile: DeviceProfile) -> None:
         if self.exists(profile.brand, profile.manufacturer, profile.model):
             raise ValueError(
-                f"设备档案已存在: {profile.brand}/{profile.manufacturer}/{profile.model}"
+                ss.ERR_PROFILE_EXISTS_FMT.format(profile.brand, profile.manufacturer, profile.model)
             )
         self._profiles.append(profile)
         self.save()
@@ -132,19 +134,18 @@ class ProfileManager:
                 new_profile.brand, new_profile.manufacturer, new_profile.model
             ):
                 raise ValueError(
-                    f"设备档案已存在: "
-                    f"{new_profile.brand}/{new_profile.manufacturer}/{new_profile.model}"
+                    ss.ERR_PROFILE_EXISTS_FMT.format(new_profile.brand, new_profile.manufacturer, new_profile.model)
                 )
         idx = self._find_index(old_profile)
         if idx < 0:
-            raise ValueError("未找到要更新的档案")
+            raise ValueError(ss.ERR_PROFILE_NOT_FOUND_UPDATE)
         self._profiles[idx] = new_profile
         self.save()
 
     def delete(self, profile: DeviceProfile) -> None:
         idx = self._find_index(profile)
         if idx < 0:
-            raise ValueError("未找到要删除的档案")
+            raise ValueError(ss.ERR_PROFILE_NOT_FOUND_DELETE)
         self._profiles.pop(idx)
         self.save()
 

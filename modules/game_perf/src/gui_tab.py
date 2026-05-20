@@ -25,6 +25,7 @@ from toolkit.gui.toolkit_dialog import (
 
 from .models import GamePerfDocumentOrigin
 from .parser import GamePerfParser
+from . import strings_gui as sg
 
 
 class _BackgroundWorker(QThread):
@@ -50,7 +51,7 @@ class _BackgroundWorker(QThread):
 class GamePerfTab(BaseTab):
     """游戏性能配置工具的 Tab 页"""
 
-    tab_title = "性能配置"
+    tab_title = sg.TAB_TITLE
     tab_icon = "📊"
 
     def __init__(self, context: dict, parent=None):
@@ -126,10 +127,10 @@ class GamePerfTab(BaseTab):
         card_layout.setSpacing(4)
 
         header = QHBoxLayout()
-        title = QLabel("配置文件")
+        title = QLabel(sg.TITLE_CONFIG_FILE)
         title.setProperty("class", "sectionTitleBlue")
         header.addWidget(title)
-        hint = QLabel("选择或拖拽「文件名包含 gameperfconfig」的 .xml")
+        hint = QLabel(sg.HINT_DROP_FILE)
         hint.setObjectName("fieldHint")
         header.addWidget(hint)
         header.addStretch()
@@ -140,10 +141,10 @@ class GamePerfTab(BaseTab):
 
         row = QHBoxLayout()
         self._file_input = QLineEdit()
-        self._file_input.setPlaceholderText("gameperfconfig.xml 文件路径")
+        self._file_input.setPlaceholderText(sg.PLACEHOLDER_FILE_PATH)
         self._file_input.setFixedHeight(28)
         row.addWidget(self._file_input, 1)
-        self._browse_btn = QPushButton("浏览...")
+        self._browse_btn = QPushButton(sg.BTN_BROWSE)
         self._browse_btn.setFixedHeight(28)
         self._browse_btn.setFixedWidth(70)
         row.addWidget(self._browse_btn)
@@ -158,19 +159,19 @@ class GamePerfTab(BaseTab):
         row = QHBoxLayout()
         row.setSpacing(6)
 
-        row.addWidget(QLabel("游戏:"))
+        row.addWidget(QLabel(sg.LABEL_GAME))
         self._game_cbx = QComboBox()
         self._game_cbx.setMinimumWidth(120)
         self._game_cbx.setMaximumWidth(200)
         row.addWidget(self._game_cbx)
 
-        row.addWidget(QLabel("模式:"))
+        row.addWidget(QLabel(sg.LABEL_MODE))
         self._mode_cbx = QComboBox()
         self._mode_cbx.setMinimumWidth(100)
         self._mode_cbx.setMaximumWidth(160)
         row.addWidget(self._mode_cbx)
 
-        self._save_as_btn = QPushButton("另存为")
+        self._save_as_btn = QPushButton(sg.BTN_SAVE_AS)
         self._save_as_btn.setFixedHeight(28)
         self._save_as_btn.setEnabled(False)
         row.addWidget(self._save_as_btn)
@@ -191,17 +192,17 @@ class GamePerfTab(BaseTab):
         cl.setContentsMargins(8, 4, 8, 4)
         cl.setSpacing(2)
 
-        title = QLabel("频率配置表")
+        title = QLabel(sg.TITLE_FREQ_TABLE)
         title.setProperty("class", "sectionTitleBlue")
         cl.addWidget(title)
 
         self._config_table = QTableWidget()
         self._config_table.setColumnCount(11)
         self._config_table.setHorizontalHeaderLabels([
-            "温度等级", "触发温度(℃)",
-            "Gold下限", "Gold上限", "Gold索引",
-            "Prime下限", "Prime上限", "Prime索引",
-            "GPU下限", "GPU上限", "GPU索引",
+            sg.TABLE_HEADER_TEMP_LEVEL, sg.TABLE_HEADER_TRIGGER_TEMP,
+            sg.TABLE_HEADER_GOLD_LO, sg.TABLE_HEADER_GOLD_HI, sg.TABLE_HEADER_GOLD_IDX,
+            sg.TABLE_HEADER_PRIME_LO, sg.TABLE_HEADER_PRIME_HI, sg.TABLE_HEADER_PRIME_IDX,
+            sg.TABLE_HEADER_GPU_LO, sg.TABLE_HEADER_GPU_HI, sg.TABLE_HEADER_GPU_IDX,
         ])
         self._config_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._config_table.verticalHeader().setDefaultSectionSize(32)
@@ -218,7 +219,7 @@ class GamePerfTab(BaseTab):
         self._overall_layout.setContentsMargins(4, 4, 4, 4)
         self._overall_layout.setSpacing(8)
         self._overall_scroll.setWidget(self._overall_inner)
-        self._strategy_tabs.addTab(self._overall_scroll, "整体策略")
+        self._strategy_tabs.addTab(self._overall_scroll, sg.TAB_OVERALL_STRATEGY)
 
         self._mode_scroll = QScrollArea()
         self._mode_scroll.setWidgetResizable(True)
@@ -227,7 +228,7 @@ class GamePerfTab(BaseTab):
         self._mode_layout.setContentsMargins(4, 4, 4, 4)
         self._mode_layout.setSpacing(8)
         self._mode_scroll.setWidget(self._mode_inner)
-        self._strategy_tabs.addTab(self._mode_scroll, "性能模式策略")
+        self._strategy_tabs.addTab(self._mode_scroll, sg.TAB_MODE_STRATEGY)
 
         parent_layout.addWidget(self._strategy_tabs, 1)
 
@@ -241,10 +242,10 @@ class GamePerfTab(BaseTab):
         self._progress_label.setFixedWidth(36)
         self._progress_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         prog.addWidget(self._progress_label)
-        self._cancel_bg_btn = QPushButton("取消")
+        self._cancel_bg_btn = QPushButton(sg.BTN_CANCEL)
         self._cancel_bg_btn.setFixedWidth(52)
         self._cancel_bg_btn.setVisible(False)
-        self._cancel_bg_btn.setToolTip("取消正在进行的从设备拉取（各步骤间隙生效）")
+        self._cancel_bg_btn.setToolTip(sg.TOOLTIP_CANCEL_PULL)
         self._cancel_bg_btn.clicked.connect(self._on_cancel_background_pull)
         prog.addWidget(self._cancel_bg_btn)
         parent_layout.addLayout(prog)
@@ -252,13 +253,13 @@ class GamePerfTab(BaseTab):
     def _create_button_section(self, parent_layout: QVBoxLayout):
         row = QHBoxLayout()
         row.addStretch()
-        self._start_btn = QPushButton("▶ Start")
+        self._start_btn = QPushButton(sg.BTN_START)
         row.addWidget(self._start_btn)
         row.addStretch()
-        self._clear_btn = QPushButton("↺ 重置修改")
+        self._clear_btn = QPushButton(sg.BTN_CLEAR)
         row.addWidget(self._clear_btn)
         row.addStretch()
-        self._reset_btn = QPushButton("↺ Reset")
+        self._reset_btn = QPushButton(sg.BTN_RESET)
         row.addWidget(self._reset_btn)
         row.addStretch()
         parent_layout.addLayout(row)
@@ -283,7 +284,7 @@ class GamePerfTab(BaseTab):
 
     def _on_browse(self):
         path, _ = QFileDialog.getOpenFileName(
-            self.window(), "选择配置文件", "", "XML文件 (*.xml)"
+            self.window(), sg.DLG_TITLE_SELECT_CONFIG, "", sg.FILE_FILTER_XML
         )
         if path:
             self._file_input.setText(path)
@@ -310,7 +311,7 @@ class GamePerfTab(BaseTab):
                     self._load_file(path)
                     event.acceptProposedAction()
                     return
-        self._append_log("✗ 仅支持 gameperfconfig*.xml 文件", "#f44747")
+        self._append_log(sg.LOG_INVALID_FILE, "#f44747")
         event.ignore()
 
     def _load_file(
@@ -326,12 +327,12 @@ class GamePerfTab(BaseTab):
         try:
             self.parser = GamePerfParser(path)
         except Exception as e:
-            warning_dialog(self.window(), "解析失败", f"解析 XML 失败: {e}")
+            warning_dialog(self.window(), sg.DLG_TITLE_PARSE_FAILED, sg.MSG_PARSE_FAILED_FMT.format(e=e))
             return
 
         if not self.parser.freq_rows:
             self._update_policy_version_label()
-            warning_dialog(self.window(), "解析失败", "未解析到有效配置数据！")
+            warning_dialog(self.window(), sg.DLG_TITLE_PARSE_FAILED, sg.MSG_NO_VALID_DATA)
             return
 
         self._document_origin = document_origin
@@ -358,9 +359,9 @@ class GamePerfTab(BaseTab):
             return
         v = self.parser.get_game_opt_policy_version()
         if v:
-            self._policy_version_lbl.setText(f"策略版本: {v}")
+            self._policy_version_lbl.setText(sg.POLICY_VERSION_FMT.format(v=v))
         else:
-            self._policy_version_lbl.setText("策略版本: —")
+            self._policy_version_lbl.setText(sg.POLICY_VERSION_NONE)
 
     def _on_game_changed(self):
         if not self.parser:
@@ -452,10 +453,10 @@ class GamePerfTab(BaseTab):
         freqs = self._freq_list_for_cluster(cluster)
         if not freqs:
             self._config_table.setItem(
-                table_row, lo_col, QTableWidgetItem("—")
+                table_row, lo_col, QTableWidgetItem(sg.DASH)
             )
             self._config_table.setItem(
-                table_row, hi_col, QTableWidgetItem("—")
+                table_row, hi_col, QTableWidgetItem(sg.DASH)
             )
             for c in (lo_col, hi_col):
                 it = self._config_table.item(table_row, c)
@@ -636,11 +637,11 @@ class GamePerfTab(BaseTab):
             st.setProperty("class", "sectionTitleBlue")
             title_row.addWidget(st)
             title_row.addStretch()
-            add_btn = QPushButton("+ 添加")
+            add_btn = QPushButton(sg.BTN_ADD_ROW)
             add_btn.setFixedHeight(24)
             add_btn.clicked.connect(functools.partial(self._on_bindcore_add, item.element))
             title_row.addWidget(add_btn)
-            del_btn = QPushButton("× 删除整块")
+            del_btn = QPushButton(sg.BTN_DELETE_BLOCK)
             del_btn.setFixedHeight(24)
             del_btn.clicked.connect(functools.partial(self._on_remove_subtree, item.element))
             title_row.addWidget(del_btn)
@@ -654,10 +655,10 @@ class GamePerfTab(BaseTab):
         grid = QGridLayout()
         grid.setHorizontalSpacing(4)
         grid.setVerticalSpacing(2)
-        grid.addWidget(QLabel("Key"), 0, 0)
-        grid.addWidget(QLabel("Value"), 0, 1)
+        grid.addWidget(QLabel(sg.LABEL_KEY), 0, 0)
+        grid.addWidget(QLabel(sg.LABEL_VALUE), 0, 1)
         if is_bindcore:
-            grid.addWidget(QLabel("操作"), 0, 2)
+            grid.addWidget(QLabel(sg.LABEL_ACTION), 0, 2)
             grid.setColumnStretch(0, 2)
             grid.setColumnStretch(1, 3)
             grid.setColumnStretch(2, 0)
@@ -687,7 +688,7 @@ class GamePerfTab(BaseTab):
                     tid = id(target)
                     if tid not in seen_bindcore_children:
                         seen_bindcore_children.add(tid)
-                        del_btn = QPushButton("删此行")
+                        del_btn = QPushButton(sg.BTN_DELETE_ROW)
                         del_btn.setFixedHeight(26)
                         del_btn.clicked.connect(
                             functools.partial(self._on_bindcore_remove_row, target)
@@ -758,7 +759,7 @@ class GamePerfTab(BaseTab):
                 if t < 0 or t > 200:
                     raise ValueError
             except ValueError:
-                warning_dialog(self.window(), "格式错误", "触发温度请填写 0～200 的整数")
+                warning_dialog(self.window(), sg.DLG_TITLE_FORMAT_ERROR, sg.MSG_TEMP_RANGE)
                 self._refresh_table()
                 return
             self.parser.update_temperature(global_idx, str(t))
@@ -766,7 +767,7 @@ class GamePerfTab(BaseTab):
             self._refresh_table()
         elif col in (4, 7, 10):
             if "_" not in new_val:
-                warning_dialog(self.window(), "格式错误", "索引须为 start_end 格式（如 2_8）")
+                warning_dialog(self.window(), sg.DLG_TITLE_FORMAT_ERROR, sg.MSG_INDEX_FORMAT)
                 self._refresh_table()
                 return
             cluster = {4: "Gold", 7: "Prime", 10: "Gpu"}[col]
@@ -778,7 +779,7 @@ class GamePerfTab(BaseTab):
             cur_n = GamePerfParser.format_freq_index_str(cur_idx)
             new_n = GamePerfParser.format_freq_index_str(new_val)
             if new_n is None:
-                warning_dialog(self.window(), "格式错误", "索引须为 start_end 格式（如 2_8）")
+                warning_dialog(self.window(), sg.DLG_TITLE_FORMAT_ERROR, sg.MSG_INDEX_FORMAT)
                 self._refresh_table()
                 return
             if new_n == cur_n:
@@ -837,8 +838,8 @@ class GamePerfTab(BaseTab):
         if not self.parser:
             return
         ok = confirm_dialog(
-            self.window(), "确认删除", "确定删除该绑核子项？",
-            confirm_text="删除", danger=True,
+            self.window(), sg.DLG_TITLE_CONFIRM_DELETE, sg.MSG_CONFIRM_DELETE_BINDCORE,
+            confirm_text=sg.BTN_DELETE, danger=True,
         )
         if not ok:
             return
@@ -848,8 +849,8 @@ class GamePerfTab(BaseTab):
 
     def _on_remove_subtree(self, element):
         ok = confirm_dialog(
-            self.window(), "确认删除", "确定删除该节点及其所有子项？",
-            confirm_text="删除", danger=True,
+            self.window(), sg.DLG_TITLE_CONFIRM_DELETE, sg.MSG_CONFIRM_DELETE_SUBTREE,
+            confirm_text=sg.BTN_DELETE, danger=True,
         )
         if ok and self.parser:
             if self.parser.remove_subtree(element):
@@ -860,7 +861,7 @@ class GamePerfTab(BaseTab):
         if not self.parser:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self.window(), "另存为", "", "XML文件 (*.xml)"
+            self.window(), sg.DLG_TITLE_SAVE_AS, "", sg.FILE_FILTER_XML
         )
         if path and self.parser.save_as(path):
             info_dialog(self.window(), "保存成功", f"已保存到：\n{path}")
@@ -873,28 +874,28 @@ class GamePerfTab(BaseTab):
         """Start 前强制填写备注。确定返回非空字符串；取消返回 None。"""
         from toolkit.gui.toolkit_dialog import ToolkitDialog
 
-        dlg = ToolkitDialog("填写推送备注", self.window(), min_width=420)
-        lbl = QLabel("推送前必须填写备注，将写入推送记录。请简要说明本次变更目的：")
+        dlg = ToolkitDialog(sg.DLG_TITLE_PUSH_NOTES, self.window(), min_width=420)
+        lbl = QLabel(sg.MSG_PUSH_NOTES_HINT)
         lbl.setWordWrap(True)
         lbl.setObjectName("dlgMsgLabel")
         dlg.content_layout.addWidget(lbl)
 
         edit = QLineEdit()
         edit.setText(self._push_notes_cache)
-        edit.setPlaceholderText("必填，例如：修复 XX 游戏温控策略")
+        edit.setPlaceholderText(sg.PLACEHOLDER_NOTES)
         dlg.content_layout.addWidget(edit)
 
         from PyQt6.QtWidgets import QHBoxLayout as _HBox
         btn_row = _HBox()
         btn_row.addStretch()
 
-        btn_cancel = QPushButton("取消")
+        btn_cancel = QPushButton(sg.BTN_CANCEL)
         btn_cancel.setObjectName("secondaryBtn")
         btn_cancel.setFixedWidth(80)
         btn_cancel.clicked.connect(dlg.reject)
         btn_row.addWidget(btn_cancel)
 
-        ok_btn = QPushButton("确定")
+        ok_btn = QPushButton(sg.BTN_CONFIRM)
         ok_btn.setObjectName("primaryBtn")
         ok_btn.setFixedWidth(80)
         ok_btn.setEnabled(bool(edit.text().strip()))
@@ -908,7 +909,7 @@ class GamePerfTab(BaseTab):
             return None
         notes = edit.text().strip()
         if not notes:
-            warning_dialog(self.window(), "备注为空", "请填写非空备注后再推送。")
+            warning_dialog(self.window(), sg.DLG_TITLE_EMPTY_NOTES, sg.MSG_EMPTY_NOTES)
             return None
         self._push_notes_cache = notes
         return notes
@@ -921,7 +922,7 @@ class GamePerfTab(BaseTab):
             return
         filepath = self._file_input.text().strip()
         if not filepath:
-            warning_dialog(self.window(), "未选择文件", "请先选择要推送的配置文件")
+            warning_dialog(self.window(), sg.DLG_TITLE_NO_FILE, sg.MSG_NO_FILE_SELECTED)
             return
         if not os.path.isfile(filepath):
             warning_dialog(self.window(), "文件不存在", f"找不到文件:\n{filepath}")
@@ -965,7 +966,7 @@ class GamePerfTab(BaseTab):
                         if midx >= 0:
                             self._mode_cbx.setCurrentIndex(midx)
                             self._on_mode_changed()
-            self._append_log("↺ 已重置为文件原始内容（保持当前游戏/模式）", "#dcdcaa")
+            self._append_log(sg.LOG_RESET_CONTENTS, "#dcdcaa")
         else:
             self._game_cbx.clear()
             self._mode_cbx.clear()
@@ -996,7 +997,7 @@ class GamePerfTab(BaseTab):
     def _on_cancel_background_pull(self) -> None:
         if self._cancel_pull_event is not None:
             self._cancel_pull_event.set()
-            self._append_log("… 已请求取消拉取（等待当前步骤结束）", "#dcdcaa")
+            self._append_log(sg.LOG_CANCEL_PULL, "#dcdcaa")
 
     def _on_push_done(self, result):
         self._finish_background_pull_ui()
@@ -1010,7 +1011,7 @@ class GamePerfTab(BaseTab):
         self._set_progress(100)
         self._update_push_button_states(self._device_connected)
         if not isinstance(result, AutoDevicePullResult):
-            self._append_log("✗ 从设备载入失败：内部错误", "#f44747")
+            self._append_log(sg.LOG_PULL_INTERNAL_ERROR, "#f44747")
             return
         if not result.ok:
             if result.failure_kind == "cancelled":
@@ -1020,12 +1021,12 @@ class GamePerfTab(BaseTab):
             return
         path = result.local_path
         if not path or not os.path.isfile(path):
-            self._append_log("✗ 从设备载入失败：本地缓存文件不存在", "#f44747")
+            self._append_log(sg.LOG_PULL_CACHE_MISSING, "#f44747")
             return
         self._file_input.setText(path)
         self._load_file(path, document_origin=result.origin)
         if self.parser:
-            self._append_log("✓ 已从设备载入并显示配置", "#608b4e")
+            self._append_log(sg.LOG_PULL_SUCCESS, "#608b4e")
 
     def _on_push_error(self, exc):
         self._finish_background_pull_ui()
@@ -1081,9 +1082,9 @@ class GamePerfTab(BaseTab):
 
     def _update_origin_label(self) -> None:
         if self._document_origin == GamePerfDocumentOrigin.DEVICE:
-            self._origin_lbl.setText("来源：设备")
+            self._origin_lbl.setText(sg.ORIGIN_DEVICE)
         elif self._document_origin == GamePerfDocumentOrigin.LOCAL_FILE:
-            self._origin_lbl.setText("来源：本地文件")
+            self._origin_lbl.setText(sg.ORIGIN_LOCAL_FILE)
         else:
             self._origin_lbl.setText("")
 
@@ -1091,9 +1092,9 @@ class GamePerfTab(BaseTab):
         """用户确认放弃本地未保存修改并从设备载入。True 表示继续拉取。"""
         return confirm_dialog(
             self.window(),
-            "未保存的修改",
-            "当前配置有未保存的修改。是否放弃修改并从设备重新载入 gameperfconfig.xml？",
-            confirm_text="放弃并载入",
+            sg.DLG_TITLE_UNSAVED_CHANGES,
+            sg.MSG_DISCARD_CHANGES,
+            confirm_text=sg.DLG_CONFIRM_DISCARD,
             danger=True,
         )
 
@@ -1108,13 +1109,13 @@ class GamePerfTab(BaseTab):
             return
         if self._document_dirty:
             if not self._confirm_discard_local_for_device_pull():
-                self._append_log("[设备] 已取消自动载入（保留本地修改）", "#dcdcaa")
+                self._append_log(sg.LOG_DEVICE_PULL_CANCELLED, "#dcdcaa")
                 return
             self._document_dirty = False
 
         self._set_progress(0)
         self._append_log(
-            "[设备] 正在从 /system/etc/gameperfconfig.xml 拉取…", "#569cd6"
+            sg.LOG_DEVICE_PULLING, "#569cd6"
         )
         self._update_push_button_states(False)
 

@@ -10,7 +10,9 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-perfetto_app = typer.Typer(help="Perfetto 卡顿抓取")
+from .strings_cli import *
+
+perfetto_app = typer.Typer(help=CLI_HELP_ROOT)
 console = Console()
 
 _context: dict | None = None
@@ -19,14 +21,14 @@ _context: dict | None = None
 def _get_service():
     """获取已注册的 PerfettoCaptureService 实例。"""
     if _context is None or "pe_service" not in _context:
-        console.print("[red]错误: Perfetto 服务未初始化[/red]")
+        console.print(CONSOLE_ERR_SVC_INIT)
         raise typer.Exit(1)
     return _context["pe_service"]
 
 
 def _get_adb():
     if _context is None or "pe_adb" not in _context:
-        console.print("[red]错误: ADB 服务未初始化[/red]")
+        console.print(CONSOLE_ERR_ADB_INIT)
         raise typer.Exit(1)
     return _context["pe_adb"]
 
@@ -41,13 +43,13 @@ def info():
     console.print(f"[bold]{info_data['display_name']}[/bold] v{info_data['version']}")
     console.print()
 
-    table = Table(title="当前配置")
-    table.add_column("配置项", style="cyan")
-    table.add_column("值", style="green")
+    table = Table(title=TABLE_TITLE_CONFIG)
+    table.add_column(TABLE_COL_CONFIG, style="cyan")
+    table.add_column(TABLE_COL_VALUE, style="green")
     table.add_row("Duration", f"{cfg.duration_sec}s")
     table.add_row("Buffer", f"{cfg.buffer_size_kb} KB ({cfg.buffer_size_kb // 1024} MB)")
     table.add_row("Target Mode", cfg.target.mode)
-    table.add_row("Categories", f"{len(cfg.atrace_categories)} 项")
+    table.add_row("Categories", TABLE_ROW_CATEGORIES_FMT.format(len(cfg.atrace_categories)))
     table.add_row("Device Trace Dir", cfg.device_trace_dir)
     table.add_row("Output Dir", cfg.output_dir)
     console.print(table)
@@ -55,10 +57,10 @@ def info():
 
 @perfetto_app.command("start")
 def start(
-    serial: Optional[str] = typer.Option(None, "--serial", "-s", help="设备序列号"),
-    duration: Optional[int] = typer.Option(None, "--duration", "-t", help="保存窗口(秒)"),
-    buffer: Optional[int] = typer.Option(None, "--buffer", "-b", help="缓冲区大小(KB)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="输出目录"),
+    serial: Optional[str] = typer.Option(None, "--serial", "-s", help=CLI_OPT_SERIAL),
+    duration: Optional[int] = typer.Option(None, "--duration", "-t", help=CLI_OPT_DURATION),
+    buffer: Optional[int] = typer.Option(None, "--buffer", "-b", help=CLI_OPT_BUFFER),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help=CLI_OPT_OUTPUT),
 ):
     """启动一轮 Perfetto 抓取（非交互模式: start → save → export）"""
     svc = _get_service()
@@ -67,10 +69,10 @@ def start(
     if serial is None:
         devices = adb.get_connected_devices()
         if not devices:
-            console.print("[red]未检测到已连接设备[/red]")
+            console.print(CONSOLE_ERR_NO_DEVICE)
             raise typer.Exit(1)
         serial = devices[0]
-        console.print(f"自动选择设备: {serial}")
+        console.print(CONSOLE_AUTO_SELECT_DEVICE_FMT.format(serial))
 
     cfg = svc.config
     if duration is not None:
@@ -79,23 +81,23 @@ def start(
         cfg = cfg.model_copy(update={"buffer_size_kb": buffer})
     svc.config = cfg
 
-    console.print(f"[bold]设备:[/bold] {serial}")
-    console.print(f"[bold]配置:[/bold] duration={cfg.duration_sec}s, buffer={cfg.buffer_size_kb}KB")
+    console.print(CONSOLE_DEVICE_FMT.format(serial))
+    console.print(CONSOLE_CONFIG_FMT.format(cfg.duration_sec, cfg.buffer_size_kb))
 
     device_info = svc.get_device_info(serial)
     device_dir = svc.ensure_device_trace_dir(serial)
 
-    console.print("[bold green]▶ 开始抓取...[/bold green]")
+    console.print(CONSOLE_START_CAPTURE)
     session = svc.create_session(serial)
     svc.session_start_capture(serial, device_dir)
 
-    console.print(f"等待 {cfg.duration_sec} 秒...")
+    console.print(CONSOLE_WAIT_SEC_FMT.format(cfg.duration_sec))
     time.sleep(cfg.duration_sec)
 
-    console.print("[bold yellow]⏹ 保存 trace...[/bold yellow]")
+    console.print(CONSOLE_SAVE_TRACE)
     svc.session_save_trace(serial, device_dir, device_info)
 
-    console.print("[bold blue]■ 导出中...[/bold blue]")
+    console.print(CONSOLE_EXPORTING)
     exported = svc.session_stop_and_export(
         serial,
         on_progress=lambda msg: console.print(f"  {msg}"),
@@ -103,14 +105,14 @@ def start(
 
     console.print()
     if exported:
-        console.print("[bold green]✓ 导出完成:[/bold green]")
+        console.print(CONSOLE_EXPORT_DONE)
         for p in exported:
             console.print(f"  {p}")
     else:
-        console.print("[yellow]本次抓取未保存有效 trace[/yellow]")
+        console.print(CONSOLE_NO_VALID_TRACE)
 
 
-config_app = typer.Typer(help="配置管理")
+config_app = typer.Typer(help=CLI_HELP_CONFIG)
 perfetto_app.add_typer(config_app, name="config")
 
 
@@ -126,4 +128,4 @@ def config_reset():
     """重置为默认配置"""
     from .config_manager import reset_config
     cfg = reset_config()
-    console.print("[green]✓ 已重置为默认配置[/green]")
+    console.print(CONSOLE_CONFIG_RESET)

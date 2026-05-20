@@ -17,6 +17,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from toolkit.gui import strings as s
+
 
 class DialogCloseButton(QPushButton):
     """对话框关闭按钮 — Codicons 或 fallback 矢量 X。"""
@@ -127,8 +129,8 @@ def confirm_dialog(
     parent: QWidget,
     title: str,
     message: str,
-    confirm_text: str = "确认",
-    cancel_text: str = "取消",
+    confirm_text: str = s.DLG_BTN_CONFIRM,
+    cancel_text: str = s.DLG_BTN_CANCEL,
     danger: bool = False,
 ) -> bool:
     """显示统一风格的确认对话框。返回 True 表示用户点击了确认。"""
@@ -179,13 +181,13 @@ def input_dialog(
     btn_row = QHBoxLayout()
     btn_row.addStretch()
 
-    btn_cancel = QPushButton("取消")
+    btn_cancel = QPushButton(s.DLG_BTN_CANCEL)
     btn_cancel.setObjectName("secondaryBtn")
     btn_cancel.setFixedWidth(80)
     btn_cancel.clicked.connect(dlg.reject)
     btn_row.addWidget(btn_cancel)
 
-    btn_ok = QPushButton("确定")
+    btn_ok = QPushButton(s.DLG_BTN_OK)
     btn_ok.setObjectName("primaryBtn")
     btn_ok.setFixedWidth(80)
     btn_ok.clicked.connect(dlg.accept)
@@ -208,7 +210,7 @@ def warning_dialog(parent: QWidget, title: str, message: str) -> None:
 
     btn_row = QHBoxLayout()
     btn_row.addStretch()
-    btn_ok = QPushButton("确定")
+    btn_ok = QPushButton(s.DLG_BTN_OK)
     btn_ok.setObjectName("primaryBtn")
     btn_ok.setFixedWidth(80)
     btn_ok.clicked.connect(dlg.accept)

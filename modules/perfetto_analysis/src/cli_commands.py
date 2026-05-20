@@ -12,8 +12,10 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-analysis_app = typer.Typer(help="Perfetto 解析分析")
-config_app = typer.Typer(help="分析配置管理")
+from . import strings_cli as s
+
+analysis_app = typer.Typer(help=s.CLI_HELP_ROOT)
+config_app = typer.Typer(help=s.CLI_HELP_CONFIG)
 analysis_app.add_typer(config_app, name="config")
 console = Console()
 
@@ -35,7 +37,7 @@ def _progress_printer(msg: str) -> None:
 
 @analysis_app.command("info")
 def info(
-    as_json: Annotated[bool, typer.Option("--json", help="JSON 格式输出")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help=s.CLI_OPT_JSON)] = False,
 ) -> None:
     """显示模块信息与当前配置。"""
     svc = _get_service()
@@ -47,32 +49,32 @@ def info(
         console.print_json(json.dumps(data, ensure_ascii=False))
         return
 
-    table = Table(title="Perfetto 解析分析", show_header=False)
-    table.add_column("项目", style="cyan")
-    table.add_column("值")
+    table = Table(title=s.TABLE_TITLE_MODULE, show_header=False)
+    table.add_column(s.TABLE_COL_PROJECT, style="cyan")
+    table.add_column(s.TABLE_COL_VALUE)
     for k, v in info_data.items():
         table.add_row(k, str(v))
-    table.add_row("perfetto 可用", "✅" if svc.perfetto_available else "❌ 请安装 perfetto>=0.16.0")
-    table.add_row("输出目录", cfg.output_dir)
-    table.add_row("默认进程", cfg.default_process or "(未设置)")
-    table.add_row("分析 Top N", str(cfg.analyze_top))
+    table.add_row(s.TABLE_ROW_PERFETTO_AVAILABLE, s.PERFETTO_AVAILABLE_YES if svc.perfetto_available else s.PERFETTO_AVAILABLE_NO)
+    table.add_row(s.TABLE_ROW_OUTPUT_DIR, cfg.output_dir)
+    table.add_row(s.TABLE_ROW_DEFAULT_PROCESS, cfg.default_process or s.VALUE_NOT_SET)
+    table.add_row(s.TABLE_ROW_ANALYZE_TOP, str(cfg.analyze_top))
     console.print(table)
 
 
 @analysis_app.command("parse")
 def parse_cmd(
-    traces: Annotated[list[Path], typer.Argument(help="Trace 文件路径（支持多个）")],
-    process: Annotated[str, typer.Option("--process", "-p", help="目标进程/包名")] = "",
-    as_json: Annotated[bool, typer.Option("--json", help="JSON 格式输出")] = False,
+    traces: Annotated[list[Path], typer.Argument(help=s.CLI_OPT_TRACE_PATH)],
+    process: Annotated[str, typer.Option("--process", "-p", help=s.CLI_OPT_PROCESS)] = "",
+    as_json: Annotated[bool, typer.Option("--json", help=s.CLI_OPT_JSON)] = False,
 ) -> None:
     """仅执行 Phase 1 丢帧解析（不做 Phase 2 分析）。"""
     svc = _get_service()
     for trace_path in traces:
         if not trace_path.exists():
-            console.print(f"[red]文件不存在: {trace_path}[/red]")
+            console.print(s.CONSOLE_FILE_NOT_FOUND_FMT.format(trace_path))
             continue
 
-        console.print(f"\n[bold]解析: {trace_path.name}[/bold]")
+        console.print(s.CONSOLE_PARSE_FMT.format(trace_path.name))
         result = svc.parse_only(
             str(trace_path), process_name=process,
             on_progress=_progress_printer,
@@ -87,21 +89,21 @@ def parse_cmd(
             }, ensure_ascii=False))
         else:
             console.print(
-                f"  丢帧: [bold]{result.jank_times}[/bold] 次 | "
-                f"帧数: {result.frame_num} | "
-                f"刷新率: {result.refresh_rate_hz}Hz | "
-                f"耗时: {result.elapsed_seconds}s"
+                s.CONSOLE_PARSE_RESULT_FMT.format(
+                    result.jank_times, result.frame_num,
+                    result.refresh_rate_hz, result.elapsed_seconds,
+                )
             )
 
 
 @analysis_app.command("export")
 def export_cmd(
-    traces: Annotated[list[Path], typer.Argument(help="Trace 文件路径（支持多个）")],
-    process: Annotated[str, typer.Option("--process", "-p", help="目标进程/包名")] = "",
+    traces: Annotated[list[Path], typer.Argument(help=s.CLI_OPT_TRACE_PATH)],
+    process: Annotated[str, typer.Option("--process", "-p", help=s.CLI_OPT_PROCESS)] = "",
     output_dir: Annotated[Optional[str], typer.Option("--output-dir", "-o")] = None,
     app_type: Annotated[str, typer.Option("--app-type")] = "auto",
     analyze_top: Annotated[int, typer.Option("--analyze-top")] = 20,
-    as_json: Annotated[bool, typer.Option("--json", help="JSON 格式输出")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help=s.CLI_OPT_JSON)] = False,
 ) -> None:
     """完整分析：Phase 1 + Phase 2 + 导出报告。"""
     svc = _get_service()
@@ -115,10 +117,10 @@ def export_cmd(
 
     for trace_path in traces:
         if not trace_path.exists():
-            console.print(f"[red]文件不存在: {trace_path}[/red]")
+            console.print(s.CONSOLE_FILE_NOT_FOUND_FMT.format(trace_path))
             continue
 
-        console.print(f"\n[bold]完整分析: {trace_path.name}[/bold]")
+        console.print(s.CONSOLE_ANALYZE_FMT.format(trace_path.name))
         try:
             result = svc.analyze(
                 str(trace_path), process_name=process,
@@ -138,21 +140,22 @@ def export_cmd(
                 }, ensure_ascii=False))
             else:
                 console.print(
-                    f"  ✅ 完成 ({result.elapsed_seconds}s)\n"
-                    f"  报告: {result.report_path}"
+                    s.CONSOLE_ANALYZE_COMPLETE_FMT.format(
+                        result.elapsed_seconds, result.report_path,
+                    )
                 )
         except Exception as e:
-            console.print(f"  [red]失败: {e}[/red]")
+            console.print(s.CONSOLE_FAIL_FMT.format(e))
 
 
 @analysis_app.command("analyze")
 def analyze_cmd(
-    traces: Annotated[list[Path], typer.Argument(help="Trace 文件路径")],
-    dims: Annotated[Optional[list[str]], typer.Option("--dims", "-d", help="分析维度")] = None,
-    process: Annotated[str, typer.Option("--process", "-p", help="目标进程/包名")] = "",
-    fmt: Annotated[str, typer.Option("--format", "-f", help="输出格式 md/json")] = "md",
-    as_json: Annotated[bool, typer.Option("--json", help="JSON 输出到 stdout")] = False,
-    mode: Annotated[Optional[str], typer.Option("--mode", help="分析模式: mcp_preferred / engine_only / mcp_only")] = None,
+    traces: Annotated[list[Path], typer.Argument(help=s.CLI_OPT_TRACE_PATH)],
+    dims: Annotated[Optional[list[str]], typer.Option("--dims", "-d", help=s.CLI_OPT_DIMS)] = None,
+    process: Annotated[str, typer.Option("--process", "-p", help=s.CLI_OPT_PROCESS)] = "",
+    fmt: Annotated[str, typer.Option("--format", "-f", help=s.CLI_OPT_FORMAT)] = "md",
+    as_json: Annotated[bool, typer.Option("--json", help=s.CLI_OPT_JSON)] = False,
+    mode: Annotated[Optional[str], typer.Option("--mode", help=s.CLI_OPT_ANALYSIS_MODE)] = None,
 ) -> None:
     """按维度独立分析。"""
     svc = _get_service()
@@ -165,11 +168,11 @@ def analyze_cmd(
 
     for trace_path in traces:
         if not trace_path.exists():
-            console.print(f"[red]文件不存在: {trace_path}[/red]")
+            console.print(s.CONSOLE_FILE_NOT_FOUND_FMT.format(trace_path))
             continue
 
-        console.print(f"\n[bold]维度分析: {trace_path.name}[/bold]")
-        console.print(f"  维度: {', '.join(dims)}")
+        console.print(s.CONSOLE_DIM_ANALYZE_FMT.format(trace_path.name))
+        console.print(s.CONSOLE_DIMS_FMT.format(", ".join(dims)))
         try:
             result = svc.analyze_dimensions(
                 str(trace_path), process_name=process,
@@ -184,16 +187,17 @@ def analyze_cmd(
                 }, ensure_ascii=False))
             else:
                 console.print(
-                    f"  ✅ 完成 ({result.elapsed_seconds}s)\n"
-                    f"  报告目录: {result.report_dir}"
+                    s.CONSOLE_DIM_COMPLETE_FMT.format(
+                        result.elapsed_seconds, result.report_dir,
+                    )
                 )
         except Exception as e:
-            console.print(f"  [red]失败: {e}[/red]")
+            console.print(s.CONSOLE_FAIL_FMT.format(e))
 
 
 @config_app.command("show")
 def config_show(
-    as_json: Annotated[bool, typer.Option("--json", help="JSON 格式输出")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help=s.CLI_OPT_JSON)] = False,
 ) -> None:
     """显示当前分析模式配置。"""
     svc = _get_service()
@@ -202,23 +206,23 @@ def config_show(
         import json
         console.print(json.dumps(mode_info, ensure_ascii=False, indent=2))
     else:
-        console.print(f"[bold]分析模式:[/bold] {mode_info['analysis_mode']}")
-        console.print(f"[bold]MCP 超时:[/bold] {mode_info['mcp_timeout_ms']}ms")
+        console.print(s.CONSOLE_ANALYSIS_MODE_FMT.format(mode_info['analysis_mode']))
+        console.print(s.CONSOLE_MCP_TIMEOUT_FMT.format(mode_info['mcp_timeout_ms']))
         if mode_info['dimension_overrides']:
-            console.print("[bold]维度覆盖:[/bold]")
+            console.print(s.CONSOLE_DIMENSION_OVERRIDES)
             for dim, m in mode_info['dimension_overrides'].items():
                 console.print(f"  {dim}: {m}")
 
 
 @config_app.command("set")
 def config_set(
-    mode: Annotated[str, typer.Argument(help="分析模式: mcp_preferred / engine_only / mcp_only")],
+    mode: Annotated[str, typer.Argument(help=s.CLI_OPT_ANALYSIS_MODE)],
 ) -> None:
     """设置分析模式。"""
     svc = _get_service()
     try:
         svc.set_analysis_mode(mode)
-        console.print(f"[green]分析模式已设置为: {mode}[/green]")
+        console.print(s.CONSOLE_MODE_SET_FMT.format(mode))
     except ValueError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
@@ -226,7 +230,7 @@ def config_set(
 
 @analysis_app.command("dims")
 def dims_cmd(
-    as_json: Annotated[bool, typer.Option("--json", help="JSON 格式输出")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help=s.CLI_OPT_JSON)] = False,
 ) -> None:
     """列出可用分析维度。"""
     svc = _get_service()
@@ -243,7 +247,7 @@ def dims_cmd(
 @analysis_app.command("report")
 def report_cmd(
     output_dir: Annotated[Optional[str], typer.Option("--output-dir", "-o")] = None,
-    as_json: Annotated[bool, typer.Option("--json", help="JSON 格式输出")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help=s.CLI_OPT_JSON)] = False,
 ) -> None:
     """从已有 DB 导出 Markdown 报告（不重新分析）。"""
     svc = _get_service()
@@ -255,21 +259,21 @@ def report_cmd(
         if as_json:
             console.print_json(json.dumps({"success": result}, ensure_ascii=False))
         else:
-            console.print("✅ 导出完成" if result else "[red]导出失败[/red]")
+            console.print(s.CONSOLE_EXPORT_DONE if result else s.CONSOLE_EXPORT_FAIL)
     except Exception as e:
-        console.print(f"[red]导出失败: {e}[/red]")
+        console.print(s.CONSOLE_ERROR_FMT.format(f"导出失败: {e}"))
 
 
 @analysis_app.command("review-learnings")
 def review_learnings_cmd(
-    as_json: Annotated[bool, typer.Option("--json", help="JSON 格式输出")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help=s.CLI_OPT_JSON)] = False,
 ) -> None:
     """手动触发经验库整理（淘汰低价值 + LLM 晋升评审）。"""
     svc = _get_service()
     db = svc._db_manager
     conn = getattr(db, "conn", None) or getattr(db, "_conn", None)
     if conn is None:
-        console.print("[red]无法获取数据库连接[/red]")
+        console.print(s.CONSOLE_DB_CONN_FAIL)
         raise typer.Exit(1)
 
     from .agent.learnings_manager import (
@@ -280,7 +284,7 @@ def review_learnings_cmd(
     )
     from datetime import datetime
 
-    console.print("[bold]经验库整理[/bold]\n")
+    console.print(s.CONSOLE_LEARNINGS_TITLE)
 
     rows = conn.execute(
         "SELECT id, scene, root_cause_tags, insight, confidence, "
@@ -290,9 +294,9 @@ def review_learnings_cmd(
 
     if not rows:
         if as_json:
-            console.print_json(json.dumps({"message": "无经验记录"}, ensure_ascii=False))
+            console.print_json(json.dumps({"message": s.NO_LEARNINGS_RECORD}, ensure_ascii=False))
         else:
-            console.print("[dim]无候选条目[/dim]")
+            console.print(s.NO_CANDIDATE_ENTRIES)
         return
 
     now = datetime.now()
@@ -300,16 +304,16 @@ def review_learnings_cmd(
     scored.sort(key=lambda x: x[1], reverse=True)
 
     if not as_json:
-        table = Table(title=f"经验评分排名 (共 {len(scored)} 条)")
+        table = Table(title=s.TABLE_TITLE_LEARNINGS_RANK_FMT.format(len(scored)))
         table.add_column("ID", style="cyan")
-        table.add_column("场景")
-        table.add_column("标签", max_width=20)
-        table.add_column("置信度", justify="right")
-        table.add_column("命中", justify="right")
+        table.add_column(s.LEARNINGS_TABLE_COL_SCENE)
+        table.add_column(s.LEARNINGS_TABLE_COL_TAGS, max_width=20)
+        table.add_column(s.LEARNINGS_TABLE_COL_CONFIDENCE, justify="right")
+        table.add_column(s.LEARNINGS_TABLE_COL_HITS, justify="right")
         table.add_column("Score", justify="right")
-        table.add_column("状态")
+        table.add_column(s.LEARNINGS_TABLE_COL_STATUS)
         for r, score in scored[:30]:
-            status = "已验证" if r.get("promoted") else ("归档" if r.get("archived") else "活跃")
+            status = s.STATUS_VERIFIED if r.get("promoted") else (s.STATUS_ARCHIVED if r.get("archived") else s.STATUS_ACTIVE)
             table.add_row(
                 str(r["id"]), r.get("scene", ""),
                 (r.get("root_cause_tags", ""))[:20],
@@ -320,11 +324,11 @@ def review_learnings_cmd(
             )
         console.print(table)
 
-    console.print("\n[bold]执行淘汰...[/bold]")
+    console.print(s.CONSOLE_EVICT_TITLE)
     evict_result = evict_low_score_learnings(conn, now)
-    console.print(f"  淘汰: {evict_result['archived']} 条, 剩余: {evict_result['remaining']} 条")
+    console.print(s.CONSOLE_EVICT_RESULT_FMT.format(evict_result['archived'], evict_result['remaining']))
 
-    console.print("\n[bold]执行 LLM 晋升评审...[/bold]")
+    console.print(s.CONSOLE_PROMOTE_TITLE)
     try:
         from ..src.agent.orchestrator import AnalysisOrchestrator
         llm_mgr = getattr(svc, "_llm_manager", None)
@@ -332,10 +336,10 @@ def review_learnings_cmd(
             promote_result = asyncio.run(promote_learnings(conn, llm_mgr))
         else:
             promote_result = {"promoted": 0, "merged": 0, "archived": 0, "skipped": True}
-            console.print("  [dim]未配置 LLM，跳过晋升[/dim]")
+            console.print(s.CONSOLE_SKIP_PROMOTE)
     except Exception as exc:
         promote_result = {"promoted": 0, "merged": 0, "archived": 0, "error": str(exc)}
-        console.print(f"  [yellow]LLM 晋升失败: {exc}[/yellow]")
+        console.print(s.CONSOLE_PROMOTE_FAIL_FMT.format(exc))
 
     record_maintenance_telemetry(conn, "manual", evict_result, promote_result)
 
@@ -345,15 +349,15 @@ def review_learnings_cmd(
             "promote": promote_result,
         }, ensure_ascii=False))
     else:
-        console.print(f"\n[green]完成![/green]")
-        console.print(f"  晋升: {promote_result.get('promoted', 0)} 条")
-        console.print(f"  合并: {promote_result.get('merged', 0)} 条")
-        console.print(f"  归档: {promote_result.get('archived', 0)} 条")
+        console.print(s.CONSOLE_DONE)
+        console.print(s.CONSOLE_PROMOTED_FMT.format(promote_result.get('promoted', 0)))
+        console.print(s.CONSOLE_MERGED_FMT.format(promote_result.get('merged', 0)))
+        console.print(s.CONSOLE_ARCHIVED_FMT.format(promote_result.get('archived', 0)))
 
 
 @analysis_app.command("history")
 def history_cmd(
-    as_json: Annotated[bool, typer.Option("--json", help="JSON 格式输出")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help=s.CLI_OPT_JSON)] = False,
 ) -> None:
     """查看分析历史记录。"""
     svc = _get_service()
@@ -364,13 +368,13 @@ def history_cmd(
         return
 
     if not records:
-        console.print("[dim]暂无分析历史[/dim]")
+        console.print(s.NO_HISTORY)
         return
 
-    table = Table(title="分析历史")
-    table.add_column("Trace", max_width=40)
-    table.add_column("时间")
-    table.add_column("状态")
+    table = Table(title=s.TABLE_TITLE_HISTORY)
+    table.add_column(s.HISTORY_HEADER_TRACE, max_width=40)
+    table.add_column(s.HISTORY_TABLE_COL_TIME)
+    table.add_column(s.HISTORY_TABLE_COL_STATUS)
     for r in records:
         trace_name = Path(r.get("trace_path", "")).name or r.get("trace_id", "")
         parsed_at = r.get("parsed_at_ns", "")
@@ -378,5 +382,5 @@ def history_cmd(
             import datetime
             dt = datetime.datetime.fromtimestamp(parsed_at / 1e9)
             parsed_at = dt.strftime("%m-%d %H:%M")
-        table.add_row(str(trace_name), str(parsed_at), "✅")
+        table.add_row(str(trace_name), str(parsed_at), s.PERFETTO_AVAILABLE_YES)
     console.print(table)

@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 
 from toolkit.gui.base_tab import BaseTab
 from toolkit.gui.theme_colors import THEMES as _THEME_COLORS
+from toolkit.gui import strings as s
 
 
 class StatusCard(QFrame):
@@ -65,7 +66,7 @@ class StatusCard(QFrame):
 class HomeTab(BaseTab):
     """首页 — 显示系统状态总览"""
 
-    tab_title = "首页"
+    tab_title = s.HOME_TAB_TITLE
     tab_icon = "🏠"
 
     def __init__(self, context: dict | None = None, parent: QWidget | None = None) -> None:
@@ -85,11 +86,11 @@ class HomeTab(BaseTab):
         content_layout.setContentsMargins(24, 20, 24, 20)
         content_layout.setSpacing(20)
 
-        self._welcome = QLabel("欢迎使用 Game Toolkit")
+        self._welcome = QLabel(s.HOME_WELCOME)
         self._welcome.setObjectName("homeWelcome")
         content_layout.addWidget(self._welcome)
 
-        self._subtitle = QLabel("游戏开发测试工具集 — 集成设备管理、性能分析、日志分析等能力")
+        self._subtitle = QLabel(s.HOME_SUBTITLE)
         self._subtitle.setObjectName("homeSubtitle")
         content_layout.addWidget(self._subtitle)
 
@@ -100,16 +101,16 @@ class HomeTab(BaseTab):
         cards_layout = QGridLayout()
         cards_layout.setSpacing(12)
 
-        self._device_card = StatusCard("设备状态", "未连接", "#f38ba8")
+        self._device_card = StatusCard(s.HOME_CARD_DEVICE, s.HOME_STATUS_DISCONNECTED, "#f38ba8")
         cards_layout.addWidget(self._device_card, 0, 0)
 
-        self._module_card = StatusCard("已加载模块", "0", "#a6e3a1")
+        self._module_card = StatusCard(s.HOME_CARD_MODULES, "0", "#a6e3a1")
         cards_layout.addWidget(self._module_card, 0, 1)
 
-        self._db_card = StatusCard("数据库", "就绪", "#89b4fa")
+        self._db_card = StatusCard(s.HOME_CARD_DATABASE, s.HOME_STATUS_READY, "#89b4fa")
         cards_layout.addWidget(self._db_card, 0, 2)
 
-        self._theme_card = StatusCard("当前主题", "暗色", "#fab387")
+        self._theme_card = StatusCard(s.HOME_CARD_THEME, s.HOME_STATUS_DARK, "#fab387")
         cards_layout.addWidget(self._theme_card, 0, 3)
 
         cards_wrapper = QHBoxLayout()
@@ -117,7 +118,7 @@ class HomeTab(BaseTab):
         cards_wrapper.addStretch()
         content_layout.addLayout(cards_wrapper)
 
-        self._modules_title = QLabel("已加载模块")
+        self._modules_title = QLabel(s.HOME_MODULES_TITLE)
         self._modules_title.setObjectName("homeModulesTitle")
         content_layout.addWidget(self._modules_title)
 
@@ -125,7 +126,7 @@ class HomeTab(BaseTab):
         self._modules_container.setSpacing(6)
         content_layout.addLayout(self._modules_container)
 
-        self._no_modules_label = QLabel("暂无已加载模块")
+        self._no_modules_label = QLabel(s.HOME_NO_MODULES)
         self._no_modules_label.setObjectName("noModulesHint")
         self._modules_container.addWidget(self._no_modules_label)
 
@@ -142,14 +143,14 @@ class HomeTab(BaseTab):
     ) -> None:
         """更新首页状态卡片。"""
         if not devices:
-            self._device_card.set_value("未连接")
+            self._device_card.set_value(s.HOME_STATUS_DISCONNECTED)
         elif len(devices) == 1:
             self._device_card.set_value(devices[0])
         else:
-            self._device_card.set_value(f"{len(devices)} 台")
+            self._device_card.set_value(s.HOME_DEVICE_COUNT_FMT.format(count=len(devices)))
 
         self._module_card.set_value(str(module_count))
-        self._theme_card.set_value("暗色" if theme == "dark" else "亮色")
+        self._theme_card.set_value(s.HOME_STATUS_DARK if theme == "dark" else s.HOME_STATUS_LIGHT)
 
     def set_theme(self, theme: str) -> None:
         """切换主题 — 全局 QSS 处理大部分样式，此处只更新动态组件。"""

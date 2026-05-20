@@ -25,6 +25,8 @@ from PyQt6.QtWidgets import (
 
 from toolkit.gui.toolkit_dialog import warning_dialog
 
+from .strings_gui import *
+
 
 class _FlowWidget(QWidget):
     """自动换行的流式容器，根据自身宽度动态调整子控件列数和高度。"""
@@ -101,7 +103,7 @@ class _CaptureWorker(QThread):
                 device_dir = self._svc.ensure_device_trace_dir(self._serial)
                 self._svc.create_session(self._serial)
                 self._svc.session_start_capture(self._serial, device_dir)
-                self.progress.emit("▶ 抓取已开始")
+                self.progress.emit(WORKER_CAPTURE_STARTED)
                 self.started_ok.emit()
 
             elif self._action == "save":
@@ -109,7 +111,7 @@ class _CaptureWorker(QThread):
                 device_dir = self._kwargs["device_dir"]
                 self._svc.session_save_trace(self._serial, device_dir, device_info)
                 count = len(self._svc.session.saved_traces) if self._svc.session else 0
-                self.progress.emit(f"💾 已保存第 {count} 段 trace")
+                self.progress.emit(WORKER_SAVED_FMT.format(count))
                 self.save_ok.emit(count)
 
             elif self._action == "stop":
@@ -129,7 +131,7 @@ class _CaptureWorker(QThread):
                         self._serial,
                         on_progress=lambda msg: self.progress.emit(msg),
                     )
-                self.progress.emit(f"■ 会话结束，已导出 {len(exported)} 个文件")
+                self.progress.emit(WORKER_EXPORTED_FMT.format(len(exported)))
                 self.export_ok.emit([str(p) for p in exported])
 
             elif self._action == "reconnect":
@@ -142,7 +144,7 @@ class _CaptureWorker(QThread):
                     session.running = None
                 device_dir = self._svc.ensure_device_trace_dir(self._serial)
                 self._svc.session_start_capture(self._serial, device_dir)
-                self.progress.emit("▶ 抓取已恢复")
+                self.progress.emit(WORKER_CAPTURE_RESUMED)
                 self.started_ok.emit()
 
         except Exception as e:
@@ -150,7 +152,7 @@ class _CaptureWorker(QThread):
 
 
 class PerfettoCaptureTab(BaseTab):
-    tab_title = "Perfetto 抓取"
+    tab_title = TAB_TITLE
     tab_icon = "🔍"
 
     def __init__(self, context: dict | None = None, parent: QWidget | None = None) -> None:
@@ -188,7 +190,7 @@ class PerfettoCaptureTab(BaseTab):
         scroll_layout.setSpacing(8)
 
         # ── 配置面板：Duration | Buffer | 导入  同一行 ──
-        config_group = QGroupBox("⚙ 抓取配置")
+        config_group = QGroupBox(GROUP_CAPTURE_CONFIG)
         config_vbox = QVBoxLayout()
         config_vbox.setSpacing(6)
 
@@ -200,7 +202,7 @@ class PerfettoCaptureTab(BaseTab):
         self._spin_duration.setValue(15)
         self._spin_duration.setFixedSize(spin_width, ctrl_height)
         config_row.addWidget(self._spin_duration)
-        config_row.addWidget(QLabel("秒"))
+        config_row.addWidget(QLabel(LABEL_SECONDS))
         config_row.addSpacing(12)
         config_row.addWidget(QLabel("Buffer"))
         self._spin_buffer = QSpinBox()
@@ -210,11 +212,11 @@ class PerfettoCaptureTab(BaseTab):
         self._spin_buffer.setEnabled(False)
         self._spin_buffer.setReadOnly(True)
         config_row.addWidget(self._spin_buffer)
-        config_row.addWidget(QLabel("KB"))
+        config_row.addWidget(QLabel(LABEL_KB))
         config_row.addSpacing(12)
-        self._btn_import_config = QPushButton("📂 导入配置")
+        self._btn_import_config = QPushButton(BTN_IMPORT_CONFIG)
         self._btn_import_config.setFixedSize(btn_width, ctrl_height)
-        self._btn_import_config.setToolTip("选择 JSON 配置文件导入")
+        self._btn_import_config.setToolTip(TOOLTIP_IMPORT_CONFIG)
         self._btn_import_config.clicked.connect(self._on_import_config)
         config_row.addWidget(self._btn_import_config)
         config_row.addStretch()
@@ -223,10 +225,10 @@ class PerfettoCaptureTab(BaseTab):
         self._spin_duration.valueChanged.connect(self._update_auto_buffer)
 
         chk_row = QHBoxLayout()
-        self._chk_manual_buffer = QCheckBox("手动设置 Buffer")
+        self._chk_manual_buffer = QCheckBox(CHECK_MANUAL_BUFFER)
         self._chk_manual_buffer.toggled.connect(self._on_manual_buffer_toggled)
-        self._chk_ftrace = QCheckBox("启用 Ftrace 自定义")
-        self._chk_jank = QCheckBox("启用 Jank 检测")
+        self._chk_ftrace = QCheckBox(CHECK_FTRACE_CUSTOM)
+        self._chk_jank = QCheckBox(CHECK_JANK_MONITOR)
         self._chk_jank.toggled.connect(self._on_jank_toggled)
         chk_row.addWidget(self._chk_manual_buffer)
         chk_row.addWidget(self._chk_ftrace)
@@ -238,7 +240,7 @@ class PerfettoCaptureTab(BaseTab):
         scroll_layout.addWidget(config_group)
 
         # ── Categories 面板（FlowWidget 自适应列数） ──
-        cat_group = QGroupBox("📦 Atrace Categories")
+        cat_group = QGroupBox(GROUP_ATRACE_CATEGORIES)
         cat_group_layout = QVBoxLayout(cat_group)
         cat_group_layout.setContentsMargins(8, 4, 8, 4)
         cat_inner = _FlowWidget(h_spacing=8, v_spacing=4)
@@ -259,7 +261,7 @@ class PerfettoCaptureTab(BaseTab):
         scroll_layout.addWidget(cat_group)
 
         # ── Ftrace Events 面板（默认隐藏） ──
-        self._ftrace_group = QGroupBox("🔧 Ftrace Events")
+        self._ftrace_group = QGroupBox(GROUP_FTRACE_EVENTS)
         ftrace_group_layout = QVBoxLayout(self._ftrace_group)
         ftrace_group_layout.setContentsMargins(8, 4, 8, 4)
         self._ftrace_inner = _FlowWidget(h_spacing=8, v_spacing=4)
@@ -278,7 +280,7 @@ class PerfettoCaptureTab(BaseTab):
         scroll_layout.addWidget(self._ftrace_group)
 
         # ── Jank 监控面板（默认隐藏）：左配置 + 右曲线 ──
-        self._jank_group = QGroupBox("📊 Jank 监控")
+        self._jank_group = QGroupBox(GROUP_JANK_MONITOR)
         jank_outer = QHBoxLayout(self._jank_group)
         jank_outer.setContentsMargins(4, 4, 4, 4)
         jank_outer.setSpacing(4)
@@ -315,13 +317,13 @@ class PerfettoCaptureTab(BaseTab):
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(4)
 
-        status_group = QGroupBox("📊 会话状态")
+        status_group = QGroupBox(GROUP_SESSION_STATUS)
         status_row = QHBoxLayout()
         status_row.setSpacing(16)
-        self._lbl_status = QLabel("🟢 就绪")
-        self._lbl_saved = QLabel("已保存: 0 段")
-        self._lbl_timer = QLabel("时长: --:--")
-        self._lbl_device = QLabel("设备: --")
+        self._lbl_status = QLabel(LABEL_STATUS_READY_EMOJI)
+        self._lbl_saved = QLabel(LABEL_SAVED_DEFAULT_FMT)
+        self._lbl_timer = QLabel(LABEL_TIMER_DEFAULT_FMT)
+        self._lbl_device = QLabel(LABEL_DEVICE_DEFAULT)
         status_row.addWidget(self._lbl_status)
         status_row.addWidget(self._lbl_saved)
         status_row.addWidget(self._lbl_timer)
@@ -331,14 +333,14 @@ class PerfettoCaptureTab(BaseTab):
 
         btn_layout = QHBoxLayout()
         action_btn_w = 100
-        self._btn_start = QPushButton("▶ 开始")
+        self._btn_start = QPushButton(BTN_START)
         self._btn_start.setFixedWidth(action_btn_w)
-        self._btn_save = QPushButton("💾 保存")
+        self._btn_save = QPushButton(BTN_SAVE)
         self._btn_save.setFixedWidth(action_btn_w)
-        self._btn_stop = QPushButton("⏹ 停止")
+        self._btn_stop = QPushButton(BTN_STOP)
         self._btn_stop.setFixedWidth(action_btn_w)
         self._btn_stop.setObjectName("stopBtn")
-        self._btn_abandon = QPushButton("❌ 放弃会话")
+        self._btn_abandon = QPushButton(BTN_ABANDON)
         self._btn_abandon.setFixedWidth(action_btn_w)
         self._btn_abandon.setObjectName("stopBtn")
         self._btn_abandon.setVisible(False)
@@ -375,8 +377,8 @@ class PerfettoCaptureTab(BaseTab):
     def history_widgets(self) -> list[tuple[str, QWidget]]:
         """返回抓取历史和分析历史两个 Tab。"""
         return [
-            ("抓取历史", self._history_container),
-            ("分析历史", self._analysis_container),
+            (TAB_HISTORY_CAPTURE, self._history_container),
+            (TAB_HISTORY_ANALYSIS, self._analysis_container),
         ]
 
     def _ensure_history_panel(self) -> None:
@@ -474,16 +476,16 @@ class PerfettoCaptureTab(BaseTab):
                 show_right()
             bus.emit(HISTORY_SEND_TO_AGENT_EVENT, **payload)
             self._log(
-                f"已发送到 Agent: {payload.get('file_name', '')}",
+                LOG_SENT_TO_AGENT_FMT.format(payload.get('file_name', '')),
                 "success",
             )
         except Exception as exc:
-            self._log(f"发送到 Agent 失败: {exc}", "error")
+            self._log(LOG_SEND_AGENT_FAIL_FMT.format(exc), "error")
 
     def _refresh_history(self) -> None:
         """刷新历史记录和分析历史。"""
         if not self._history_service:
-            logger.warning("_refresh_history: history_service 未初始化")
+            logger.warning("_refresh_history: " + LOG_SVC_NOT_INIT_HISTORY_2)
             return
 
         sessions = self._history_service.scan_sessions()
@@ -506,10 +508,10 @@ class PerfettoCaptureTab(BaseTab):
 
         deleted = self._history_service.cleanup_expired()
         if deleted > 0:
-            self._log(f"已清理 {deleted} 个过期会话", "success")
+            self._log(LOG_CLEANUP_FMT.format(deleted), "success")
             self._refresh_history()
         else:
-            self._log("没有需要清理的过期会话", "info")
+            self._log(LOG_NO_EXPIRED_SESSIONS, "info")
 
     def _open_history_directory(self, path: Path) -> None:
         """打开历史目录。"""
@@ -524,12 +526,12 @@ class PerfettoCaptureTab(BaseTab):
         elif path.is_dir():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
         else:
-            self._log(f"路径不存在: {path}", "error")
+            self._log(LOG_PATH_NOT_FOUND_FMT.format(path), "error")
 
     def _on_trace_file_dropped(self, file_path: Path) -> None:
         """处理拖入的 trace 文件——移动到 user_traces 并刷新。"""
         if not self._history_service:
-            self._log("历史服务未就绪", "error")
+            self._log(LOG_SVC_NOT_INIT_HISTORY, "error")
             return
 
         try:
@@ -541,14 +543,14 @@ class PerfettoCaptureTab(BaseTab):
 
             dest = user_dir / file_path.name
             if dest.exists():
-                self._log(f"文件已存在: {dest.name}", "warning")
+                self._log(LOG_FILE_EXISTS_FMT.format(dest.name), "warning")
                 return
 
             shutil.copy2(str(file_path), str(dest))
-            self._log(f"已导入: {dest.name}", "success")
+            self._log(LOG_IMPORTED_FMT.format(dest.name), "success")
             self._refresh_history()
         except Exception as e:
-            self._log(f"导入失败: {e}", "error")
+            self._log(LOG_IMPORT_FAIL_FMT.format(e), "error")
 
     def _on_trace_selection_changed(self) -> None:
         """trace 选中变化时更新 AI 对话区域。"""
@@ -563,17 +565,17 @@ class PerfettoCaptureTab(BaseTab):
             if hasattr(self, "_analysis_worker") and self._analysis_worker:
                 self._analysis_worker.request_abort()
                 self._analysis_chat.set_analyzing(False)
-            self._log("取消分析请求", "info")
+            self._log(CANCEL_ANALYSIS_REQUEST, "info")
             return
 
         trace_paths = [t.get("path") for t in traces if t.get("type") == "trace"]
         if not trace_paths:
-            self._analysis_chat.append_message("system", "请先在左侧选择 trace 文件")
+            self._analysis_chat.append_message("system", CHAT_SELECT_TRACE_FIRST)
             return
 
         orchestrator = self.context.get("pa_orchestrator") if self.context else None
         if not orchestrator:
-            self._analysis_chat.append_message("system", "分析引擎未就绪，请确认 perfetto_analysis 模块已加载")
+            self._analysis_chat.append_message("system", CHAT_ENGINE_NOT_READY)
             return
 
         from .analysis_chat import AnalysisWorker
@@ -603,7 +605,7 @@ class PerfettoCaptureTab(BaseTab):
         self._analysis_chat.append_message(role, content)
 
     def _on_analysis_status(self, task_id: str, status: str, detail: str) -> None:
-        self._log(f"分析状态: {status} — {detail}", "info")
+        self._log(LOG_ANALYSIS_STATUS_FMT.format(status, detail), "info")
 
     def _on_analysis_finished(self, html_path: str) -> None:
         if html_path:
@@ -611,11 +613,11 @@ class PerfettoCaptureTab(BaseTab):
             from PyQt6.QtGui import QDesktopServices
 
             QDesktopServices.openUrl(QUrl.fromLocalFile(html_path))
-            self._analysis_chat.append_message("system", f"📄 报告已生成并打开: {Path(html_path).name}")
+            self._analysis_chat.append_message("system", CHAT_REPORT_OPENED_FMT.format(Path(html_path).name))
 
             self._save_analysis_record(html_path, "COMPLETED")
         else:
-            self._analysis_chat.append_message("system", "分析完成，但未生成报告")
+            self._analysis_chat.append_message("system", CHAT_ANALYSIS_COMPLETE)
         self._refresh_history()
 
     def _save_analysis_record(self, html_path: str, status: str) -> None:
@@ -653,10 +655,10 @@ class PerfettoCaptureTab(BaseTab):
             if trace_path:
                 storage.update_trace_analysis_status(trace_path, status, task_id)
         except Exception as e:
-            logger.warning("保存分析记录失败: %s", e)
+            logger.warning(LOG_SAVE_RECORD_FAIL_FMT.format(e))
 
     def _on_analysis_error(self, error: str) -> None:
-        self._analysis_chat.append_message("system", f"❌ 分析失败: {error}")
+        self._analysis_chat.append_message("system", CHAT_ANALYSIS_FAILED_FMT.format(error))
 
     def _open_analysis_report(self, html_path: str) -> None:
         """打开分析报告 HTML。"""
@@ -666,12 +668,12 @@ class PerfettoCaptureTab(BaseTab):
         if Path(html_path).exists():
             QDesktopServices.openUrl(QUrl.fromLocalFile(html_path))
         else:
-            self._log(f"报告文件不存在: {html_path}", "error")
+            self._log(LOG_FILE_NOT_EXISTS_FMT.format(html_path), "error")
 
     def _analyze_history_trace(self, trace_path: Path) -> None:
         """分析历史 trace。"""
         if not trace_path.exists():
-            self._log(f"文件不存在: {trace_path}", "error")
+            self._log(LOG_FILE_NOT_FOUND_FMT.format(trace_path), "error")
             self._refresh_history()
             return
 
@@ -680,19 +682,19 @@ class PerfettoCaptureTab(BaseTab):
             from toolkit.core.event_bus import get_event_bus
             bus = get_event_bus()
             bus.emit("perfetto_capture.open_trace_for_analysis", {"trace_path": str(trace_path)})
-            self._log(f"已请求分析: {trace_path.name}", "info")
+            self._log(LOG_REQUEST_ANALYSIS_FMT.format(trace_path.name), "info")
             self._on_history_close()
         except Exception as e:
-            self._log(f"发送分析请求失败: {e}", "error")
+            self._log(LOG_SEND_ANALYSIS_FAIL_FMT.format(e), "error")
 
     def _delete_history_session(self, session_id: str) -> None:
         """删除历史会话（确认已在 history_panel 中完成）。"""
         if not self._history_service:
             return
         if self._history_service.delete_session(session_id):
-            self._log(f"已删除会话: {session_id}", "success")
+            self._log(LOG_SESSION_DELETED_FMT.format(session_id), "success")
         else:
-            self._log(f"删除会话失败: {session_id}", "error")
+            self._log(LOG_SESSION_DELETE_FAIL_FMT.format(session_id), "error")
         self._refresh_history()
 
     def _delete_history_trace(self, trace_path: Path) -> None:
@@ -700,9 +702,9 @@ class PerfettoCaptureTab(BaseTab):
         if not self._history_service:
             return
         if self._history_service.delete_trace(trace_path):
-            self._log(f"已删除: {trace_path.name}", "success")
+            self._log(LOG_TRACE_DELETED_FMT.format(trace_path.name), "success")
         else:
-            self._log(f"删除失败: {trace_path.name}", "error")
+            self._log(LOG_TRACE_DELETE_FAIL_FMT.format(trace_path.name), "error")
         self._refresh_history()
 
     def _delete_analysis_task(self, task_id: str) -> None:
@@ -712,12 +714,12 @@ class PerfettoCaptureTab(BaseTab):
         try:
             storage = self._history_service.storage
             if storage.delete_analysis_task(task_id):
-                self._log("已删除分析记录", "success")
+                self._log(LOG_ANALYSIS_RECORD_DELETED, "success")
             else:
-                self._log("删除分析记录失败", "error")
+                self._log(LOG_ANALYSIS_RECORD_DELETE_FAIL, "error")
             self._refresh_history()
         except Exception as e:
-            self._log(f"删除分析记录失败: {e}", "error")
+            self._log(LOG_ANALYSIS_RECORD_DELETE_FAIL_FMT.format(e), "error")
 
     def _log(self, msg: str, level: str = "info") -> None:
         """兼容旧接口的位置参数 level 调用。"""
@@ -756,18 +758,18 @@ class PerfettoCaptureTab(BaseTab):
                 self._on_device_reconnected()
             elif not self._capturing:
                 self._btn_start.setEnabled(True)
-                self._lbl_status.setText("🟢 就绪")
+                self._lbl_status.setText(LABEL_STATUS_READY_EMOJI)
         else:
             old_serial = self._serial
             self._serial = None
             self._device_info = None
-            self._lbl_device.setText("设备: --")
+            self._lbl_device.setText(LABEL_DEVICE_DEFAULT)
 
             if self._capturing and not self._waiting_reconnect:
                 self._on_device_disconnected()
             elif not self._capturing:
                 self._btn_start.setEnabled(False)
-                self._lbl_status.setText("🔴 设备断开")
+                self._lbl_status.setText(LABEL_STATUS_DEVICE_DISCONNECTED)
 
     def _try_fetch_device_info(self) -> None:
         """尝试获取设备信息；service 未就绪或 ADB 失败时使用 fallback。"""
@@ -778,28 +780,28 @@ class PerfettoCaptureTab(BaseTab):
         if self._service:
             try:
                 info = self._service.get_device_info(self._serial)
-                self._lbl_device.setText(f"设备: {info.model} ({self._serial})")
+                self._lbl_device.setText(LABEL_DEVICE + ": " + f"{info.model} ({self._serial})")
                 self._device_info = info
                 return
             except Exception:
-                self._log("⚠ 无法读取设备详细信息，已使用默认值", "warning")
+                self._log(LOG_CANNOT_READ_DEVICE, "warning")
 
         self._device_info = DeviceInfo(
             serial=self._serial, model="unknown", soc="unknown",
         )
-        self._lbl_device.setText(f"设备: {self._serial}")
+        self._lbl_device.setText(f"{LABEL_DEVICE}: {self._serial}")
 
     def _on_import_config(self) -> None:
         """弹出文件选择对话框，默认指向当前模块配置目录，导入用户选择的 JSON 配置。"""
         if not self._service:
-            self._log("✗ 服务未初始化", "error")
+            self._log(LOG_SVC_NOT_INIT, "error")
             return
         default_dir = str(self._service._data_dir)
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "选择配置文件",
+            DLG_TITLE_SELECT_CONFIG,
             default_dir,
-            "JSON 配置 (*.json);;所有文件 (*)",
+            FILE_FILTER_JSON,
         )
         if not file_path:
             return
@@ -826,9 +828,9 @@ class PerfettoCaptureTab(BaseTab):
                 for evt, cb in self._ftrace_checks.items():
                     cb.setChecked(evt in cfg.advanced.ftrace_events)
             src = file_path.name if file_path else "默认配置"
-            self._log(f"✓ 已导入配置: {src}", "success")
+            self._log(LOG_CONFIG_IMPORTED_FMT.format(src), "success")
         except Exception as e:
-            self._log(f"✗ 加载配置失败: {e}", "error")
+            self._log(LOG_CONFIG_LOAD_FAIL_FMT.format(e), "error")
 
     def _rebuild_ftrace_panel(self, cfg: Any) -> None:
         """根据配置重建 Ftrace Events 选项列表。"""
@@ -917,11 +919,11 @@ class PerfettoCaptureTab(BaseTab):
             evts = ", ".join(cfg.advanced.ftrace_events)
             self._log(f"  Ftrace: {evts}")
         effective_buf = self._service.get_effective_buffer_size()
-        buf_label = "手动" if cfg.buffer_manual_override else "自动"
+        buf_label = LOG_BUFF_LABEL_MANUAL if cfg.buffer_manual_override else LOG_BUFF_LABEL_AUTO
         self._log(f"  Buffer: {effective_buf} KB ({buf_label}) | Duration: {cfg.duration_sec}s")
         self._btn_start.setEnabled(False)
         self._saved_count = 0
-        self._lbl_saved.setText("已保存: 0 段")
+        self._lbl_saved.setText(LABEL_SAVED_DEFAULT_FMT)
 
         worker = _CaptureWorker("start", self._service, self._serial)
         worker.progress.connect(lambda msg: self._log(msg))
@@ -937,10 +939,10 @@ class PerfettoCaptureTab(BaseTab):
             from .models import CaptureMode
             mode = self._service.session.running.mode
             if mode == CaptureMode.SNAPSHOT:
-                mode_label = " [快照模式]"
+                mode_label = LOG_CAPTURE_MODE_SNAPSHOT
             else:
-                mode_label = " [自动缓冲模式]"
-        self._log(f"✓ Perfetto 后台抓取已启动{mode_label}", "success")
+                mode_label = LOG_CAPTURE_MODE_AUTO_BUFFER
+        self._log(LOG_CAPTURE_STARTED_FMT.format(mode_label), "success")
         self._set_capturing(True)
         self._capture_start_time = datetime.datetime.now()
         self._timer.start(1000)
@@ -949,22 +951,22 @@ class PerfettoCaptureTab(BaseTab):
             try:
                 self._device_dir = self._service.ensure_device_trace_dir(self._serial)
             except Exception as e:
-                self._log(f"✗ 获取设备目录失败: {e}", "error")
+                self._log(LOG_GET_DEVICE_DIR_FAIL_FMT.format(e), "error")
 
         if self._jank_enabled:
             self._start_jank_monitor()
 
     def _on_save(self) -> None:
         if not self._service:
-            self._log("✗ 服务未初始化，无法保存", "error")
+            self._log(LOG_SVC_NOT_INIT, "error")
             return
         if not self._serial:
-            self._log("✗ 未检测到设备，无法保存", "error")
+            self._log(LOG_NO_DEVICE, "error")
             return
         if not self._device_info:
-            self._log("✗ 设备信息未获取，无法保存", "error")
+            self._log(LOG_NO_DEVICE_INFO, "error")
             return
-        self._log("保存当前 trace 段...")
+        self._log(LOG_SAVE_TRACE_SEGMENT)
         self._btn_save.setEnabled(False)
 
         worker = _CaptureWorker(
@@ -981,8 +983,8 @@ class PerfettoCaptureTab(BaseTab):
 
     def _on_saved(self, count: int) -> None:
         self._saved_count = count
-        self._lbl_saved.setText(f"已保存: {count} 段")
-        self._log(f"✓ 第 {count} 段已保存", "success")
+        self._lbl_saved.setText(f"{LABEL_SAVED_COUNT}: {count} {LABEL_SEGMENTS}")
+        self._log(LOG_SAVED_FMT.format(count), "success")
 
     def _on_stop(self) -> None:
         self._set_capturing(False)
@@ -993,7 +995,7 @@ class PerfettoCaptureTab(BaseTab):
 
         if not self._service or not self._serial:
             return
-        self._log("停止抓取，导出 trace...")
+        self._log(LOG_STOP_AND_EXPORT)
 
         worker = _CaptureWorker(
             "stop",
@@ -1011,29 +1013,29 @@ class PerfettoCaptureTab(BaseTab):
 
     def _on_exported(self, paths: list[str]) -> None:
         if paths:
-            self._log(f"✓ 已导出 {len(paths)} 个文件:", "success")
+            self._log(LOG_EXPORTED_FMT.format(len(paths)), "success")
             for p in paths:
                 self._log(f"  {p}")
             export_dir = Path(paths[0]).parent
             if export_dir.exists():
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(export_dir)))
-                self._log(f"📂 已打开导出目录: {export_dir}")
+                self._log(LOG_OPEN_EXPORT_DIR_FMT.format(export_dir))
         else:
-            self._log("本次抓取未保存有效 trace", "warning")
-        self._lbl_status.setText("🟢 就绪")
-        self._lbl_timer.setText("时长: --:--")
+            self._log(LOG_NO_VALID_TRACE, "warning")
+        self._lbl_status.setText(LABEL_STATUS_READY_EMOJI)
+        self._lbl_timer.setText(LABEL_TIMER_DEFAULT_FMT)
         self._saved_count = 0
-        self._lbl_saved.setText("已保存: 0 段")
+        self._lbl_saved.setText(LABEL_SAVED_DEFAULT_FMT)
 
     def _on_error(self, msg: str) -> None:
-        if self._capturing and ("设备不可用" in msg or "device" in msg.lower()):
+        if self._capturing and (LOG_DEVICE_UNAVAILABLE in msg or "device" in msg.lower()):
             self._on_device_disconnected()
             self._log(f"✗ {msg}", "error")
             return
         self._log(f"✗ {msg}", "error")
         self._set_capturing(False)
         self._timer.stop()
-        self._lbl_status.setText("🟢 就绪")
+        self._lbl_status.setText(LABEL_STATUS_READY_EMOJI)
 
     def _on_device_disconnected(self) -> None:
         """抓取中设备断开。保持会话但暂停操作，等待自动重连。"""
@@ -1094,9 +1096,9 @@ class PerfettoCaptureTab(BaseTab):
         self._set_capturing(False)
         self._timer.stop()
         self._btn_abandon.setVisible(False)
-        self._lbl_timer.setText("时长: --:--")
+        self._lbl_timer.setText(LABEL_TIMER_DEFAULT_FMT)
         self._saved_count = 0
-        self._lbl_saved.setText("已保存: 0 段")
+        self._lbl_saved.setText(LABEL_SAVED_DEFAULT_FMT)
         if self._serial:
             self._lbl_status.setText("🟢 就绪")
             self._btn_start.setEnabled(True)

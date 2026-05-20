@@ -12,6 +12,8 @@ from toolkit.core.adb_manager import AdbManager
 from toolkit.sdk.exceptions import AdbError
 from toolkit.sdk.models import DeviceState
 
+from . import strings_service as ss
+
 logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[str], None] | None
@@ -28,7 +30,7 @@ class DeviceDisguiseService:
         self._adb = adb
 
     def get_service_info(self) -> dict:
-        return {"name": "device_disguise", "display_name": "设备伪装工具"}
+        return {"name": "device_disguise", "display_name": ss.SERVICE_DISPLAY_NAME}
 
     # ------------------------------------------------------------------
     # FR-001: 获取设备状态
@@ -77,10 +79,10 @@ class DeviceDisguiseService:
         on_progress: ProgressCallback = None,
     ) -> DeviceState:
         """将 ODM 属性还原为 vendor 原始值。"""
-        self._notify(on_progress, "正在读取原始设备信息...")
+        self._notify(on_progress, ss.PROGRESS_READING_ORIGINAL)
         state = self.get_device_state(serial)
         if not state.is_disguised:
-            self._notify(on_progress, "✓ 设备未伪装，无需还原")
+            self._notify(on_progress, ss.PROGRESS_NOT_DISGUISED)
             return state
 
         props = {
@@ -137,42 +139,42 @@ class DeviceDisguiseService:
         root 和 remount 均委托给框架级 AdbManager 的增强方法，
         无需在模块中重复实现等待、重启、重试逻辑。
         """
-        self._notify(on_progress, "设备信息修改中...")
+        self._notify(on_progress, ss.PROGRESS_MODIFYING)
 
-        self._notify(on_progress, "  adb root...")
+        self._notify(on_progress, ss.PROGRESS_ADB_ROOT)
         self._adb.root(serial)
-        self._notify(on_progress, "  ✓ adb root 成功")
+        self._notify(on_progress, ss.PROGRESS_ADB_ROOT_OK)
 
-        self._notify(on_progress, "  adb remount...")
+        self._notify(on_progress, ss.PROGRESS_ADB_REMOUNT)
         self._adb.remount(serial, on_progress=on_progress)
 
-        self._notify(on_progress, "  setenforce 0...")
+        self._notify(on_progress, ss.PROGRESS_SETENFORCE)
         self._adb.shell(serial, "setenforce 0")
-        self._notify(on_progress, "  ✓ setenforce 0 成功")
+        self._notify(on_progress, ss.PROGRESS_SETENFORCE_OK)
 
-        self._notify(on_progress, "  拉取 build.prop...")
+        self._notify(on_progress, ss.PROGRESS_PULL_BUILD_PROP)
         tmp_dir = tempfile.mkdtemp()
         local_prop = os.path.join(tmp_dir, "build.prop")
         self._adb.pull(serial, "/odm/etc/build.prop", local_prop)
-        self._notify(on_progress, "  ✓ 拉取 build.prop 成功")
+        self._notify(on_progress, ss.PROGRESS_PULL_OK)
 
-        self._notify(on_progress, "  修改 build.prop...")
+        self._notify(on_progress, ss.PROGRESS_MODIFY_BUILD_PROP)
         self.modify_build_prop(local_prop, props)
-        self._notify(on_progress, "  ✓ 修改 build.prop 成功")
+        self._notify(on_progress, ss.PROGRESS_MODIFY_OK)
 
-        self._notify(on_progress, "  推送 build.prop...")
+        self._notify(on_progress, ss.PROGRESS_PUSH_BUILD_PROP)
         self._adb.push(serial, local_prop, "/odm/etc/build.prop")
-        self._notify(on_progress, "  ✓ 推送 build.prop 成功")
+        self._notify(on_progress, ss.PROGRESS_PUSH_OK)
 
-        self._notify(on_progress, "正在重启设备请稍后...")
+        self._notify(on_progress, ss.PROGRESS_REBOOTING)
         self._adb.reboot(serial)
 
-        self._notify(on_progress, "  等待设备重启完成...")
+        self._notify(on_progress, ss.PROGRESS_WAIT_REBOOT)
         self._adb.wait_for_device(serial, timeout=120)
         self._adb.wait_boot_completed(serial, timeout=120)
-        self._notify(on_progress, "  ✓ 设备重启完成")
+        self._notify(on_progress, ss.PROGRESS_REBOOT_OK)
 
-        self._notify(on_progress, "  验证设备属性...")
+        self._notify(on_progress, ss.PROGRESS_VERIFYING)
         new_state = self.get_device_state(serial)
 
         target_brand = props["ro.product.odm.brand"]
@@ -186,15 +188,12 @@ class DeviceDisguiseService:
         ):
             self._notify(
                 on_progress,
-                f"  ✓ 设备信息{action_name}成功: "
-                f"brand={target_brand}, manufacturer={target_mfr}, model={target_model}",
+                ss.PROGRESS_DISGUISE_OK_FMT.format(action_name, target_brand, target_mfr, target_model),
             )
         else:
-            msg = (
-                f"设备信息{action_name}验证失败: 属性值与预期不一致\n"
-                f"  期望: brand={target_brand}, manufacturer={target_mfr}, model={target_model}\n"
-                f"  实际: brand={new_state.current_brand}, "
-                f"manufacturer={new_state.current_manufacturer}, model={new_state.current_model}"
+            msg = ss.ERR_VERIFY_FAILED_FMT.format(
+                action_name, target_brand, target_mfr, target_model,
+                new_state.current_brand, new_state.current_manufacturer, new_state.current_model,
             )
             raise AdbError(msg)
 

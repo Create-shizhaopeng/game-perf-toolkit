@@ -27,6 +27,19 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 
 ## 近期完成
 
+### 2026-05-20（硬编码中文字符串提取完成）
+
+- 完成 5 个目标模块的硬编码字符串提取，统一提取到 `strings_gui.py` / `strings_cli.py` / `strings_service.py`
+  - perfetto_capture、agent_chat、perfetto_analysis、perfdog_insights、workspace_tools
+- 完成 `toolkit/gui/` 框架层字符串提取，集中到 `toolkit/gui/strings.py`
+  - 覆盖 main_window.py、home_tab.py、toolkit_dialog.py、llm_settings_dialog.py、base_tab.py、title_bar.py、llm_status_widget.py
+- `Final[str]` 常量模式统一，功能前缀分组（BTN_、LABEL_、MSG_、DLG_TITLE_、CLI_HELP_ 等），格式模板使用 `_FMT` 后缀
+- `scripts/check_hardcoded_strings.py` 确认：已迁移模块源码零中文硬编码残留（注释/文档字符串除外）
+- 全量 pytest：
+  - 主项目 tests/、device_disguise、perfetto_analysis（302 passed）、workspace_tools（15 passed）、game_perf（5 passed）通过
+  - agent_chat（289 passed）、perfetto_capture（163 passed）通过
+  - perfdog_insights 的 1 个失败为既有测试缺陷（Typer 子命令调用未传参），非迁移引入
+
 ### 2026-05-19（路径规范化重构）
 
 - 新增 `toolkit/core/app_paths.py` 集中式路径工具，消除各模块重复的 `sys.frozen` 分支

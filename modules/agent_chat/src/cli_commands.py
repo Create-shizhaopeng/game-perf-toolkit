@@ -10,8 +10,10 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
-agent_app = typer.Typer(help="Agent 智能助手")
-sop_app = typer.Typer(help="SOP 文档管理")
+from .strings_cli import *
+
+agent_app = typer.Typer(help=CLI_HELP_ROOT)
+sop_app = typer.Typer(help=CLI_HELP_SOP)
 agent_app.add_typer(sop_app, name="sop")
 
 console = Console()
@@ -33,10 +35,10 @@ def _has_any_key(config) -> bool:
 
 @agent_app.command("ask")
 def ask(
-    message: Annotated[str, typer.Argument(help="发送给 Agent 的消息")],
-    sop: Annotated[Optional[str], typer.Option("--sop", help="指定 SOP 名称")] = None,
+    message: Annotated[str, typer.Argument(help=CLI_OPT_MESSAGE)],
+    sop: Annotated[Optional[str], typer.Option("--sop", help=CLI_OPT_SOP)] = None,
     provider: Annotated[
-        Optional[str], typer.Option("--provider", help="LLM Provider (glm/claude)")
+        Optional[str], typer.Option("--provider", help=CLI_OPT_PROVIDER)
     ] = None,
 ) -> None:
     """向 Agent 发送消息并获取回复。"""
@@ -51,9 +53,9 @@ async def _ask_async(
     """ask 命令的异步实现。"""
     config = _get_config()
     if not _has_any_key(config):
-        console.print("[bold red]错误: 未配置 API Key[/bold red]")
-        console.print("请设置环境变量 ZHIPUAI_API_KEY 或 ANTHROPIC_API_KEY，")
-        console.print("或在 GUI 设置中配置。")
+        console.print(CONSOLE_ERR_NO_API_KEY)
+        console.print(CONSOLE_HINT_SET_KEY)
+        console.print(CONSOLE_HINT_GUI_CONFIG)
         raise typer.Exit(code=1)
 
     if provider:
@@ -67,8 +69,8 @@ async def _ask_async(
 
     try:
         if not service.is_ready:
-            console.print("[bold red]错误: LLM Provider 初始化失败[/bold red]")
-            console.print("请检查 API Key 是否正确。")
+            console.print(CONSOLE_ERR_PROVIDER_INIT_FAILED)
+            console.print(CONSOLE_HINT_CHECK_KEY)
             raise typer.Exit(code=1)
 
         text_started = False
@@ -85,19 +87,19 @@ async def _ask_async(
             elif chunk.type == StreamChunkType.TOOL_START:
                 data = chunk.data if isinstance(chunk.data, dict) else {}
                 name = data.get("name", "?")
-                console.print(f"\n[dim][🔧 调用: {name}][/dim]", end="")
+                console.print(CONSOLE_TOOL_CALL_FMT.format(name), end="")
 
             elif chunk.type == StreamChunkType.TOOL_END:
                 data = chunk.data if isinstance(chunk.data, dict) else {}
                 is_err = data.get("is_error", False)
                 elapsed = data.get("elapsed_ms", 0)
-                status = "❌ 失败" if is_err else "✅ 完成"
+                status = CONSOLE_TOOL_STATUS_FAIL if is_err else CONSOLE_TOOL_STATUS_OK
                 console.print(
-                    f" [dim][{status} {elapsed:.0f}ms][/dim]"
+                    CONSOLE_TOOL_END_FMT.format(status, elapsed)
                 )
 
             elif chunk.type == StreamChunkType.ERROR:
-                console.print(f"\n[bold red]错误: {chunk.data}[/bold red]")
+                console.print(CONSOLE_ERR_FMT.format(chunk.data))
 
             elif chunk.type == StreamChunkType.USAGE:
                 data = chunk.data if isinstance(chunk.data, dict) else {}
@@ -105,7 +107,7 @@ async def _ask_async(
                 completion = data.get("completion_tokens", 0)
                 total = data.get("total_tokens", 0)
                 console.print(
-                    f"\n[dim]Token: {prompt}+{completion}={total}[/dim]"
+                    CONSOLE_TOKEN_USAGE_FMT.format(prompt, completion, total)
                 )
 
         extra_prompt = ""
@@ -177,10 +179,10 @@ def info() -> None:
         f"Temperature: {config.temperature}\n"
         f"Language: {config.language}\n"
         f"Smart Switch: {config.smart_switch}\n"
-        f"GLM Key: {'✅ 已配置' if has_glm else '❌ 未配置'}\n"
-        f"Claude Key: {'✅ 已配置' if has_claude else '❌ 未配置'}\n"
+        f"GLM Key: {INFO_KEY_CONFIGURED if has_glm else INFO_KEY_NOT_CONFIGURED}\n"
+        f"Claude Key: {INFO_KEY_CONFIGURED if has_claude else INFO_KEY_NOT_CONFIGURED}\n"
         f"Workflow Learning: {config.workflow_learning_enabled}",
-        title="Agent 智能助手",
+        title=INFO_TITLE,
     ))
 
 
@@ -193,17 +195,17 @@ def sop_list() -> None:
     sops = mgr.load_all()
 
     if not sops:
-        console.print("[dim]暂无 SOP 文档。[/dim]")
+        console.print(CONSOLE_NO_SOP)
         return
 
-    table = Table(title="SOP 文档列表")
-    table.add_column("名称", style="bold")
-    table.add_column("来源")
-    table.add_column("关键词")
-    table.add_column("描述")
+    table = Table(title=TABLE_TITLE_SOP_LIST)
+    table.add_column(TABLE_COL_NAME, style="bold")
+    table.add_column(TABLE_COL_SOURCE)
+    table.add_column(TABLE_COL_KEYWORDS)
+    table.add_column(TABLE_COL_DESCRIPTION)
 
     for sop in sops:
-        source_label = "内置" if sop.source.value == "builtin" else "自定义"
+        source_label = SOP_SOURCE_BUILTIN if sop.source.value == "builtin" else SOP_SOURCE_CUSTOM
         table.add_row(
             sop.title or sop.path.stem,
             source_label,
@@ -216,7 +218,7 @@ def sop_list() -> None:
 
 @sop_app.command("show")
 def sop_show(
-    name: Annotated[str, typer.Argument(help="SOP 名称")],
+    name: Annotated[str, typer.Argument(help=CLI_OPT_SOP_NAME)],
 ) -> None:
     """显示指定 SOP 的完整内容。"""
     mgr = _get_sop_manager()
@@ -224,11 +226,11 @@ def sop_show(
     content = mgr.get_sop_content(name)
 
     if content is None:
-        console.print(f"[bold red]SOP '{name}' 未找到。[/bold red]")
+        console.print(CONSOLE_SOP_NOT_FOUND_FMT.format(name))
         raise typer.Exit(code=1)
 
     from rich.markdown import Markdown
-    console.print(Panel(Markdown(content), title=f"SOP: {name}"))
+    console.print(Panel(Markdown(content), title=CLI_TITLE_SOP_FMT.format(name)))
 
 
 def _get_sop_manager():
