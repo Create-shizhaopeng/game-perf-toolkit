@@ -99,7 +99,7 @@ class AgentService:
         api_key = self._resolve_api_key(provider)
 
         if not api_key:
-            logger.warning(ERR_PROVIDER_NO_API_KEY_FMT, provider)
+            logger.warning(ERR_PROVIDER_NO_API_KEY_FMT.format(provider))
             return
 
         try:
@@ -111,7 +111,7 @@ class AgentService:
                 provider=provider,
             )
         except Exception as exc:
-            logger.error(ERR_PROVIDER_INIT_FAILED_FMT, exc)
+            logger.error(ERR_PROVIDER_INIT_FAILED_FMT.format(exc))
 
     def _resolve_api_key(self, provider: str) -> str:
         """解析 API Key（优先 api_key → 分 provider 的 key）。"""
@@ -129,7 +129,7 @@ class AgentService:
             new_provider = self._llm_manager.get_provider()  # type: ignore[union-attr]
             if new_provider:
                 self._provider = new_provider
-                logger.info(LOG_AGENT_PROVIDER_SWITCHED_FMT, provider_name)
+                logger.info(LOG_AGENT_PROVIDER_SWITCHED_FMT.format(provider_name))
 
     @property
     def is_ready(self) -> bool:
@@ -523,7 +523,7 @@ class AgentService:
             result = await self._execute_single_tool(tc, on_chunk)
 
             if result.is_error and _TOOL_RETRY_COUNT > 0:
-                logger.info(LOG_TOOL_RETRY_FMT, tc.name)
+                logger.info(LOG_TOOL_RETRY_FMT.format(tc.name))
                 result = await self._execute_single_tool(tc, on_chunk)
 
             if self._tracker:
@@ -554,7 +554,7 @@ class AgentService:
         try:
             result = await self._tool_executor.execute(tc)
         except Exception as exc:
-            logger.error(LOG_TOOL_EXEC_ERROR_FMT, tc.name, exc)
+            logger.error(LOG_TOOL_EXEC_ERROR_FMT.format(tc.name, exc))
             result = ToolResult(
                 tool_call_id=tc.id,
                 content=ERR_TOOL_EXEC_EXCEPTION_FMT.format(exc),

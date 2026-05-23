@@ -1972,4 +1972,4 @@ def _open_path(path: str) -> None:
         else:
             os.system(f'xdg-open "{p}"')  # noqa: S605
     except Exception as exc:
-        logger.error(LOG_OPEN_PATH_FAILED_FMT, path, exc)
+        logger.error(LOG_OPEN_PATH_FAILED_FMT.format(path, exc))
