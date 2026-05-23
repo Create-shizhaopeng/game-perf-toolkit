@@ -32,13 +32,18 @@
 
 ## 文件结构
 
-每个模块 **必须** 创建以下常量文件（若无对应场景可省略，但必须满足同一规则）：
+每个模块 **按需** 创建常量文件——没有对应场景则 **不需要** 创建空文件：
 
 ```
 modules/<name>/src/
-  strings_gui.py    # GUI 标签、按钮、对话框、占位文字
-  strings_service.py # 服务层进度消息、日志模板（用户可见部分）
+  strings_gui.py      # GUI 标签、按钮、对话框、占位文字（仅 GUI 模块需要）
+  strings_service.py  # 服务层进度消息、错误消息（用户可见部分）
 ```
+
+判断规则：
+- **strings_gui.py**：仅当模块注册了 GUI Tab（`register_gui_tab()` 返回非 None）时创建
+- **strings_service.py**：仅当服务层有用户可见的进度/错误消息时创建
+- 无 GUI 或无服务层用户可见文本的模块，**不需要** 创建对应的空 strings 文件
 
 框架层统一放在：
 
