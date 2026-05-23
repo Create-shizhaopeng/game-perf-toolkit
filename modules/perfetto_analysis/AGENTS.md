@@ -32,11 +32,17 @@ Perfetto trace 丢帧解析与多维度卡顿归因分析模块。基于 Android
 
 ## Agent 工具集
 
-本模块为 Pydantic AI SubAgent 注册了 **10 个工具**（`pa_*` 前缀），所有工具返回 `ToolReturn`（压缩摘要给 LLM，原始数据保留在 metadata 中）。
+本模块为 Agent 注册了 **1 个核心工具** `pa_execute_sql`，所有 Perfetto 分析能力通过 YAML 技能库 + 此工具实现。
 
-**完整工具文档**：`skills/perfetto-analysis/tool-catalog.md`（含参数、返回值、能力边界、决策树）
+**完整工具文档**：`skills/perfetto-analysis/tool-catalog.md`
 
-### Pydantic AI 工具（SubAgent 可调用）
+### pa_execute_sql(trace_path, sql)
+
+执行 PerfettoSQL 查询。SQL 来源于 YAML 技能文件（atomic/composite/deep/modules/pipelines/vendors/），Agent 通过 SKILL.md 场景索引定位到对应 YAML，读取 SQL，替换 ${variable} 后调用此工具。
+
+**返回结构**：`{success: bool, rows: list[dict], row_count: int, error: str|null}`
+
+**YAML 技能库规模**：atomic (126) + composite (33) + deep (2) + modules (18) + pipelines (33) + vendors (8) + fragments (3)
 
 | 工具 | 数据源 | 说明 | 压缩策略 |
 |------|--------|------|----------|
