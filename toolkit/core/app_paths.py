@@ -80,6 +80,25 @@ def get_db_path(module_name: str, db_name: str) -> Path:
 # 备份路径
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# 输出目录路径
+# ---------------------------------------------------------------------------
+
+def get_output_dir(module: str = "") -> Path:
+    """模块输出目录的绝对路径。
+
+    - dev: ``<root>/data/output/<module>/``
+    - frozen: ``<exe>/output/<module>/``
+    """
+    if is_frozen():
+        base = get_exe_dir() / "output"
+    else:
+        base = get_exe_dir() / "data" / "output"
+    target = base / module if module else base
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
 def get_backup_path(module_name: str, filename: str = "") -> Path:
     """模块备份目录或文件的绝对路径。
 

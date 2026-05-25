@@ -367,7 +367,8 @@ class PerfettoCaptureTab(BaseTab):
         self._analysis_container_layout = QVBoxLayout(self._analysis_container)
         self._analysis_container_layout.setContentsMargins(0, 0, 0, 0)
 
-        self._history_panel = None
+        self._session_tree = None
+        self._analysis_tree = None
         self._history_service = None
         self._ensure_history_panel()
 
@@ -383,74 +384,50 @@ class PerfettoCaptureTab(BaseTab):
 
     def _ensure_history_panel(self) -> None:
         """确保历史面板已初始化。"""
-        if self._history_panel is not None:
+        if self._session_tree is not None:
             return
 
         from .analysis_chat import AnalysisChatWidget
-        from .history_panel import HistoryPanel
+        from .session_tree import SessionTreeWidget
+        from .analysis_tree import AnalysisHistoryTree
         from .history_service import HistoryService
         from .history_storage import HistoryStorage
 
-        self._history_panel = HistoryPanel()
-        self._history_panel.close_requested.connect(self._on_history_close)
-        self._history_panel.refresh_requested.connect(self._refresh_history)
-        self._history_panel.cleanup_requested.connect(self._cleanup_history)
-        self._history_panel.open_directory_requested.connect(self._open_history_directory)
-        self._history_panel.analyze_trace_requested.connect(self._analyze_history_trace)
-        self._history_panel.delete_session_requested.connect(self._delete_history_session)
-        self._history_panel.delete_trace_requested.connect(self._delete_history_trace)
-        self._history_panel.send_to_agent_requested.connect(self._on_send_to_agent)
-        self._history_panel.file_dropped.connect(self._on_trace_file_dropped)
-        self._history_panel._analysis_history_tree.open_report_requested.connect(
-            self._open_analysis_report
-        )
-        self._history_panel._analysis_history_tree.delete_analysis_requested.connect(
-            self._delete_analysis_task
-        )
+        from toolkit.core.app_paths import get_db_path
 
-        # AI 对话组件
+        # ── 抓取历史树 ──
+        self._session_tree = SessionTreeWidget()
+        self._session_tree.open_directory_requested.connect(self._open_history_directory)
+        self._session_tree.delete_session_requested.connect(self._delete_history_session)
+        self._session_tree.delete_trace_requested.connect(self._delete_history_trace)
+        self._session_tree.send_to_agent_requested.connect(self._on_send_to_agent)
+        self._session_tree.open_report_requested.connect(self._open_analysis_report)
+        self._session_tree.delete_report_requested.connect(self._on_delete_report)
+        self._session_tree.itemSelectionChanged.connect(self._on_trace_selection_changed)
+        self._history_container_layout.addWidget(self._session_tree)
+
+        # ── 分析历史树 ──
+        self._analysis_tree = AnalysisHistoryTree()
+        self._analysis_tree.open_report_requested.connect(self._open_analysis_report)
+        self._analysis_tree.delete_analysis_requested.connect(self._delete_analysis_task)
+        self._analysis_tree.send_to_agent_requested.connect(self._on_send_to_agent)
+        self._analysis_container_layout.addWidget(self._analysis_tree)
+
+        # ── AI 对话组件 ──
         self._analysis_chat = AnalysisChatWidget()
         self._analysis_chat.send_message.connect(self._on_analysis_chat_send)
-        self._history_panel.set_chat_widget(self._analysis_chat)
 
-        # trace 选中时自动更新对话区域
-        self._history_panel._session_tree.itemSelectionChanged.connect(
-            self._on_trace_selection_changed
-        )
-
-        from toolkit.core.app_paths import get_db_path, get_exe_dir, is_frozen
-
-        # 初始化历史服务
+        # ── 历史服务 ──
         output_dir = self._get_output_dir()
         db_path = get_db_path("perfetto_capture", "history")
         storage = HistoryStorage(db_path)
         self._history_service = HistoryService(storage, output_dir, self._cfg.history)
 
-        # 检测 analysis 模块是否可用
-        analysis_available = self._is_analysis_module_available()
-        self._history_panel.set_analysis_available(bool(analysis_available))
-
-        # 抓取历史：只保留 session tree
-        session_tree = self._history_panel._session_tree
-        session_tree.setParent(None)
-        self._history_container_layout.addWidget(session_tree)
-
-        # 分析历史：只保留 analysis history tree
-        analysis_tree = self._history_panel._analysis_history_tree
-        analysis_tree.setParent(None)
-        self._analysis_container_layout.addWidget(analysis_tree)
-
         self._refresh_history()
 
     def _get_output_dir(self) -> Path:
-        from toolkit.core.app_paths import get_exe_dir, is_frozen
-
-        if is_frozen():
-            base = get_exe_dir() / "output"
-        else:
-            base = get_exe_dir() / "modules" / "perfetto_capture" / "data" / self._cfg.output_dir
-        base.mkdir(parents=True, exist_ok=True)
-        return base
+        from toolkit.core.app_paths import get_output_dir
+        return get_output_dir()
 
     def _is_analysis_module_available(self) -> bool:
         """检测 perfetto_analysis 模块是否可用。"""
@@ -488,18 +465,14 @@ class PerfettoCaptureTab(BaseTab):
             logger.warning("_refresh_history: " + LOG_SVC_NOT_INIT_HISTORY_2)
             return
 
+        # 抓取历史
         sessions = self._history_service.scan_sessions()
-        self._history_panel.refresh(sessions)
+        if self._session_tree:
+            self._session_tree.refresh(sessions)
 
-        stats = self._history_service.get_stats()
-        self._history_panel.update_stats(stats)
-
-        try:
-            storage = self._history_service.storage
-            tasks = storage.get_all_analysis_tasks(limit=50)
-            self._history_panel.refresh_analysis_history(tasks)
-        except Exception:
-            pass
+        # 分析历史 — 直接扫描 trace_report/ 文件系统
+        if self._analysis_tree:
+            self._analysis_tree.refresh()
 
     def _cleanup_history(self) -> None:
         """清理过期历史。"""
@@ -554,9 +527,9 @@ class PerfettoCaptureTab(BaseTab):
 
     def _on_trace_selection_changed(self) -> None:
         """trace 选中变化时更新 AI 对话区域。"""
-        if not hasattr(self, "_analysis_chat"):
+        if not hasattr(self, "_analysis_chat") or not self._session_tree:
             return
-        selected = self._history_panel._get_selected_items_data()
+        selected = self._session_tree._get_selected_items_data()
         self._analysis_chat.set_selected_traces(selected)
 
     def _on_analysis_chat_send(self, message: str, traces: list) -> None:
@@ -621,39 +594,29 @@ class PerfettoCaptureTab(BaseTab):
         self._refresh_history()
 
     def _save_analysis_record(self, html_path: str, status: str) -> None:
-        """保存分析记录到数据库。"""
-        if not self._history_service:
-            return
+        """保存分析记录到 pa_analysis_tasks。"""
         try:
+            pa_service = self.context.get("pa_service") if self.context else None
+            if not pa_service:
+                return
+
             import uuid
 
-            storage = self._history_service.storage
             task_id = str(uuid.uuid4())
-
             trace_path = ""
             process_name = ""
-            user_intent = ""
             if hasattr(self, "_analysis_worker") and self._analysis_worker:
                 trace_path = str(self._analysis_worker._trace_path)
                 process_name = str(self._analysis_worker._process_name or "")
-                user_intent = str(self._analysis_worker._user_intent or "")
 
-            storage.create_analysis_task(
+            result_dir = str(Path(html_path).parent) if html_path else ""
+            pa_service.create_analysis_record(
                 task_id=task_id,
                 trace_path=trace_path,
                 process_name=process_name,
-                user_intent=user_intent,
-            )
-
-            result_dir = str(Path(html_path).parent) if html_path else ""
-            storage.update_task_status(
-                task_id=task_id,
                 status=status,
                 result_dir=result_dir,
             )
-
-            if trace_path:
-                storage.update_trace_analysis_status(trace_path, status, task_id)
         except Exception as e:
             logger.warning(LOG_SAVE_RECORD_FAIL_FMT.format(e))
 
@@ -707,16 +670,24 @@ class PerfettoCaptureTab(BaseTab):
             self._log(LOG_TRACE_DELETE_FAIL_FMT.format(trace_path.name), "error")
         self._refresh_history()
 
+    def _on_delete_report(self, report_path: str) -> None:
+        """删除分析报告目录。"""
+        import shutil
+        report_dir = Path(report_path).parent
+        try:
+            if report_dir.is_dir():
+                shutil.rmtree(report_dir)
+                logger.info("已删除报告目录: %s", report_dir)
+        except Exception as e:
+            logger.warning("删除报告目录失败: %s", e)
+
     def _delete_analysis_task(self, task_id: str) -> None:
         """删除分析任务记录。"""
-        if not self._history_service:
-            return
         try:
-            storage = self._history_service.storage
-            if storage.delete_analysis_task(task_id):
-                self._log(LOG_ANALYSIS_RECORD_DELETED, "success")
-            else:
-                self._log(LOG_ANALYSIS_RECORD_DELETE_FAIL, "error")
+            pa_service = self.context.get("pa_service") if self.context else None
+            if pa_service:
+                pa_service.delete_analysis_record(task_id=task_id)
+            self._log(LOG_ANALYSIS_RECORD_DELETED, "success")
             self._refresh_history()
         except Exception as e:
             self._log(LOG_ANALYSIS_RECORD_DELETE_FAIL_FMT.format(e), "error")
@@ -727,6 +698,7 @@ class PerfettoCaptureTab(BaseTab):
 
     def on_activated(self) -> None:
         self._ensure_history_panel()
+        self._refresh_history()
         if self.context:
             self._service = self.context.get("pe_service")
             self._adb = self.context.get("pe_adb")
@@ -1022,6 +994,7 @@ class PerfettoCaptureTab(BaseTab):
                 self._log(LOG_OPEN_EXPORT_DIR_FMT.format(export_dir))
         else:
             self._log(LOG_NO_VALID_TRACE, "warning")
+        self._refresh_history()
         self._lbl_status.setText(LABEL_STATUS_READY_EMOJI)
         self._lbl_timer.setText(LABEL_TIMER_DEFAULT_FMT)
         self._saved_count = 0

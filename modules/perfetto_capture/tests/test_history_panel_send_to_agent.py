@@ -5,7 +5,8 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QTreeWidgetItem
 
-from modules.perfetto_capture.src.history_panel import AnalysisHistoryTree, SessionTreeWidget
+from modules.perfetto_capture.src.session_tree import SessionTreeWidget
+from modules.perfetto_capture.src.analysis_tree import AnalysisHistoryTree
 
 
 def _ensure_app() -> QApplication:

@@ -27,6 +27,18 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 
 ## 近期完成
 
+### 2026-05-25（历史面板架构重构：提取基类 + 统一数据源 + codicon 图标迁移）
+
+- 提取 `BaseHistoryTreeWidget` 到 `toolkit/gui/widgets/` — 通用历史树基类，统一右键菜单、主题、搜索过滤、格式化工具、send_to_agent 信号
+- 拆分 `history_panel.py`（~850行）为 `session_tree.py` 和 `analysis_tree.py`，各继承基类
+- 删除未使用的覆盖式 `HistoryPanel`（~500行含动画、遮罩、双栏布局）
+- 统一分析任务数据源：废弃 `pe_analysis_tasks`，以 `pa_analysis_tasks` 为权威表
+- `PerfettoAnalysisService` 新增 `create_analysis_record` / `update_analysis_record` 写入方法，`get_analysis_history()` 归一化返回格式
+- `gui_tab.py` 消除"创建 HistoryPanel → 拆出 widget → 重新挂载"反模式
+- 历史面板所有 Unicode Emoji 迁移到 `assets/codicon.ttf` 字体图标，补充 22 个新 codicon 映射
+- `app_paths.py` 新增 `get_output_dir()` 统一 dev/frozen 输出目录
+- 测试：17+4 个已有测试通过，新增 11 个 BaseHistoryTreeWidget 测试
+
 ### 2026-05-20（Agent Tool Unification 重构：CLI → MCP Server + Skill）
 
 - 全面移除 CLI 体系（移除 Typer/Rich 子命令、`cli_commands.py`、`test_cli.py`、`strings_cli.py`），以 MCP Server + Skill 替代

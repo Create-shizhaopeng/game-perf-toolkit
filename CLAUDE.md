@@ -190,6 +190,7 @@ specs/                  # Speckit 输出的需求/计划/任务（所有模块�
 7. **日志输出**：MUST 使用统一日志体系（`logging` + `InterceptHandler`），MUST NOT 使用 `print()` 输出诊断/错误/警告信息（详见 [.claude/rules/log-panel-rules.md](.claude/rules/log-panel-rules.md)）
 8. **GUI 样式**：MUST 通过 `objectName` + `toolkit/gui/styles.py` 全局 QSS；MUST NOT 硬编码主题颜色（用 `theme_colors.get_colors()`）；对话框 MUST 继承 `ToolkitDialog`（详见 [.claude/rules/ui-style-guide.md](.claude/rules/ui-style-guide.md)）
 9. **中文硬编码字符串**：用户可见的中文文本 MUST 提取到 `strings_*.py` 中的 `Final[str]` 常量，按功能前缀分组；日志输出、调试诊断信息中的中文不需要提取（详见 [.claude/rules/string-extraction-gate.md](.claude/rules/string-extraction-gate.md)）
+10. **历史面板**：历史树组件 MUST 继承 `BaseHistoryTreeWidget`；图标 MUST 使用 codicon 字体（禁止 Unicode Emoji）；输出目录 MUST 通过 `get_output_dir()` 统一获取；分析历史 MUST 直接映射文件系统结构（详见 [.claude/rules/history-panel.md](.claude/rules/history-panel.md)）
 ### Speckit 开发流程
 
 模块新功能开发遵循 Spec-Driven 流程（详见 `.claude/rules/spec-workflow.md`）：

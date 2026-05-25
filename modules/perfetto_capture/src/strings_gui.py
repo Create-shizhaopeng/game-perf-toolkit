@@ -273,6 +273,32 @@ MCP_ARGS_LABEL: Final = "参数 (空格分隔):"
 # 其他
 # ────────────────────────────────────────────────────────────────────────────
 
+# ────────────────────────────────────────────────────────────────────────────
+# 历史面板文案
+# ────────────────────────────────────────────────────────────────────────────
+
+HIST_MENU_OPEN_DIR: Final = "打开所在目录"
+HIST_MENU_SEND_TO_AGENT: Final = "发送到 Agent 对话"
+HIST_MENU_DELETE: Final = "删除"
+HIST_MENU_DELETE_N_FMT: Final = "删除 {count} 项"
+HIST_REPORT_LABEL: Final = "性能分析报告"
+HIST_REPORT_LABEL_OLD: Final = "性能分析报告 (旧格式)"
+HIST_DLG_DELETE_TITLE: Final = "确认删除"
+HIST_DLG_DELETE_MSG_FMT: Final = "确定要删除 {summary} 吗？\n此操作不可撤销。"
+HIST_DLG_DELETE_CONFIRM: Final = "删除"
+HIST_DLG_DELETE_DANGER: Final = True
+HIST_COUNT_SESSIONS_FMT: Final = "{n} 个会话"
+HIST_COUNT_TRACES_FMT: Final = "{n} 个 trace"
+HIST_COUNT_REPORTS_FMT: Final = "{n} 个报告"
+HIST_COUNT_SUBDIRS_FMT: Final = "{n} 个子目录"
+HIST_SESSION_ITEM_FMT: Final = "{time} | {device} | {count} 个 | {size}"
+HIST_ANALYSIS_ITEM_FMT: Final = "{name} — {time}"
+HIST_SEPARATOR_COMMA: Final = "、"
+
+# ────────────────────────────────────────────────────────────────────────────
+# 其他
+# ────────────────────────────────────────────────────────────────────────────
+
 HISTORY_CLOSE_HINT: Final = "历史面板关闭按钮 — 保留兼容，当前无操作。"
 CONFIG_IMPORT_SUCCESS: Final = "配置导入成功"
 CONFIG_IMPORT_FAIL: Final = "配置导入失败"

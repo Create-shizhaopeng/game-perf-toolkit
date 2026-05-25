@@ -3,17 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from modules.agent_chat.src.gui_tab import compose_message_with_context
-from modules.perfetto_capture.src.history_panel import (
-    build_analysis_send_payload,
-    build_trace_send_payload,
-)
+from toolkit.gui.widgets.base_history_tree import BaseHistoryTreeWidget
 
 
 def test_history_payload_fields_for_trace(tmp_path):
     trace = tmp_path / "demo.perfetto-trace"
     trace.write_text("ok", encoding="utf-8")
 
-    payload = build_trace_send_payload(str(trace))
+    payload = BaseHistoryTreeWidget._build_send_payload(str(trace), "trace")
     assert payload == {
         "file_path": str(trace),
         "file_name": trace.name,
@@ -26,7 +23,7 @@ def test_history_payload_fields_for_analysis(tmp_path):
     result_dir = tmp_path / "analysis_001"
     result_dir.mkdir(parents=True, exist_ok=True)
 
-    payload = build_analysis_send_payload(str(result_dir))
+    payload = BaseHistoryTreeWidget._build_send_payload(str(result_dir), "analysis")
     assert payload["file_path"] == str(result_dir)
     assert payload["file_name"] == result_dir.name
     assert payload["context_type"] == "analysis"
