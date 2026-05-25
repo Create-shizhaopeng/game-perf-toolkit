@@ -1,0 +1,8 @@
+<div class="distribution-bar">
+  {% for row in rows %}
+  <div class="bar-segment" style="flex: {{ row.percentage | default(row.count | default(0)) }}">
+    <span class="bar-label">{{ row.label | default(row.range | default('')) }}</span>
+    <span class="bar-value">{{ row.percentage | default(0) }}%</span>
+  </div>
+  {% endfor %}
+</div>

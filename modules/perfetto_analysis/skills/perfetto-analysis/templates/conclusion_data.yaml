@@ -1,0 +1,42 @@
+id: conclusion
+
+data_schema:
+  overall_rating:
+    type: text
+    label: "综合评级"
+    required: true
+
+  rating_color:
+    type: text
+    label: "评级颜色"
+    required: true
+    note: "green / yellow / red"
+
+  summary:
+    type: text
+    label: "分析总结"
+    required: true
+    note: "3-5 句话的综合总结"
+
+  highlights:
+    type: list
+    label: "亮点"
+    required: true
+    max_items: 5
+
+  risks:
+    type: list
+    label: "关注点"
+    required: true
+    max_items: 5
+
+  recommendations:
+    type: list
+    label: "优化建议"
+    required: false
+    max_items: 5
+
+  chapters_included:
+    type: list
+    label: "包含的分析章节"
+    required: true

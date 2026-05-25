@@ -97,8 +97,11 @@ class PerfettoAnalysisService:
                 resolved = str(child.resolve())
                 if resolved in tracked_dirs:
                     continue
-                has_report = (child / "jank_report.md").exists()
-                has_data = (child / "data").exists()
+                has_report = (
+                    (child / "jank_report.md").exists()
+                    or (child / "report.html").exists()
+                )
+                has_data = (child / "data").exists() or (child / "chapters").exists()
                 if not has_report and not has_data:
                     continue
                 db_records.append({
@@ -161,11 +164,11 @@ class PerfettoAnalysisService:
     # ------------------------------------------------------------------
 
     def _get_output_dir(self) -> str:
-        """开发环境: data/output/trace_report/"""
+        """开发环境: data/output/trace_report/；打包后: <exe>/output/perfetto_report/"""
         from toolkit.core.app_paths import get_exe_dir, is_frozen
 
         if is_frozen():
-            return str(get_exe_dir() / "output" / "trace_report")
+            return str(get_exe_dir() / "output" / "perfetto_report")
         if self._root_dir:
             return str(self._root_dir / "data" / "output" / "trace_report")
         return str(self._data_dir / "output" / "trace_report")

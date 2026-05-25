@@ -1,0 +1,8 @@
+id: gpu
+render:
+  sections:
+    - id: core_metrics
+      fragment: metric_grid
+    - id: gpu_hotspots
+      fragment: data_table
+      optional: true

@@ -356,6 +356,48 @@ fragments/  → 3 个共享 SQL CTE 片段
 | 调用栈分析 | `deep/callstack_analysis.skill.yaml` | package, start_ts, end_ts | 需 simpleperf/perf 采样的调用栈热点 |
 | CPU Profiling | `deep/cpu_profiling.skill.yaml` | package, start_ts, end_ts | 需 simpleperf 数据的 CPU profiling |
 
+## Trace 探索与路由
+
+每次分析新 trace 时，MUST 先执行以下探索流程，再选择分析技能：
+
+```
+1. 验证工具可用性
+   - pa_execute_sql 会自动发现 trace_processor_shell：
+     ① ~/.local/share/perfetto/prebuilts/trace_processor_shell(.exe)
+     ② skill scripts/ 同级目录
+     ③ perfetto 包自动下载（兜底）
+   - 国内网络无法访问 Google Cloud Storage 时，需手动下载二进制放到上述位置之一
+   - Windows: https://commondatastorage.googleapis.com/perfetto-luci-artifacts/v55.3/windows-amd64/trace_processor_shell.exe
+   - macOS: https://commondatastorage.googleapis.com/perfetto-luci-artifacts/v55.3/mac-amd64/trace_processor_shell
+   - Linux: https://commondatastorage.googleapis.com/perfetto-luci-artifacts/v55.3/linux-amd64/trace_processor_shell
+   - 下载后需设置可执行权限 (chmod +x)，Windows 不需要
+
+2. 查询 metadata → 设备信息
+   SELECT name, str_value FROM metadata WHERE str_value IS NOT NULL
+   关注: android_build_fingerprint, android_device_manufacturer,
+         android_soc_model, android_system_version
+
+3. 查询 process 表 → 定位目标应用
+   - 按 slice count 排序找最活跃进程
+   - 过滤 system_server, surfaceflinger, audioserver 等系统进程
+   - 从 /data/app/ 或 com.* 包名识别应用
+
+4. 查询 thread 表 → 识别游戏引擎
+   - Unity: UnityMain, UnityGfxDeviceW
+   - Unreal: GameThread, RHIThread, RenderThread
+   - Cocos: *cocos*
+   - 通用: GLThread, VulkanThread
+
+5. 查询渲染管线 → 检测帧边界方式
+   - SELECT DISTINCT name FROM slice WHERE name IN
+     ('eglSwapBuffers', 'vkQueuePresentKHR', 'queueBuffer', 'dequeueBuffer')
+   - FrameTimeline 是否可用？(INCLUDE PERFETTO MODULE android.frames.timeline)
+   - 若 actual_frame_timeline_slice 帧数远小于 swap 次数 → 使用 swap 间隔分析
+
+6. 选择分析章节
+   根据引擎类型、渲染管线、trace 场景选择对应的分析技能和报告章节
+```
+
 ## 分析流程
 
 ```
@@ -366,33 +408,136 @@ fragments/  → 3 个共享 SQL CTE 片段
 5. 如需 fragments → 读取并拼接到 SQL
 6. 调用 pa_execute_sql(trace_path, sql)
 7. 按 YAML 中的 output/thresholds/diagnostics 评估结果
-8. 生成分析报告
+8. 生成 HTML 报告（参见下方"报告生成"章节）
+   ① 确定输出目录: data/output/trace_report/<trace_stem>/
+   ② 运行 build_report.py init 初始化报告目录
+   ③ 根据分析场景，为每个触发章节准备 data JSON
+   ④ 依次运行 build_report.py chapter 渲染各章节
+   ⑤ 准备 conclusion JSON，运行 build_report.py conclusion
+   ⑥ 运行 build_report.py assemble 生成最终 HTML 报告
+   ⑦ 对话区仅输出报告路径和根因摘要，详细数据在 HTML 报告中
 ```
 
-## 报告模板
+## 报告生成
 
-```markdown
-## 性能分析结论
+分析完成后 MUST 使用 `scripts/build_report.py` 生成 HTML 报告。
 
-### 基本信息
-- **Trace**: <文件名> | **设备**: <型号> | **刷新率**: <Hz>
-- **渲染管线**: <类型> | **Trace 时长**: <s>
+> **重要**: 了解 build_report.py 的用法和子命令时，执行 `python scripts/build_report.py --help`，禁止阅读源码。
 
-### 问题概况
-- <场景描述>：<量化数据>
+### 输出路径规范
 
-### 根因分析（按严重程度排序）
-1. **[CRITICAL/HIGH/MEDIUM] <原因>**
-   - 证据：<具体数据>
-   - 影响：<范围>
-
-### 关键数据摘要
-| 维度 | 关键指标 | 值 | 状态 |
-|------|---------|-----|------|
-
-### 排查建议
-- 基于数据的排查方向
 ```
+data/output/trace_report/<trace_stem>/
+├── header.json
+├── chapters/
+│   ├── fps.html
+│   ├── cpu.html
+│   └── ...
+├── chapter_data/
+│   ├── fps.json
+│   └── ...
+├── conclusion.html
+└── perfetto-report-{app_short}-{date}-{type}.html
+```
+
+- `trace_stem`: trace 文件名去 `.perfetto-trace` 后缀
+- `app_short`: 从包名提取简短标识，如 `com.tencent.tmgp.sgame` → `sgame`
+- `date`: trace 文件名中的日期或分析日期 (YYYYMMDD)
+- `type`: 分析类型 — `jank` / `startup` / `memory` / `comprehensive`
+
+### 报告生成流水线
+
+```bash
+# Phase 0: 初始化报告目录
+python scripts/build_report.py init \
+  --output-dir data/output/trace_report/<trace_stem>/ \
+  --header '{"trace_name":"...","analysis_time":"..."}'
+
+# Phase 1: 逐章渲染（以 fps 为例）
+# ① 将章节数据写入 chapter_data/fps.json（格式参见各章节 data_schema）
+# ② 运行 chapter 命令
+python scripts/build_report.py chapter \
+  --chapter-id fps \
+  --data data/output/trace_report/<trace_stem>/chapter_data/fps.json \
+  --chapters-dir templates/chapters/ \
+  --fragments-dir templates/fragments/ \
+  -o data/output/trace_report/<trace_stem>/chapters/fps.html
+
+# Phase 2: 结论
+python scripts/build_report.py conclusion \
+  --data data/output/trace_report/<trace_stem>/chapter_data/conclusion.json \
+  --fragments-dir templates/fragments/ \
+  -o data/output/trace_report/<trace_stem>/conclusion.html
+
+# Phase 3: 组装最终报告
+python scripts/build_report.py assemble \
+  -d data/output/trace_report/<trace_stem>/ \
+  -t templates/base.html \
+  -o data/output/trace_report/<trace_stem>/perfetto-report-{app_short}-{date}-{type}.html
+```
+
+### 章节选择规则
+
+Agent 根据实际运行的分析技能自动选择章节（章节 YAML `trigger.when_skills_used` 定义）：
+
+| 分析场景 | 已使用的 Skill | 触发章节 |
+|---------|---------------|---------|
+| 帧率/卡顿 | game_fps_analysis / game_main_loop_jank | fps |
+| CPU/调度 | sched_latency_in_range / cpu_topology_view | cpu |
+| GPU 渲染 | gpu_metrics / gpu_render_in_range | gpu |
+| 内存 | gc_events_in_range / memory_growth_detector | memory |
+| Binder/IPC | binder_blocking_in_range | binder |
+| 启动 | startup_events_in_range | startup |
+| SurfaceFlinger | sf_frame_consumption | sf |
+| IO | main_thread_file_io_in_range | io |
+| 功耗 | battery_charge_timeline | power |
+| 锁竞争 | lock_contention_in_range | lock |
+| 热控 | cpu_throttling_in_range | thermal |
+
+header 和 root_causes 始终包含，conclusion 始终生成。未触发条件的章节跳过。
+
+### data JSON 格式
+
+每个章节的 data JSON 结构：
+
+```json
+{
+  "title": "章节显示标题",
+  "data": {
+    "<section_id>": { ... },
+    "<section_id>": [ ... ],
+    "<section_id>": null
+  }
+}
+```
+
+- `object` 类型 section → 渲染为 metric_grid
+- `array` 类型 section → 渲染为 data_table
+- `null` + schema 中 `required: false` → 跳过
+
+具体字段定义见 `templates/chapters/{chapter_id}_data.yaml`，Agent 应读取对应 YAML 了解需要填充的字段。
+
+### 结论 JSON 格式
+
+```json
+{
+  "overall_rating": "优秀 / 良好 / 一般 / 较差",
+  "rating_color": "green / yellow / red",
+  "summary": "3-5 句话的综合总结",
+  "highlights": ["亮点1", "亮点2", ...],
+  "risks": ["关注点1", "关注点2", ...],
+  "recommendations": ["建议1", "建议2", ...],
+  "chapters_included": ["fps", "cpu", ...]
+}
+```
+
+### 对话区输出规范
+
+生成 HTML 报告后，对话区仅输出：
+1. 报告文件路径（可点击的 markdown 链接）
+2. 根因摘要（3-5 条，每条包含严重度标签）
+
+详细数据、表格、分布图均在 HTML 报告中，对话区不重复输出。
 
 ## 关键注意事项
 

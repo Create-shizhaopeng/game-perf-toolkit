@@ -1,0 +1,29 @@
+id: io
+title: "IO 分析"
+order: 7
+
+trigger:
+  when_skills_used:
+    - main_thread_file_io_in_range
+    - page_fault_in_range
+
+data_schema:
+  core_metrics:
+    type: object
+    label: "IO 核心指标"
+    required: true
+    fields:
+      - { key: d_state_total_ms, label: "D-State 阻塞", format: duration_ms }
+      - { key: io_block_count, label: "IO 阻塞次数", format: integer }
+      - { key: page_fault_count, label: "Page Fault", format: integer, optional: true }
+      - { key: major_fault_count, label: "Major Fault", format: integer, optional: true }
+
+  io_hotspots:
+    type: table
+    label: "IO 阻塞热点"
+    required: false
+    max_rows: 10
+    columns:
+      - { key: file_path, label: "文件路径" }
+      - { key: count, label: "次数", format: integer }
+      - { key: total_ms, label: "总耗时(ms)", format: decimal_1 }

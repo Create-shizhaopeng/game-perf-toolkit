@@ -1,0 +1,20 @@
+id: thermal
+title: "热控分析"
+order: 11
+
+trigger:
+  when_skills_used:
+    - cpu_throttling_in_range
+    - thermal_predictor
+    - device_state_timeline
+
+data_schema:
+  core_metrics:
+    type: object
+    label: "热控核心指标"
+    required: true
+    fields:
+      - { key: throttle_detected, label: "限频检测", format: boolean }
+      - { key: throttle_duration_ms, label: "限频持续", format: duration_ms, optional: true }
+      - { key: max_temp_c, label: "最高温度", format: decimal_1, optional: true }
+      - { key: risk_level, label: "热控风险", format: text, optional: true }

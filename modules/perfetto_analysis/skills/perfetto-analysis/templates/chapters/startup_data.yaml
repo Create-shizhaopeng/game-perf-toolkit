@@ -1,0 +1,39 @@
+id: startup
+title: "启动性能"
+order: 9
+
+trigger:
+  when_skills_used:
+    - startup_events_in_range
+    - startup_breakdown_in_range
+    - startup_critical_tasks
+    - startup_slow_reasons
+
+data_schema:
+  core_metrics:
+    type: object
+    label: "启动核心指标"
+    required: true
+    fields:
+      - { key: ttid_ms, label: "TTID", format: duration_ms, optional: true }
+      - { key: ttfd_ms, label: "TTFD", format: duration_ms, optional: true }
+      - { key: cold_start, label: "启动类型", format: text }
+
+  breakdown:
+    type: table
+    label: "启动耗时分解"
+    required: false
+    max_rows: 10
+    columns:
+      - { key: phase, label: "阶段" }
+      - { key: duration_ms, label: "耗时(ms)", format: decimal_1 }
+      - { key: pct, label: "占比(%)", format: percentage }
+
+  slow_reasons:
+    type: table
+    label: "启动慢原因"
+    required: false
+    max_rows: 5
+    columns:
+      - { key: reason, label: "原因" }
+      - { key: severity, label: "严重度" }

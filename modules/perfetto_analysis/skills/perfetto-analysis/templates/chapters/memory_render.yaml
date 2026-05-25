@@ -1,0 +1,11 @@
+id: memory
+render:
+  sections:
+    - id: core_metrics
+      fragment: metric_grid
+    - id: memory_trend
+      fragment: data_table
+      optional: true
+    - id: gc_events
+      fragment: data_table
+      optional: true

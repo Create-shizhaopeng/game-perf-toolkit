@@ -1,0 +1,15 @@
+id: fps
+render:
+  sections:
+    - id: core_metrics
+      fragment: metric_grid
+    - id: interval_distribution
+      fragment: data_table
+      extra:
+        show_distribution_bar: true
+    - id: fps_timeline
+      fragment: data_table
+      optional: true
+    - id: worst_frames
+      fragment: data_table
+      optional: true

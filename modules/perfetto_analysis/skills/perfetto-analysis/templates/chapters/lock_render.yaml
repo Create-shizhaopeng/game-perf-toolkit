@@ -1,0 +1,8 @@
+id: lock_contention
+render:
+  sections:
+    - id: core_metrics
+      fragment: metric_grid
+    - id: lock_hotspots
+      fragment: data_table
+      optional: true

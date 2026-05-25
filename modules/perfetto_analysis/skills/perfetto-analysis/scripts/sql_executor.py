@@ -16,7 +16,46 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def execute_sql(trace_path: str, sql: str) -> dict[str, Any]:
+def _discover_bin_path() -> str | None:
+    """按优先级自动发现 trace_processor_shell 二进制路径。
+
+    优先级:
+    1. perfetto 预置缓存 ~/.local/share/perfetto/prebuilts/
+    2. skill 同级目录 trace_processor_shell(.exe)
+    3. 返回 None（由 perfetto 包自动下载）
+    """
+    import platform
+
+    is_win = platform.system() == "Windows"
+    exe_suffix = ".exe" if is_win else ""
+    bin_name = f"trace_processor_shell{exe_suffix}"
+
+    # 1. perfetto 包默认缓存位置
+    candidates = [
+        Path.home() / ".local" / "share" / "perfetto" / "prebuilts" / bin_name,
+    ]
+
+    # 2. skill 同级目录
+    if "__file__" in dir():
+        try:
+            skill_scripts = Path(__file__).resolve().parent
+            candidates.append(skill_scripts / bin_name)
+        except NameError:
+            pass
+
+    for p in candidates:
+        if p.is_file():
+            return str(p)
+
+    return None
+
+
+def execute_sql(
+    trace_path: str,
+    sql: str,
+    bin_path: str | None = None,
+    load_timeout: int = 30,
+) -> dict[str, Any]:
     """对 Perfetto trace 文件执行 SQL 查询，返回结果。
 
     不依赖 toolkit.core，可独立于框架使用。
@@ -24,6 +63,9 @@ def execute_sql(trace_path: str, sql: str) -> dict[str, Any]:
     Args:
         trace_path: Perfetto trace 文件路径（.perfetto-trace / .perfetto-trace.gz）
         sql: PerfettoSQL 查询语句
+        bin_path: trace_processor_shell 二进制路径。
+                  不传则按优先级自动发现，最终兜底 perfetto 包自动下载。
+        load_timeout: trace_processor 启动超时秒数（默认 30）
 
     Returns:
         dict 包含:
@@ -42,7 +84,7 @@ def execute_sql(trace_path: str, sql: str) -> dict[str, Any]:
         }
 
     try:
-        from perfetto.trace_processor import TraceProcessor
+        from perfetto.trace_processor import TraceProcessor, TraceProcessorConfig
     except ImportError:
         return {
             "success": False,
@@ -51,9 +93,16 @@ def execute_sql(trace_path: str, sql: str) -> dict[str, Any]:
             "row_count": 0,
         }
 
+    if bin_path is None:
+        bin_path = _discover_bin_path()
+
     tp = None
     try:
-        tp = TraceProcessor(trace=str(trace.resolve()))
+        config = TraceProcessorConfig(
+            bin_path=bin_path,
+            load_timeout=load_timeout,
+        )
+        tp = TraceProcessor(trace=str(trace.resolve()), config=config)
         result = tp.query(sql)
 
         rows = []
@@ -107,8 +156,10 @@ PerfettoSQL 执行器 — Skill 内部脚本
   result = execute_sql(trace_path="/path/to/trace.perfetto-trace", sql="SELECT 1")
 
 参数:
-  trace_path (str, 必填): Perfetto trace 文件路径
-  sql       (str, 必填): PerfettoSQL 查询语句
+  trace_path   (str, 必填): Perfetto trace 文件路径
+  sql          (str, 必填): PerfettoSQL 查询语句
+  bin_path     (str, 可选): trace_processor_shell 二进制路径，不传则自动下载
+  load_timeout (int, 可选): 启动超时秒数，默认 30
 
 返回结构:
   {

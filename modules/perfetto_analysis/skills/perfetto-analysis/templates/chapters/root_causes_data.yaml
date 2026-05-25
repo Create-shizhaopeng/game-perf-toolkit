@@ -1,0 +1,25 @@
+id: root_causes
+title: "根因分析"
+order: 99
+
+trigger:
+  always_include: true
+
+data_schema:
+  root_causes:
+    type: root_cause_list
+    label: "性能问题 (按严重度排序)"
+    required: true
+    max_items: 10
+    fields:
+      - { key: rank, label: "#" }
+      - { key: severity, label: "严重度", format: severity_badge }
+      - { key: cause, label: "根因" }
+      - { key: evidence, label: "证据" }
+      - { key: impact, label: "影响范围" }
+      - { key: suggestion, label: "建议", optional: true }
+
+  overall_assessment:
+    type: text
+    label: "综合评估"
+    required: false

@@ -1,0 +1,17 @@
+<div class="root-cause-section">
+  <h3>{{ section_title }}</h3>
+  {% for item in items %}
+  <div class="root-cause-card severity-{{ item.severity | lower }}">
+    <div class="rc-header">
+      <span class="rc-severity badge-{{ item.severity | lower }}">{{ item.severity }}</span>
+      <span class="rc-rank">#{{ item.rank }}</span>
+    </div>
+    <div class="rc-body">
+      <p class="rc-cause">{{ item.cause }}</p>
+      {% if item.evidence %}<p class="rc-evidence">{{ item.evidence }}</p>{% endif %}
+      {% if item.impact %}<p class="rc-impact">影响: {{ item.impact }}</p>{% endif %}
+      {% if item.suggestion %}<p class="rc-suggestion">建议: {{ item.suggestion }}</p>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>

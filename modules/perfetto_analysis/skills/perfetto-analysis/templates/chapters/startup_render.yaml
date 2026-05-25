@@ -1,0 +1,11 @@
+id: startup
+render:
+  sections:
+    - id: core_metrics
+      fragment: metric_grid
+    - id: breakdown
+      fragment: data_table
+      optional: true
+    - id: slow_reasons
+      fragment: data_table
+      optional: true

@@ -1,0 +1,30 @@
+id: power
+title: "功耗分析"
+order: 8
+
+trigger:
+  when_skills_used:
+    - android_dvfs_counter_stats
+    - battery_charge_timeline
+    - wakelock_tracking
+    - wattson_thread_power_attribution
+    - thermal_predictor
+
+data_schema:
+  core_metrics:
+    type: object
+    label: "功耗核心指标"
+    required: true
+    fields:
+      - { key: battery_drop_pct, label: "电量变化", format: percentage, optional: true }
+      - { key: wakelock_total_ms, label: "WakeLock", format: duration_ms, optional: true }
+      - { key: thermal_throttle, label: "热控限频", format: text, optional: true }
+
+  wakelock_top:
+    type: table
+    label: "WakeLock Top N"
+    required: false
+    max_rows: 5
+    columns:
+      - { key: name, label: "WakeLock 名" }
+      - { key: hold_ms, label: "持有时长(ms)", format: decimal_1 }

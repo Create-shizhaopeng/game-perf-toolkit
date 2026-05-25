@@ -1,0 +1,20 @@
+id: header
+title: "基本信息"
+order: 0
+
+data_schema:
+  type: key_value
+  fields:
+    - { key: trace_name, label: "Trace 文件", format: text }
+    - { key: device_model, label: "设备型号", format: text }
+    - { key: device_soc, label: "SoC", format: text }
+    - { key: android_version, label: "系统版本", format: text }
+    - { key: target_app, label: "目标应用", format: text }
+    - { key: game_engine, label: "游戏引擎", format: text, optional: true }
+    - { key: rendering_pipeline, label: "渲染管线", format: text, optional: true }
+    - { key: target_fps, label: "目标帧率", format: fps }
+    - { key: trace_duration_s, label: "Trace 时长", format: duration_s }
+    - { key: analysis_time, label: "分析时间", format: datetime }
+
+render:
+  fragment: metric_grid

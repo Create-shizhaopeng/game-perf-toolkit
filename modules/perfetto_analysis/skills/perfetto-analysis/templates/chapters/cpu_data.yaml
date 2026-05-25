@@ -1,0 +1,53 @@
+id: cpu
+title: "CPU 分析"
+order: 2
+
+trigger:
+  when_skills_used:
+    - cpu_topology_view
+    - cpu_cluster_load_in_range
+    - cpu_slice_analysis
+    - sched_latency_in_range
+    - cpu_throttling_in_range
+    - task_migration_in_range
+
+data_schema:
+  topology:
+    type: object
+    label: "CPU 拓扑"
+    required: true
+    fields:
+      - { key: total_cores, label: "总核数", format: integer }
+      - { key: clusters, label: "集群分布", format: text }
+      - { key: avg_cpu_freq_khz, label: "平均频率", format: text, optional: true }
+
+  thread_cpu:
+    type: table
+    label: "CPU 占用 (按线程)"
+    required: true
+    max_rows: 15
+    columns:
+      - { key: thread_name, label: "线程名" }
+      - { key: total_cpu_ms, label: "CPU 时间(ms)", format: decimal_1 }
+      - { key: cpu_pct, label: "单核占比(%)", format: percentage }
+      - { key: run_count, label: "调度次数", format: integer }
+
+  thread_states:
+    type: table
+    label: "主线程状态分布"
+    required: false
+    columns:
+      - { key: state, label: "状态" }
+      - { key: total_ms, label: "时长(ms)", format: decimal_1 }
+      - { key: pct, label: "占比(%)", format: percentage }
+
+  sched_latency:
+    type: object
+    label: "调度延迟"
+    required: false
+    fields:
+      - { key: p50_ms, label: "P50 延迟", format: decimal_3, unit: ms }
+      - { key: p95_ms, label: "P95 延迟", format: decimal_3, unit: ms }
+      - { key: p99_ms, label: "P99 延迟", format: decimal_3, unit: ms }
+      - { key: max_ms, label: "最大延迟", format: decimal_3, unit: ms }
+      - { key: rating, label: "评级", format: text }

@@ -126,10 +126,14 @@ steps:
           AND s.ts < i.end_ts
           AND (
             t.name GLOB '*Unity*' OR t.name GLOB '*GameThread*' OR t.name GLOB '*RHIThread*' OR
+            t.name GLOB '*GLThread*' OR t.name GLOB '*GPU completion*' OR
+            t.name GLOB '*VulkanThread*' OR t.name GLOB '*RenderThread*' OR
             s.name GLOB '*Unity*' OR s.name GLOB '*PlayerLoop*' OR s.name GLOB '*Camera.Render*' OR s.name GLOB '*Gfx.WaitForPresent*' OR
             s.name GLOB '*FrameGameThread*' OR s.name GLOB '*Unreal*' OR
             s.name GLOB '*Director::mainLoop*' OR s.name GLOB '*cocos2d*' OR s.name GLOB '*Cocos*' OR
-            s.name GLOB '*Main::iteration*' OR s.name GLOB '*physics_process*' OR s.name GLOB '*idle_process*'
+            s.name GLOB '*Main::iteration*' OR s.name GLOB '*physics_process*' OR s.name GLOB '*idle_process*' OR
+            s.name = 'dequeueBuffer' OR s.name = 'eglSwapBuffers' OR s.name = 'vkQueuePresentKHR' OR
+            s.name = 'queueBuffer' OR s.name = 'waitForever' OR s.name GLOB '*dequeueBuffer*'
           )
       ),
       engine_slices AS (
@@ -147,7 +151,10 @@ steps:
             ELSE 'GenericGame'
           END AS engine_family,
           CASE
-            WHEN s.name GLOB '*Gfx.WaitForPresent*' OR s.name GLOB '*WaitForPresent*' THEN 'present_wait'
+            WHEN s.name GLOB '*Gfx.WaitForPresent*' OR s.name = 'waitForever' THEN 'gpu_fence'
+            WHEN s.name GLOB '*dequeueBuffer*' OR s.name = 'dequeueBuffer' THEN 'buffer_dequeue'
+            WHEN s.name = 'eglSwapBuffers' OR s.name = 'vkQueuePresentKHR' THEN 'present'
+            WHEN s.name = 'queueBuffer' THEN 'buffer_queue'
             WHEN s.name GLOB '*Camera.Render*' OR s.name GLOB '*UnityGfx*' OR s.name GLOB '*RenderingThread*' OR t.name GLOB '*RHIThread*' THEN 'render'
             WHEN s.name GLOB '*Tick*' OR s.name GLOB '*Update*' OR s.name GLOB '*PlayerLoop*' OR s.name GLOB '*FrameGameThread*' THEN 'tick_update'
             WHEN s.name GLOB '*Director::mainLoop*' OR s.name GLOB '*Main::iteration*' THEN 'main_loop'
@@ -166,12 +173,14 @@ steps:
           AND s.dur > 0
           AND (
             t.name GLOB '*Unity*' OR t.name GLOB '*GameThread*' OR t.name GLOB '*RHIThread*' OR
-            t.name GLOB '*Unity*' OR t.name GLOB '*GameThread*' OR t.name GLOB '*RHIThread*' OR
-            t.name GLOB '*GLThread*' OR
+            t.name GLOB '*GLThread*' OR t.name GLOB '*GPU completion*' OR
+            t.name GLOB '*VulkanThread*' OR t.name GLOB '*RenderThread*' OR
             s.name GLOB '*PlayerLoop*' OR s.name GLOB '*Camera.Render*' OR s.name GLOB '*Gfx.WaitForPresent*' OR
             s.name GLOB '*FrameGameThread*' OR s.name GLOB '*Unreal*' OR
             s.name GLOB '*Director::mainLoop*' OR s.name GLOB '*cocos2d*' OR s.name GLOB '*Cocos*' OR
-            s.name GLOB '*Main::iteration*' OR s.name GLOB '*physics_process*' OR s.name GLOB '*idle_process*'
+            s.name GLOB '*Main::iteration*' OR s.name GLOB '*physics_process*' OR s.name GLOB '*idle_process*' OR
+            s.name = 'dequeueBuffer' OR s.name = 'eglSwapBuffers' OR s.name = 'vkQueuePresentKHR' OR
+            s.name = 'queueBuffer' OR s.name = 'waitForever' OR s.name GLOB '*dequeueBuffer*'
           )
       )
       SELECT
@@ -255,10 +264,14 @@ steps:
           AND s.ts < i.end_ts
           AND (
             t.name GLOB '*Unity*' OR t.name GLOB '*GameThread*' OR t.name GLOB '*RHIThread*' OR
+            t.name GLOB '*GLThread*' OR t.name GLOB '*GPU completion*' OR
+            t.name GLOB '*VulkanThread*' OR t.name GLOB '*RenderThread*' OR
             s.name GLOB '*Unity*' OR s.name GLOB '*PlayerLoop*' OR s.name GLOB '*Camera.Render*' OR s.name GLOB '*Gfx.WaitForPresent*' OR
             s.name GLOB '*FrameGameThread*' OR s.name GLOB '*Unreal*' OR
             s.name GLOB '*Director::mainLoop*' OR s.name GLOB '*cocos2d*' OR s.name GLOB '*Cocos*' OR
-            s.name GLOB '*Main::iteration*' OR s.name GLOB '*physics_process*' OR s.name GLOB '*idle_process*'
+            s.name GLOB '*Main::iteration*' OR s.name GLOB '*physics_process*' OR s.name GLOB '*idle_process*' OR
+            s.name = 'dequeueBuffer' OR s.name = 'eglSwapBuffers' OR s.name = 'vkQueuePresentKHR' OR
+            s.name = 'queueBuffer' OR s.name = 'waitForever' OR s.name GLOB '*dequeueBuffer*'
           )
       )
       SELECT
@@ -273,7 +286,10 @@ steps:
           ELSE 'GenericGame'
         END AS engine_family,
         CASE
-          WHEN s.name GLOB '*Gfx.WaitForPresent*' OR s.name GLOB '*WaitForPresent*' THEN 'present_wait'
+          WHEN s.name GLOB '*Gfx.WaitForPresent*' OR s.name = 'waitForever' THEN 'gpu_fence'
+          WHEN s.name GLOB '*dequeueBuffer*' OR s.name = 'dequeueBuffer' THEN 'buffer_dequeue'
+          WHEN s.name = 'eglSwapBuffers' OR s.name = 'vkQueuePresentKHR' THEN 'present'
+          WHEN s.name = 'queueBuffer' THEN 'buffer_queue'
           WHEN s.name GLOB '*Camera.Render*' OR s.name GLOB '*UnityGfx*' OR s.name GLOB '*RenderingThread*' OR t.name GLOB '*RHIThread*' THEN 'render'
           WHEN s.name GLOB '*Tick*' OR s.name GLOB '*Update*' OR s.name GLOB '*PlayerLoop*' OR s.name GLOB '*FrameGameThread*' THEN 'tick_update'
           WHEN s.name GLOB '*Director::mainLoop*' OR s.name GLOB '*Main::iteration*' THEN 'main_loop'
@@ -294,12 +310,14 @@ steps:
         AND s.dur / 1e6 > i.target_frame_ms * 1.5
         AND (
           t.name GLOB '*Unity*' OR t.name GLOB '*GameThread*' OR t.name GLOB '*RHIThread*' OR
-          t.name GLOB '*Unity*' OR t.name GLOB '*GameThread*' OR t.name GLOB '*RHIThread*' OR
-          t.name GLOB '*GLThread*' OR
+          t.name GLOB '*GLThread*' OR t.name GLOB '*GPU completion*' OR
+          t.name GLOB '*VulkanThread*' OR t.name GLOB '*RenderThread*' OR
           s.name GLOB '*PlayerLoop*' OR s.name GLOB '*Camera.Render*' OR s.name GLOB '*Gfx.WaitForPresent*' OR
           s.name GLOB '*FrameGameThread*' OR s.name GLOB '*Unreal*' OR
           s.name GLOB '*Director::mainLoop*' OR s.name GLOB '*cocos2d*' OR s.name GLOB '*Cocos*' OR
-          s.name GLOB '*Main::iteration*' OR s.name GLOB '*physics_process*' OR s.name GLOB '*idle_process*'
+          s.name GLOB '*Main::iteration*' OR s.name GLOB '*physics_process*' OR s.name GLOB '*idle_process*' OR
+          s.name = 'dequeueBuffer' OR s.name = 'eglSwapBuffers' OR s.name = 'vkQueuePresentKHR' OR
+          s.name = 'queueBuffer' OR s.name = 'waitForever' OR s.name GLOB '*dequeueBuffer*'
         )
       ORDER BY s.dur DESC
       LIMIT 100

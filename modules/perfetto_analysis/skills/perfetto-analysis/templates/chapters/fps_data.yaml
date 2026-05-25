@@ -1,0 +1,57 @@
+id: fps
+title: "帧率分析"
+order: 1
+
+trigger:
+  when_skills_used:
+    - game_fps_analysis
+    - gl_standalone_swap_jank
+    - game_main_loop_jank
+    - consumer_jank_detection
+    - frame_pipeline_variance
+
+data_schema:
+  core_metrics:
+    type: object
+    label: "核心帧率指标"
+    required: true
+    fields:
+      - { key: total_frames, label: "总帧数", format: integer }
+      - { key: actual_fps, label: "实际 FPS", format: decimal_1 }
+      - { key: target_fps, label: "目标 FPS", format: integer }
+      - { key: jank_rate, label: "掉帧率", format: percentage, severity: { excellent: "<1", good: "<5", warning: "<10", critical: ">=10" } }
+      - { key: jank_count, label: "掉帧数", format: integer }
+      - { key: severe_jank_count, label: "严重掉帧", format: integer }
+      - { key: frame_count, label: "Swap 帧数", format: integer }
+      - { key: quality_rating, label: "质量评级", format: text }
+      - { key: pct_in_target, label: "达标占比", format: percentage }
+
+  interval_distribution:
+    type: table
+    label: "帧间隔分布"
+    required: true
+    columns:
+      - { key: range, label: "帧间隔范围" }
+      - { key: count, label: "帧数", format: integer }
+      - { key: percentage, label: "占比", format: percentage }
+
+  fps_timeline:
+    type: table
+    label: "FPS 时间线"
+    required: false
+    columns:
+      - { key: window, label: "时间窗口" }
+      - { key: fps, label: "FPS", format: decimal_1 }
+      - { key: frame_count, label: "帧数", format: integer }
+
+  worst_frames:
+    type: table
+    label: "最差帧详情"
+    required: false
+    note: "仅列出 frame_count < 30 或间隔明显异常的帧"
+    max_rows: 5
+    columns:
+      - { key: frame_num, label: "帧序号", format: integer }
+      - { key: time_s, label: "时间", format: timestamp_s }
+      - { key: interval_ms, label: "间隔(ms)", format: decimal_2 }
+      - { key: root_cause, label: "疑似根因" }

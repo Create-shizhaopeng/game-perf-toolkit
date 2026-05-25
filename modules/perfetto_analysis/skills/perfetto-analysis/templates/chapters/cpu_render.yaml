@@ -1,0 +1,13 @@
+id: cpu
+render:
+  sections:
+    - id: topology
+      fragment: metric_grid
+    - id: thread_cpu
+      fragment: data_table
+    - id: thread_states
+      fragment: data_table
+      optional: true
+    - id: sched_latency
+      fragment: metric_grid
+      optional: true

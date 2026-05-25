@@ -1,0 +1,42 @@
+<div class="conclusion-section">
+  <div class="overall-rating rating-{{ rating_color | default('green') }}">
+    <span class="rating-badge">{{ overall_rating }}</span>
+  </div>
+
+  <div class="conclusion-summary">
+    <p>{{ summary }}</p>
+  </div>
+
+  {% if highlights %}
+  <div class="highlight-list">
+    <h4>亮点</h4>
+    <ul>
+    {% for item in highlights %}
+      <li class="highlight-item">{{ item }}</li>
+    {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if risks %}
+  <div class="risk-list">
+    <h4>关注点</h4>
+    <ul>
+    {% for item in risks %}
+      <li class="risk-item">{{ item }}</li>
+    {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if recommendations %}
+  <div class="recommendation-list">
+    <h4>优化建议</h4>
+    <ul>
+    {% for item in recommendations %}
+      <li>{{ item }}</li>
+    {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>

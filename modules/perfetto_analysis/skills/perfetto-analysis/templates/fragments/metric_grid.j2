@@ -1,0 +1,8 @@
+<div class="metric-grid">
+{% for item in metrics %}
+  <div class="metric-card severity-{{ item._severity | default('normal') }}">
+    <span class="metric-label">{{ item.label }}</span>
+    <span class="metric-value">{{ item._formatted_value | default(item.value) }}{{ item._unit | default('') }}</span>
+  </div>
+{% endfor %}
+</div>

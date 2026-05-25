@@ -1,0 +1,36 @@
+id: binder
+title: "Binder/IPC 分析"
+order: 5
+
+trigger:
+  when_skills_used:
+    - binder_storm_detection
+    - binder_blocking_in_range
+    - binder_in_range
+    - binder_root_cause
+    - blocking_chain_analysis
+
+data_schema:
+  core_metrics:
+    type: object
+    label: "Binder 核心指标"
+    required: true
+    fields:
+      - { key: total_transactions, label: "事务总数", format: integer }
+      - { key: slow_count, label: "慢事务数", format: integer }
+      - { key: slow_rate, label: "慢事务占比", format: percentage }
+      - { key: avg_latency_us, label: "平均延迟", format: duration_us }
+      - { key: p95_latency_us, label: "P95 延迟", format: duration_us }
+      - { key: max_latency_us, label: "最大延迟", format: duration_us }
+      - { key: rating, label: "健康度", format: text }
+
+  slow_transactions:
+    type: table
+    label: "慢 Binder 事务"
+    required: false
+    max_rows: 10
+    columns:
+      - { key: interface, label: "接口" }
+      - { key: count, label: "次数", format: integer }
+      - { key: avg_ms, label: "平均(ms)", format: decimal_2 }
+      - { key: max_ms, label: "最大(ms)", format: decimal_2 }

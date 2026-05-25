@@ -1,0 +1,30 @@
+id: lock_contention
+title: "锁竞争分析"
+order: 10
+
+trigger:
+  when_skills_used:
+    - lock_contention_in_range
+    - futex_wait_distribution
+
+data_schema:
+  core_metrics:
+    type: object
+    label: "锁竞争核心指标"
+    required: true
+    fields:
+      - { key: lock_wait_total_ms, label: "锁等待总时长", format: duration_ms }
+      - { key: futex_wait_count, label: "Futex 等待", format: integer, optional: true }
+      - { key: top_lock_name, label: "最热锁", format: text, optional: true }
+
+  lock_hotspots:
+    type: table
+    label: "锁竞争热点"
+    required: false
+    max_rows: 10
+    columns:
+      - { key: lock_name, label: "锁名称" }
+      - { key: wait_count, label: "等待次数", format: integer }
+      - { key: total_ms, label: "总等待(ms)", format: decimal_1 }
+      - { key: avg_ms, label: "平均(ms)", format: decimal_2 }
+      - { key: max_ms, label: "最大(ms)", format: decimal_2 }

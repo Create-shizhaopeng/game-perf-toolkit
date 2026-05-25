@@ -22,6 +22,10 @@ _PA_EXECUTE_SQL_DESCRIPTION = (
     "   例：SQL 中的 ${package} → 实际包名 com.game.xxx\n"
     "3. 返回结构：{\"success\": bool, \"rows\": [{col: val, ...}, ...], \"row_count\": int, \"error\": str}\n"
     "4. SQL 片段：fragments/ 目录下的 .sql CTE 需要手动拼接到 SQL 的 WITH 子句中\n\n"
+    "## 可选参数\n\n"
+    "- bin_path: trace_processor_shell 二进制路径，不传则自动下载\n"
+    "  （国内网络无法访问 Google Cloud Storage 时建议传入本地路径）\n"
+    "- load_timeout: 启动超时秒数，默认 30\n\n"
     "## 技能索引\n\n"
     "查看 SKILL.md 中的场景索引表，了解针对不同问题应执行哪些 SQL。"
 )
@@ -60,6 +64,14 @@ class PerfettoAnalysisPlugin(BasePlugin):
                             "type": "string",
                             "description": "PerfettoSQL 查询语句（先将 ${variable} 替换为实际值）",
                         },
+                        "bin_path": {
+                            "type": "string",
+                            "description": "trace_processor_shell 二进制路径，不传则自动下载",
+                        },
+                        "load_timeout": {
+                            "type": "integer",
+                            "description": "启动超时秒数，默认 30",
+                        },
                     },
                     "required": ["trace_path", "sql"],
                 },
@@ -75,7 +87,12 @@ class PerfettoAnalysisPlugin(BasePlugin):
         return []
 
     @staticmethod
-    def _execute_sql(trace_path: str, sql: str) -> dict[str, Any]:
+    def _execute_sql(
+        trace_path: str,
+        sql: str,
+        bin_path: str | None = None,
+        load_timeout: int = 30,
+    ) -> dict[str, Any]:
         """执行 PerfettoSQL — 从 Skill scripts/ 目录导入，确保 Skill 可独立迁移。"""
         import importlib.util
 
@@ -84,7 +101,11 @@ class PerfettoAnalysisPlugin(BasePlugin):
         )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        return mod.execute_sql(trace_path, sql)
+        return mod.execute_sql(
+            trace_path, sql,
+            bin_path=bin_path,
+            load_timeout=load_timeout,
+        )
 
     @hookimpl
     def on_startup(self, context: dict) -> None:

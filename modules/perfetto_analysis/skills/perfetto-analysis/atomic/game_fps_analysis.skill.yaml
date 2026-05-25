@@ -27,7 +27,12 @@ priority: high
 
 meta:
   display_name: "游戏帧率分析"
-  description: "针对游戏的帧率分析，支持 30/45/60fps 固定帧率模式"
+  description: >-
+    针对游戏的帧率分析，支持 30/45/60fps 固定帧率模式。注意：游戏使用
+    SurfaceView+OpenGL ES 或 Vulkan 时，FrameTimeline (actual_frame_timeline_slice)
+    数据通常严重不足（可能只有实际帧数的 10-20%）。此时应降级使用 eglSwapBuffers
+    或 vkQueuePresentKHR 时间间隔做帧率分析。判断方法：对比 FrameTimeline 帧数与
+    swap buffer 次数的比例，若 < 50% 则切换为 swap 间隔分析。
   icon: "gamepad"
   tags: [game, fps, frame, performance, atomic]
 
@@ -383,3 +388,42 @@ output:
       description: "帧间隔统计"
     - name: jank_stats
       description: "掉帧统计"
+
+fallback:
+  description: >-
+    当 FrameTimeline 数据不足时（游戏绕过 Android Choreographer），
+    使用 eglSwapBuffers / vkQueuePresentKHR 间隔做帧率分析。
+  method: |
+    从渲染线程（UnityGfxDeviceW/GLThread/VulkanThread 等）的
+    eglSwapBuffers 或 vkQueuePresentKHR slice 中提取时间戳，
+    计算相邻帧间隔 = ts - LAG(ts) OVER (ORDER BY ts)，
+    按 1.5 倍目标间隔判断掉帧。
+  detection_thread_sql: |
+    SELECT t.name, COUNT(s.id) AS swap_count
+    FROM slice s
+    JOIN thread_track tt ON s.track_id = tt.id
+    JOIN thread t ON tt.utid = t.utid
+    JOIN process p ON t.upid = p.upid
+    WHERE p.name = '<package>'
+      AND (s.name = 'eglSwapBuffers' OR s.name = 'vkQueuePresentKHR')
+      AND s.dur > 0
+    GROUP BY t.name
+    ORDER BY swap_count DESC
+  interval_sql: |
+    SELECT
+      COUNT(*) AS total_frames,
+      ROUND(AVG(interval_ns) / 1e6, 2) AS avg_ms,
+      ROUND(PERCENTILE(interval_ns, 0.5) / 1e6, 2) AS p50_ms,
+      ROUND(PERCENTILE(interval_ns, 0.95) / 1e6, 2) AS p95_ms,
+      SUM(CASE WHEN interval_ns > target_interval * 1.5 THEN 1 ELSE 0 END) AS jank_count
+    FROM (
+      SELECT ts - LAG(ts) OVER (ORDER BY ts) AS interval_ns
+      FROM slice s
+      JOIN thread_track tt ON s.track_id = tt.id
+      JOIN thread t ON tt.utid = t.utid
+      JOIN process p ON t.upid = p.upid
+      WHERE p.name = '<package>'
+        AND s.name IN ('eglSwapBuffers', 'vkQueuePresentKHR')
+        AND t.name = '<render_thread_name>'
+    )
+    WHERE interval_ns > 0 AND interval_ns < 100000000

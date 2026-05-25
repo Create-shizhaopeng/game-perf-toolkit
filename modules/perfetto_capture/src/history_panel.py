@@ -101,6 +101,8 @@ class SessionTreeWidget(QTreeWidget):
     delete_session_requested = pyqtSignal(str)
     delete_trace_requested = pyqtSignal(Path)
     send_to_agent_requested = pyqtSignal(dict)
+    open_report_requested = pyqtSignal(Path)
+    delete_report_requested = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -143,6 +145,61 @@ class SessionTreeWidget(QTreeWidget):
             for trace in session.traces:
                 trace_item = self._create_trace_item(trace, session.id)
                 session_item.addChild(trace_item)
+
+                # Add analysis report sub-node if available
+                self._attach_report_children(trace_item, trace.file_path)
+
+    def _attach_report_children(self, trace_item: QTreeWidgetItem, trace_path: str) -> None:
+        """为 trace 节点附加分析报告子节点。"""
+        import os
+        from pathlib import Path as _Path
+
+        trace_stem = _Path(trace_path).stem
+
+        # Check dev output dir
+        candidates = [
+            _Path("data/output/trace_report") / trace_stem / "report.html",
+            _Path("output/perfetto_report") / trace_stem / "report.html",
+        ]
+
+        # Also check relative to exe dir
+        try:
+            from toolkit.core.app_paths import get_exe_dir
+            candidates.append(get_exe_dir() / "output" / "perfetto_report" / trace_stem / "report.html")
+        except Exception:
+            pass
+
+        found = False
+        for candidate in candidates:
+            if candidate.is_file():
+                report_item = QTreeWidgetItem()
+                report_item.setText(0, "📊 性能分析报告")
+                report_item.setData(0, Qt.ItemDataRole.UserRole, {
+                    "type": "analysis_report",
+                    "trace_path": trace_path,
+                    "report_path": str(candidate.resolve()),
+                })
+                trace_item.addChild(report_item)
+                found = True
+                break
+
+        if not found:
+            # Also search for old-format jank_report.md
+            for candidate_dir in [
+                _Path("data/output/trace_report") / trace_stem,
+                _Path("output/perfetto_report") / trace_stem,
+            ]:
+                jank_report = candidate_dir / "jank_report.md"
+                if jank_report.is_file():
+                    report_item = QTreeWidgetItem()
+                    report_item.setText(0, "📊 性能分析报告 (旧格式)")
+                    report_item.setData(0, Qt.ItemDataRole.UserRole, {
+                        "type": "analysis_report",
+                        "trace_path": trace_path,
+                        "report_path": str(jank_report.resolve()),
+                    })
+                    trace_item.addChild(report_item)
+                    break
 
     def _create_session_item(self, session: HistorySession) -> QTreeWidgetItem:
         """创建会话节点。"""
@@ -244,12 +301,15 @@ class SessionTreeWidget(QTreeWidget):
 
         sessions = [d for d in selected_data if d.get("type") == "session"]
         traces = [d for d in selected_data if d.get("type") == "trace"]
+        reports = [d for d in selected_data if d.get("type") == "analysis_report"]
 
         parts: list[str] = []
         if sessions:
             parts.append(f"{len(sessions)} 个会话")
         if traces:
             parts.append(f"{len(traces)} 个 trace")
+        if reports:
+            parts.append(f"{len(reports)} 个报告")
         summary = "、".join(parts)
 
         ok = confirm_dialog(
@@ -268,6 +328,10 @@ class SessionTreeWidget(QTreeWidget):
             path = t.get("path")
             if path:
                 self.delete_trace_requested.emit(Path(path))
+        for r in reports:
+            rdir = r.get("report_path")
+            if rdir:
+                self.delete_report_requested.emit(rdir)
 
     def _ctx_send_to_agent(self) -> None:
         """将选中历史项发送到 Agent 对话。"""
@@ -502,6 +566,8 @@ class HistoryPanel(QWidget):
         self._session_tree.delete_session_requested.connect(self.delete_session_requested.emit)
         self._session_tree.delete_trace_requested.connect(self.delete_trace_requested.emit)
         self._session_tree.send_to_agent_requested.connect(self.send_to_agent_requested.emit)
+        self._session_tree.open_report_requested.connect(self.open_report_requested.emit)
+        self._session_tree.delete_report_requested.connect(self._on_delete_report)
         left_layout.addWidget(self._session_tree, 1)
 
         # 操作按钮已集成到右键菜单，此处仅保留统计和清理
@@ -752,8 +818,28 @@ class HistoryPanel(QWidget):
         """项目点击事件。"""
         self._update_action_buttons_state()
 
+    def _on_delete_report(self, report_path: str) -> None:
+        """删除分析报告目录。"""
+        import shutil
+        from pathlib import Path as _Path
+
+        report_dir = _Path(report_path).parent
+        try:
+            if report_dir.is_dir():
+                shutil.rmtree(report_dir)
+                logger.info("已删除报告目录: %s", report_dir)
+        except Exception as e:
+            logger.warning("删除报告目录失败: %s", e)
+
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:
-        """项目双击事件（展开/折叠）。"""
+        """项目双击事件。报告节点→打开浏览器，有子节点→展开/折叠。"""
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if data and data.get("type") == "analysis_report":
+            report_path = data.get("report_path")
+            if report_path:
+                import webbrowser
+                webbrowser.open(report_path)
+            return
         if item.childCount() > 0:
             item.setExpanded(not item.isExpanded())
 

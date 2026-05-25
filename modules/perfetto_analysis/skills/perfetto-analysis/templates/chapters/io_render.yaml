@@ -1,0 +1,8 @@
+id: io
+render:
+  sections:
+    - id: core_metrics
+      fragment: metric_grid
+    - id: io_hotspots
+      fragment: data_table
+      optional: true

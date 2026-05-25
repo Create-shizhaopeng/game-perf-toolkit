@@ -1,0 +1,39 @@
+id: gpu
+title: "GPU 分析"
+order: 3
+
+trigger:
+  when_skills_used:
+    - gpu_metrics
+    - gpu_render_in_range
+    - gpu_freq_in_range
+    - gpu_power_state_analysis
+    - gl_standalone_swap_jank
+
+data_schema:
+  core_metrics:
+    type: object
+    label: "GPU 核心指标"
+    required: true
+    fields:
+      - { key: swap_count, label: "Swap 次数", format: integer }
+      - { key: swap_avg_us, label: "Swap 平均耗时", format: duration_us }
+      - { key: swap_p95_us, label: "Swap P95 耗时", format: duration_us }
+      - { key: swap_max_us, label: "Swap 最大耗时", format: duration_us }
+      - { key: gpu_fence_count, label: "Fence 等待次数", format: integer, optional: true }
+      - { key: gpu_fence_avg_us, label: "Fence 平均耗时", format: duration_us, optional: true }
+      - { key: gpu_fence_max_us, label: "Fence 最大耗时", format: duration_us, optional: true }
+      - { key: gpu_freq_avg_mhz, label: "GPU 平均频率", format: text, optional: true }
+
+  gpu_hotspots:
+    type: table
+    label: "GPU 渲染热点"
+    required: false
+    max_rows: 10
+    columns:
+      - { key: slice_name, label: "Slice 名称" }
+      - { key: thread_name, label: "线程" }
+      - { key: count, label: "次数", format: integer }
+      - { key: total_ms, label: "总耗时(ms)", format: decimal_1 }
+      - { key: avg_us, label: "平均(us)", format: decimal_1 }
+      - { key: max_us, label: "最大(us)", format: decimal_1 }

@@ -1,0 +1,5 @@
+id: root_causes
+render:
+  sections:
+    - id: root_causes
+      fragment: root_cause_table
