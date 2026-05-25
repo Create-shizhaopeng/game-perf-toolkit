@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from PyQt6.QtGui import QColor, QTextCharFormat
 from PyQt6.QtWidgets import (
     QFileDialog,
@@ -15,9 +18,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from toolkit.gui.codicons import codicon_font, icon_char
 from toolkit.gui.log_manager import LogManager
 from toolkit.gui.theme_colors import get_colors
+from toolkit.gui.widgets.base_history_tree import _cached_icon
+from toolkit.gui import strings as s
 
 _ALL_TAB = "全部"
 _CONSOLE_TAB = "控制台"
@@ -39,7 +43,7 @@ class _FilterButton(QPushButton):
 class BottomPanel(QWidget):
     """底部日志面板 — 聚合所有模块日志。
 
-    Header: [搜索] [计数] [频道Tabs] [控制台] --- [级别过滤] [清除]
+    Header: [搜索] [计数] [频道Tabs: 全部|控制台|...] --- [级别过滤] [清除]
     Content: QTextEdit + 结构化详情区域
     """
 
@@ -50,7 +54,6 @@ class BottomPanel(QWidget):
         self._theme = "dark"
         self._current_source: str | None = None  # None = 全部
         self._search_text: str = ""
-        self._show_console = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -78,31 +81,15 @@ class BottomPanel(QWidget):
         self._count_label.setFixedWidth(60)
         h_layout.addWidget(self._count_label)
 
-        # 导出按钮
-        export_btn = QPushButton("导出", self)
-        export_btn.setObjectName("logExportBtn")
-        export_btn.setFixedHeight(22)
-        export_btn.clicked.connect(self._on_export)
-        h_layout.addWidget(export_btn)
-        self._export_btn = export_btn
-
-        # 频道 Tabs
+        # 频道 Tabs（全部 + 控制台 + 各模块源）
         self._tab_bar = QTabBar()
         self._tab_bar.setObjectName("logChannelBar")
         self._tab_bar.setDrawBase(False)
         self._tab_bar.setExpanding(False)
         self._tab_bar.addTab(_ALL_TAB)
+        self._tab_bar.addTab(_CONSOLE_TAB)
         self._tab_bar.currentChanged.connect(self._on_tab_changed)
         h_layout.addWidget(self._tab_bar)
-
-        # 控制台源切换
-        self._console_btn = QPushButton("控制台", self)
-        self._console_btn.setObjectName("logConsoleBtn")
-        self._console_btn.setFixedHeight(22)
-        self._console_btn.setCheckable(True)
-        self._console_btn.setChecked(False)
-        self._console_btn.toggled.connect(self._on_console_toggled)
-        h_layout.addWidget(self._console_btn)
 
         h_layout.addStretch()
 
@@ -113,14 +100,11 @@ class BottomPanel(QWidget):
             self._filters[level] = btn
             h_layout.addWidget(btn)
 
-        clear_icon = icon_char("clear-all")
-        clear_btn = QPushButton(clear_icon, self)
+        clear_btn = QPushButton(self)
         clear_btn.setObjectName("logClearBtn")
-        clear_btn.setFixedSize(24, 20)
+        clear_btn.setFixedSize(24, 24)
         clear_btn.setToolTip("清除日志")
-        font = codicon_font(12)
-        if font:
-            clear_btn.setFont(font)
+        clear_btn.setIcon(_cached_icon("clear-all", font_size=14, canvas=20))
         clear_btn.clicked.connect(self._on_clear)
         self._clear_btn = clear_btn
         h_layout.addWidget(clear_btn)
@@ -141,22 +125,16 @@ class BottomPanel(QWidget):
         self._theme = theme
         self._refresh_view()
 
-    # --- 搜索 / 过滤 / 导出 ---
-
-    def _on_search_changed(self, text: str) -> None:
-        self._search_text = text.strip().lower()
-        self._refresh_view()
-
-    def _on_console_toggled(self, checked: bool) -> None:
-        self._show_console = checked
-        self._refresh_view()
-
-    def _on_export(self) -> None:
+    def export_logs(self) -> None:
+        """导出当前过滤后的日志条目到文件（供设置菜单调用）。"""
         entries = self._filtered_entries()
         if not entries:
             return
+        log_dir = Path.cwd() / "data" / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        default_path = str(log_dir / "logs_export.log")
         fname, _ = QFileDialog.getSaveFileName(
-            self, "导出日志", "logs_export.log", "日志文件 (*.log);;所有文件 (*.*)"
+            self, "导出日志", default_path, "日志文件 (*.log);;所有文件 (*.*)"
         )
         if not fname:
             return
@@ -166,6 +144,40 @@ class BottomPanel(QWidget):
                 if e.details:
                     for k, v in e.details.items():
                         f.write(f"  [{k}] {v}\n")
+
+    def open_log_directory(self) -> None:
+        """使用系统文件管理器打开日志目录。"""
+        log_dir = Path.cwd() / "data" / "logs"
+        if log_dir.exists():
+            os.startfile(str(log_dir))
+
+    def clear_log_history(self) -> None:
+        """清空磁盘日志文件（含确认对话框）。"""
+        from toolkit.gui.toolkit_dialog import confirm_dialog
+
+        log_dir = Path.cwd() / "data" / "logs"
+        log_files = list(log_dir.glob("*.log")) if log_dir.exists() else []
+        if not log_files:
+            return
+
+        ok = confirm_dialog(
+            self,
+            s.DLG_CLEAR_LOG_HISTORY_TITLE,
+            s.DLG_CLEAR_LOG_HISTORY_MSG,
+            confirm_text=s.DLG_CLEAR_LOG_HISTORY_CONFIRM,
+        )
+        if ok:
+            for f in log_files:
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+
+    # --- 搜索 / 过滤 ---
+
+    def _on_search_changed(self, text: str) -> None:
+        self._search_text = text.strip().lower()
+        self._refresh_view()
 
     # --- 频道切换 ---
 
@@ -177,6 +189,8 @@ class BottomPanel(QWidget):
     def _on_tab_changed(self, index: int) -> None:
         if index == 0:
             self._current_source = None
+        elif index == 1:
+            self._current_source = _CONSOLE_SOURCE
         else:
             self._current_source = self._tab_bar.tabText(index)
         self._refresh_view()
@@ -209,10 +223,7 @@ class BottomPanel(QWidget):
     def _passes_filter(self, source: str, msg: str, level: str) -> bool:
         if level not in self._active_levels():
             return False
-        if self._show_console:
-            if source != _CONSOLE_SOURCE:
-                return False
-        elif self._current_source is not None:
+        if self._current_source is not None:
             if source != self._current_source:
                 return False
         if self._search_text:
@@ -241,7 +252,7 @@ class BottomPanel(QWidget):
         cursor = self._log_view.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
 
-        if self._current_source is None and not self._show_console:
+        if self._current_source is None:
             cursor.insertText(f"[{ts}] ", src_fmt)
             cursor.insertText(f"[{source}] ", src_fmt)
             cursor.insertText(f"{msg}\n", fmt)

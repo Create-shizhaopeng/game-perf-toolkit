@@ -125,6 +125,11 @@ class MainWindow(QWidget):
         self._bottom_panel = BottomPanel(self._log_manager, self)
         self._right_panel = RightPanel(self)
 
+        # 设置菜单日志操作 → 底部面板
+        self._title_bar.log_export_requested.connect(self._bottom_panel.export_logs)
+        self._title_bar.log_open_dir_requested.connect(self._bottom_panel.open_log_directory)
+        self._title_bar.log_clear_history_requested.connect(self._bottom_panel.clear_log_history)
+
         self._bottom_panel.setMinimumHeight(35)
 
         self._bottom_wrapper = QWidget()

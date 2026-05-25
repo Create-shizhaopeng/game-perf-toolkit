@@ -269,6 +269,9 @@ class SettingsButton(QPushButton):
     theme_toggled = pyqtSignal()
     llm_settings_requested = pyqtSignal()
     agent_settings_requested = pyqtSignal()
+    log_export_requested = pyqtSignal()
+    log_open_dir_requested = pyqtSignal()
+    log_clear_history_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -298,6 +301,22 @@ class SettingsButton(QPushButton):
 
         agent_action = menu.addAction(s.TITLEBAR_MENU_AGENT_SETTINGS)
         agent_action.triggered.connect(self.agent_settings_requested.emit)
+
+        menu.addSeparator()
+
+        log_menu = QMenu(s.TITLEBAR_MENU_LOG, menu)
+        log_menu.setObjectName("logSubMenu")
+
+        export_action = log_menu.addAction(s.TITLEBAR_MENU_LOG_EXPORT)
+        export_action.triggered.connect(self.log_export_requested.emit)
+
+        open_dir_action = log_menu.addAction(s.TITLEBAR_MENU_LOG_OPEN_DIR)
+        open_dir_action.triggered.connect(self.log_open_dir_requested.emit)
+
+        clear_action = log_menu.addAction(s.TITLEBAR_MENU_LOG_CLEAR_HISTORY)
+        clear_action.triggered.connect(self.log_clear_history_requested.emit)
+
+        menu.addMenu(log_menu)
 
         menu.exec(self.mapToGlobal(self.rect().bottomLeft()))
 
@@ -432,6 +451,9 @@ class TitleBar(QWidget):
     toggle_nav_panel = pyqtSignal(bool)
     toggle_bottom_panel = pyqtSignal(bool)
     toggle_right_panel = pyqtSignal(bool)
+    log_export_requested = pyqtSignal()
+    log_open_dir_requested = pyqtSignal()
+    log_clear_history_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -482,6 +504,15 @@ class TitleBar(QWidget):
         )
         self._settings_btn.agent_settings_requested.connect(
             self.agent_settings_requested.emit
+        )
+        self._settings_btn.log_export_requested.connect(
+            self.log_export_requested.emit
+        )
+        self._settings_btn.log_open_dir_requested.connect(
+            self.log_open_dir_requested.emit
+        )
+        self._settings_btn.log_clear_history_requested.connect(
+            self.log_clear_history_requested.emit
         )
         layout.addWidget(self._settings_btn)
 

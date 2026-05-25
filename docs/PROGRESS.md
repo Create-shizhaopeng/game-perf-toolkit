@@ -27,6 +27,16 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 
 ## 近期完成
 
+### 2026-05-25（日志面板 UI 重构：导出迁移 + 控制台 Tab 化 + 设置菜单扩展）
+
+- 底部面板 header 移除「导出」按钮，迁移到右上角设置 → 日志 → 导出日志
+- 设置菜单新增「日志」二级菜单（导出日志 / 历史日志 / 清空历史），SettingsButton 新增 3 个 pyqtSignal
+- 「控制台」从独立 QPushButton checkable 改为 QTabBar tab，紧挨「全部」右侧，11px 统一字体
+- 删除 `_show_console` / `_console_btn` / `_on_console_toggled`，源过滤逻辑简化
+- header 清除按钮从 text+font 改为 `_cached_icon()` + `setIcon()` 方式，修复 QSS 覆盖导致图标不显示
+- 底部面板新增 `export_logs` / `open_log_directory` / `clear_log_history` 公开方法
+- MainWindow 新增 SettingsButton → BottomPanel 信号桥接
+
 ### 2026-05-25（历史面板架构重构：提取基类 + 统一数据源 + codicon 图标迁移）
 
 - 提取 `BaseHistoryTreeWidget` 到 `toolkit/gui/widgets/` — 通用历史树基类，统一右键菜单、主题、搜索过滤、格式化工具、send_to_agent 信号
