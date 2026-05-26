@@ -1,19 +1,20 @@
 """LLM 模型设置对话框 — 精简版：Provider + Model + Thinking。"""
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from toolkit.gui.toolkit_dialog import ToolkitDialog, DialogCloseButton
+from toolkit.gui.toolkit_dialog import ToolkitDialog
 from toolkit.gui import strings as s
 
 
@@ -40,6 +41,7 @@ class LLMSettingsDialog(ToolkitDialog):
         self.resize(440, 320)
         self._llm_manager = llm_manager
         self._config = llm_manager.get_config()
+        self._initial_values: dict = {}
 
         body = QVBoxLayout()
         body.setSpacing(12)
@@ -121,6 +123,7 @@ class LLMSettingsDialog(ToolkitDialog):
 
         self._load_providers()
         self._load_config()
+        self._snapshot()
 
     # ------------------------------------------------------------------
     # Provider 列表
@@ -199,18 +202,67 @@ class LLMSettingsDialog(ToolkitDialog):
         new_config = LLMConfig(provider=provider_id, model_name=model_name)
         self._llm_manager.update_config(new_config)
 
-        # 同步 active provider/model 到 Service
         svc = self._llm_manager.get_service("llm_manager_service")
         if svc:
             try:
                 svc.reload()
+                # 回写 Base URL 和 API Key 到当前 Provider
+                prov = svc.get_provider(provider_id)
+                if prov:
+                    from modules.llm_manager.src.models import ProviderConfig
+                    updated = ProviderConfig(
+                        id=prov.id,
+                        name=prov.name,
+                        base_url=self._url_edit.text().strip(),
+                        litellm_prefix=prov.litellm_prefix,
+                        api_key=self._apikey_edit.text(),
+                        enabled=prov.enabled,
+                        thinking=self._thinking_check.isChecked(),
+                        thinking_budget=prov.thinking_budget,
+                        models=prov.models,
+                        default_model=model_name,
+                    )
+                    svc.update_provider(updated)
                 svc.set_active_provider(provider_id)
-                svc.set_active_model(model_name)
                 self._llm_manager.refresh_provider()
             except Exception:
                 pass
 
+        QMessageBox.information(self, "保存成功", "LLM 设置已保存并生效。")
+        self._snapshot()
         self.accept()
+
+    def _snapshot(self) -> None:
+        """记录当前值用于脏检测。"""
+        self._initial_values = {
+            "provider": self._provider_combo.currentData(),
+            "model": self._model_combo.currentData() or self._model_combo.currentText(),
+            "url": self._url_edit.text(),
+            "apikey": self._apikey_edit.text(),
+            "thinking": self._thinking_check.isChecked(),
+        }
+
+    def _is_dirty(self) -> bool:
+        return (
+            self._provider_combo.currentData() != self._initial_values.get("provider")
+            or (self._model_combo.currentData() or self._model_combo.currentText()) != self._initial_values.get("model")
+            or self._url_edit.text() != self._initial_values.get("url")
+            or self._apikey_edit.text() != self._initial_values.get("apikey")
+            or self._thinking_check.isChecked() != self._initial_values.get("thinking")
+        )
+
+    def reject(self) -> None:
+        if self._is_dirty():
+            answer = QMessageBox.question(
+                self,
+                "未保存的修改",
+                "修改还未保存，是否退出？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        super().reject()
 
     def _on_manage_clicked(self) -> None:
         import os
