@@ -106,19 +106,6 @@ def _collect_modules() -> list[tuple[str, str]]:
     return datas
 
 
-def _collect_data_dir() -> list[tuple[str, str]]:
-    """收集 data/ 目录结构（仅 .gitkeep 和必要模板）。"""
-    datas: list[tuple[str, str]] = []
-    data_dir = ROOT / "data"
-    if data_dir.exists():
-        for dirpath, _, filenames in os.walk(data_dir):
-            for f in filenames:
-                if f == ".gitkeep":
-                    src = str(Path(dirpath) / f)
-                    dst = str(Path(dirpath).relative_to(ROOT))
-                    datas.append((src, dst))
-    return datas
-
 
 
 def _collect_assets() -> list[tuple[str, str]]:
@@ -215,8 +202,9 @@ def _hidden_imports() -> list[str]:
 
 def _write_spec(name: str, datas: list[tuple[str, str]], hidden: list[str],
                 excludes: list[str], icon: str, console: bool) -> Path:
-    """生成 PyInstaller .spec 文件，避免 Windows 命令行长度限制 (32768 字符)。"""
-    spec_path = ROOT / f"{name}.spec"
+    """生成 PyInstaller .spec 文件到 build/ 目录，避免 Windows 命令行长度限制 (32768 字符)。"""
+    BUILD_DIR.mkdir(parents=True, exist_ok=True)
+    spec_path = BUILD_DIR / f"{name}.spec"
 
     datas_repr = "[\n"
     for src, dst in datas:
@@ -288,7 +276,6 @@ def build(console: bool, name: str, version: str) -> str:
 
     datas = (
         _collect_modules()
-        + _collect_data_dir()
         + _collect_assets()
         + _collect_perfetto_data()
         + [(str(version_file), ".")]
@@ -314,7 +301,12 @@ def build(console: bool, name: str, version: str) -> str:
     print(f"  Excluding {len(EXCLUDE_MODULES)} unused transitive deps")
     print(f"{'='*60}\n")
 
-    subprocess.run(cmd, check=True, cwd=str(ROOT))
+    try:
+        subprocess.run(cmd, check=True, cwd=str(ROOT))
+    finally:
+        # 清理临时 spec 文件
+        if spec.exists():
+            spec.unlink()
 
     # 在构建产物中创建 data/config/ + data/db/ 目录，从 modules/*/config/ 复制默认配置文件
     out_dir = DIST_DIR / build_name
@@ -370,15 +362,13 @@ def package(version: str, gui_dir_name: str = "Toolkit") -> None:
         print("  ERROR: GUI build output not found, cannot package")
         return
 
-    version_file = pkg_dir / "VERSION"
-    version_file.write_text(version, encoding="utf-8")
-
     ext = "zip" if os_name == "windows" else "tar.gz"
     archive_base = str(DIST_DIR / pkg_name)
 
     if os_name == "windows":
         shutil.make_archive(archive_base, "zip", str(DIST_DIR), pkg_name)
     else:
+        shutil.make_archive(archive_base, "gztar", str(DIST_DIR), pkg_name)
         shutil.make_archive(archive_base, "gztar", str(DIST_DIR), pkg_name)
 
     pkg_size_mb = sum(
