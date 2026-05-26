@@ -80,6 +80,9 @@ def _init_llm_manager(context: dict) -> None:
     """初始化 LLM Manager 并注入 context。需在 QApplication 创建后调用。"""
     config_manager = context["config_manager"]
     llm_manager = LLMManager(config_manager)
+    service_registry = context.get("service_registry")
+    if service_registry:
+        llm_manager.set_service_registry(service_registry)
     context["llm_manager"] = llm_manager
 
 

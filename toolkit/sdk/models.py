@@ -71,21 +71,11 @@ class CLIResponse(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    """LLM 全局配置"""
+    """LLM 运行时配置（精简版）。
 
-    provider: str = Field(default="glm", pattern=r"^(glm|claude)$")
-    glm_api_key: str = ""
-    claude_api_key: str = ""
+    Provider 定义和 API Key 已迁移到 llm_providers.json。
+    此处仅保留运行时会话需要的字段。
+    """
+
+    provider: str = "glm"
     model_name: str = "glm-4-plus"
-    temperature: float = Field(default=0.7, ge=0.0, le=1.0)
-    max_tokens: int = Field(default=4096, ge=256)
-    smart_switch: bool = False
-    token_budget: int = Field(default=100000, ge=1000)
-    budget_alert_threshold: float = Field(default=0.8, ge=0.1, le=1.0)
-
-    def get_api_key(self, provider: str | None = None) -> str:
-        p = provider or self.provider
-        return self.glm_api_key if p == "glm" else self.claude_api_key
-
-    def is_configured(self) -> bool:
-        return bool(self.get_api_key())

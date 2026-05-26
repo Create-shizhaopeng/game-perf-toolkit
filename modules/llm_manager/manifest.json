@@ -1,0 +1,29 @@
+{
+  "name": "llm_manager",
+  "display_name": "LLM 管理器",
+  "version": "0.1.0",
+  "description": "多 Provider LLM 配置管理 — 自定义 API 地址、模型列表、API Key、Thinking 特性、Token 用量统计",
+  "author": "lv-game-toolkit",
+  "python_requires": ">=3.12",
+  "entry": "src.plugin",
+  "service_entry": "src.service",
+  "dependencies": {
+    "toolkit_modules": [],
+    "python_packages": []
+  },
+  "provides": {
+    "gui": false,
+    "cli": false,
+    "agent_tools": false,
+    "workflow_stages": []
+  },
+  "events": {
+    "emits": ["llm.provider_changed", "llm.provider_added", "llm.provider_removed"],
+    "listens": []
+  },
+  "database": {
+    "migrations": "src/migrations/",
+    "tables": ["llm_token_usage"]
+  },
+  "external_tools": []
+}

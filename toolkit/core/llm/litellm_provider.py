@@ -1,8 +1,6 @@
-# -*- coding: utf-8 -*-
 """统一 LLM Provider — 基于 LiteLLM 实现多 Provider 统一调用。
 
-替代原先独立的 GLMProvider / ClaudeProvider，通过 LiteLLM 的
-统一接口实现对 100+ 模型的支持。
+支持自定义 api_base, thinking 参数, 以及动态 Provider 配置。
 """
 from __future__ import annotations
 
@@ -13,24 +11,6 @@ from typing import Any, AsyncIterator
 from .base import LLMProvider, StreamChunk, StreamChunkType, ToolDefinition
 
 logger = logging.getLogger(__name__)
-
-_PROVIDER_MODEL_MAP: dict[str, list[str]] = {
-    "glm": ["glm-4-plus", "glm-4-flash", "glm-4-long"],
-    "claude": ["claude-sonnet-4-20250514", "claude-3-5-haiku-20241022"],
-}
-
-_LITELLM_PREFIX: dict[str, str] = {
-    "glm": "zai/",
-    "claude": "",
-}
-
-
-def _to_litellm_model(provider: str, model: str) -> str:
-    """将内部模型名称转换为 LiteLLM 路由格式。"""
-    prefix = _LITELLM_PREFIX.get(provider, "")
-    if prefix and not model.startswith(prefix):
-        return f"{prefix}{model}"
-    return model
 
 
 def _to_openai_tool(td: ToolDefinition) -> dict[str, Any]:
@@ -55,18 +35,26 @@ class LiteLLMProvider(LLMProvider):
         api_key: str,
         model: str = "glm-4-plus",
         provider: str = "glm",
+        litellm_prefix: str = "",
+        api_base: str | None = None,
+        thinking: dict | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._provider = provider
-        self._litellm_model = _to_litellm_model(provider, model)
+        self._litellm_prefix = litellm_prefix
+        self._api_base = api_base if api_base else None
+        self._thinking = thinking
+
+        prefix = litellm_prefix or ""
+        if prefix and not model.startswith(prefix):
+            self._litellm_model = f"{prefix}{model}"
+        else:
+            self._litellm_model = model
 
     @property
     def provider_name(self) -> str:
         return self._provider
-
-    def get_available_models(self) -> list[str]:
-        return list(_PROVIDER_MODEL_MAP.get(self._provider, []))
 
     def count_tokens(self, messages: list[dict]) -> int:
         try:
@@ -83,6 +71,8 @@ class LiteLLMProvider(LLMProvider):
         messages: list[dict],
         tools: list[ToolDefinition] | None = None,
         system_prompt: str = "",
+        api_base: str | None = None,
+        thinking: dict | None = None,
     ) -> AsyncIterator[StreamChunk]:
         import litellm
 
@@ -101,14 +91,24 @@ class LiteLLMProvider(LLMProvider):
             "stream_options": {"include_usage": True},
         }
 
+        effective_api_base = api_base or self._api_base
+        if effective_api_base:
+            kwargs["api_base"] = effective_api_base
+
+        effective_thinking = thinking or self._thinking
+        if effective_thinking:
+            kwargs["thinking"] = effective_thinking
+
         if tools:
             kwargs["tools"] = [_to_openai_tool(t) for t in tools]
 
         logger.info(
-            "LiteLLM 请求: model=%s, messages=%d, tools=%d",
+            "LiteLLM 请求: model=%s, messages=%d, tools=%d, api_base=%s, thinking=%s",
             self._litellm_model,
             len(api_messages),
             len(kwargs.get("tools", [])),
+            "custom" if effective_api_base else "default",
+            "enabled" if effective_thinking else "disabled",
         )
 
         tool_calls_acc: dict[int, dict] = {}

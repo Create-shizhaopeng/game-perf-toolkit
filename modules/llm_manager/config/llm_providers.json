@@ -1,0 +1,36 @@
+{
+  "providers": [
+    {
+      "id": "glm",
+      "name": "GLM (智谱)",
+      "base_url": "https://open.bigmodel.cn/api/paas/v4/",
+      "litellm_prefix": "zai/",
+      "api_key": "",
+      "enabled": true,
+      "thinking": false,
+      "thinking_budget": 4000,
+      "models": [
+        { "name": "glm-4-plus", "context_window": 128000 },
+        { "name": "glm-4-flash", "context_window": 128000 },
+        { "name": "glm-4-long", "context_window": 1000000 }
+      ],
+      "default_model": "glm-4-plus"
+    },
+    {
+      "id": "claude",
+      "name": "Claude (Anthropic)",
+      "base_url": "https://api.anthropic.com/",
+      "litellm_prefix": "",
+      "api_key": "",
+      "enabled": true,
+      "thinking": true,
+      "thinking_budget": 4000,
+      "models": [
+        { "name": "claude-sonnet-4-20250514", "context_window": 200000 },
+        { "name": "claude-opus-4-7", "context_window": 1000000 }
+      ],
+      "default_model": "claude-sonnet-4-20250514"
+    }
+  ],
+  "active_provider": "glm"
+}

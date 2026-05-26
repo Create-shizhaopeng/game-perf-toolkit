@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """LLM Manager — Provider 生命周期管理、配置持久化、信号通知。"""
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from toolkit.sdk.models import LLMConfig
 
 from .base import LLMProvider
-from .models import get_context_window
 
 logger = logging.getLogger(__name__)
 
@@ -19,48 +17,62 @@ logger = logging.getLogger(__name__)
 class LLMState(str, Enum):
     UNCONFIGURED = "unconfigured"
     READY = "ready"
-    DEGRADED = "degraded"
     ERROR = "error"
-    BUDGET_PAUSED = "budget_paused"
 
 
 class LLMManager(QObject):
-    """框架层 LLM 能力管理中心。"""
+    """框架层 LLM 能力管理中心。
+
+    从 LLMManagerService 读取 Provider 配置来初始化 LiteLLMProvider。
+    """
 
     config_changed = pyqtSignal(object)
     provider_changed = pyqtSignal(str)
-    token_updated = pyqtSignal(int, int)  # used, budget
-    budget_alert = pyqtSignal(float)  # current_ratio
-    error_occurred = pyqtSignal(str, str)  # error_type, message
-    degradation_occurred = pyqtSignal(str, str)  # from_provider, to_provider
+    token_updated = pyqtSignal(int, int)  # used, context_window
+    error_occurred = pyqtSignal(str, str)
 
     def __init__(self, config_manager: object, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._config_manager = config_manager
+        self._service_registry = None
         self._lock = threading.Lock()
         self._try_migrate(config_manager)
         self._config = self._load_config()
         self._provider: LLMProvider | None = None
         self._session_tokens = 0
         self._context_tokens = 0
-        self._budget_alerted = False
-        self._budget_paused = False
+        self._context_window = 128000
         self._state = LLMState.UNCONFIGURED
         self._init_provider()
+
+    def set_service_registry(self, registry: object) -> None:
+        self._service_registry = registry
+
+    def set_llm_service(self, service: object) -> None:
+        self._llm_service = service
+
+    def get_service(self, name: str):
+        if name == "llm_manager_service" and hasattr(self, "_llm_service") and self._llm_service:
+            return self._llm_service
+        if self._service_registry and hasattr(self._service_registry, "get"):
+            try:
+                return self._service_registry.get(name)
+            except KeyError:
+                return None
+        return None
 
     @staticmethod
     def _try_migrate(config_manager: object) -> None:
         try:
             from .migration import migrate_agent_chat_llm
-
             migrate_agent_chat_llm(config_manager)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("LLM 配置迁移失败: %s", exc)
 
     def _load_config(self) -> LLMConfig:
         raw = {}
         if hasattr(self._config_manager, "get_llm_config"):
-            raw = self._config_manager.get_llm_config()  # type: ignore[union-attr]
+            raw = self._config_manager.get_llm_config()
         try:
             return LLMConfig(**raw) if raw else LLMConfig()
         except Exception:
@@ -69,34 +81,73 @@ class LLMManager(QObject):
 
     def _save_config(self) -> None:
         if hasattr(self._config_manager, "set_llm_config"):
-            self._config_manager.set_llm_config(  # type: ignore[union-attr]
+            self._config_manager.set_llm_config(
                 self._config.model_dump()
             )
 
+    def _get_provider_config(self) -> tuple:
+        """从 LLMManagerService 获取活跃 Provider 配置。"""
+        svc = None
+        if hasattr(self, "_llm_service") and self._llm_service:
+            svc = self._llm_service
+        else:
+            svc = self.get_service("llm_manager_service")
+        if svc:
+            try:
+                return svc.get_active_provider_config()
+            except Exception:
+                pass
+        return None, None
+
     def _init_provider(self) -> None:
-        api_key = self._config.get_api_key()
-        if not api_key:
+        prov_cfg, model_cfg = self._get_provider_config()
+
+        if prov_cfg is None or not prov_cfg.api_key:
             self._provider = None
             self._state = LLMState.UNCONFIGURED
             logger.info("LLM 未配置 API Key")
             return
 
-        provider = self._config.provider
         try:
             from .litellm_provider import LiteLLMProvider
 
+            thinking = None
+            if prov_cfg.thinking:
+                thinking = {
+                    "type": "enabled",
+                    "budget_tokens": prov_cfg.thinking_budget,
+                }
+
             self._provider = LiteLLMProvider(
-                api_key=api_key,
-                model=self._config.model_name,
-                provider=provider,
+                api_key=prov_cfg.api_key,
+                model=prov_cfg.default_model if model_cfg else self._config.model_name,
+                provider=prov_cfg.id,
+                litellm_prefix=prov_cfg.litellm_prefix,
+                api_base=prov_cfg.base_url or None,
+                thinking=thinking,
             )
+            self._context_window = model_cfg.context_window if model_cfg else 128000
+            self._config.model_name = prov_cfg.default_model
+            self._config.provider = prov_cfg.id
             self._state = LLMState.READY
-            logger.info("LLM Provider 已初始化: %s (%s)", provider, self._config.model_name)
+            logger.info(
+                "LLM Provider 已初始化: %s (%s), api_base=%s, thinking=%s",
+                prov_cfg.id, self._config.model_name,
+                "custom" if prov_cfg.base_url else "default",
+                "enabled" if thinking else "disabled",
+            )
         except Exception as exc:
             logger.error("LLM Provider 初始化失败: %s", exc)
             self._provider = None
             self._state = LLMState.ERROR
             self.error_occurred.emit(type(exc).__name__, str(exc))
+
+    def refresh_provider(self) -> None:
+        """重新从 Service 加载 Provider 配置并初始化。"""
+        self._init_provider()
+        if self._provider:
+            self.config_changed.emit(self._config)
+            self.provider_changed.emit(self._provider.provider_name)
 
     def get_provider(self) -> LLMProvider | None:
         with self._lock:
@@ -128,43 +179,50 @@ class LLMManager(QObject):
             self._session_tokens += count
             self._context_tokens = count
 
-        used = self._session_tokens
-        budget = self._config.token_budget
-        self.token_updated.emit(used, budget)
+        self.token_updated.emit(self._session_tokens, self._context_window)
 
-        if budget > 0 and not self._budget_alerted:
-            ratio = used / budget
-            if ratio >= self._config.budget_alert_threshold:
-                self._budget_alerted = True
-                self.budget_alert.emit(ratio)
+    def record_token_usage(
+        self,
+        prompt_tokens: int,
+        completion_tokens: int,
+        conversation_id: str | None = None,
+        trace_id: str | None = None,
+    ) -> None:
+        """供 Agent Chat 在收到 USAGE chunk 时调用。"""
+        svc = self.get_service("llm_manager_service")
+        if svc:
+            try:
+                tracker = svc.get_token_tracker()
+                prov = self._provider.provider_name if self._provider else ""
+                model = self._config.model_name
+                tracker.record(
+                    provider=prov,
+                    model=model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    conversation_id=conversation_id,
+                    trace_id=trace_id,
+                )
+            except Exception:
+                logger.debug("Token record skipped (service not ready)")
 
     def reset_session(self) -> None:
         with self._lock:
             self._session_tokens = 0
             self._context_tokens = 0
-            self._budget_alerted = False
-            self._budget_paused = False
-        self.token_updated.emit(0, self._config.token_budget)
+        self.token_updated.emit(0, self._context_window)
 
     def get_context_window_size(self) -> int:
-        return get_context_window(self._config.model_name)
+        return self._context_window
 
     def get_context_usage_ratio(self) -> float:
-        window = self.get_context_window_size()
-        if window <= 0:
+        if self._context_window <= 0:
             return 0.0
-        return min(1.0, self._context_tokens / window)
+        return min(1.0, self._session_tokens / self._context_window)
 
     @property
     def session_tokens(self) -> int:
         return self._session_tokens
-
-    @property
-    def is_budget_paused(self) -> bool:
-        return self._budget_paused
-
-    def set_budget_paused(self, paused: bool) -> None:
-        self._budget_paused = paused
 
     async def smart_stream_chat(
         self,
@@ -172,7 +230,7 @@ class LLMManager(QObject):
         tools: list | None = None,
         system_prompt: str = "",
     ):
-        """带失败降级的流式对话。主 Provider 异常时自动切换到备用 Provider。"""
+        """流式对话。异常时直接返回错误，不再有降级逻辑。"""
         from .base import StreamChunk as _SC
 
         provider = self.get_provider()
@@ -183,37 +241,8 @@ class LLMManager(QObject):
         try:
             async for chunk in provider.stream_chat(messages, tools, system_prompt):
                 yield chunk
-        except Exception as primary_exc:
-            if not self._config.smart_switch:
-                yield _SC(type="error", data=str(primary_exc))
-                return
-
-            backup = "claude" if self._config.provider == "glm" else "glm"
-            backup_key = self._config.get_api_key(backup)
-            if not backup_key:
-                yield _SC(type="error", data=str(primary_exc))
-                return
-
-            logger.warning(
-                "主 Provider %s 失败，降级至 %s: %s",
-                self._config.provider, backup, primary_exc,
-            )
-            self.degradation_occurred.emit(self._config.provider, backup)
-
-            try:
-                from .litellm_provider import LiteLLMProvider
-
-                default_model = "glm-4-plus" if backup == "glm" else "claude-sonnet-4-20250514"
-                fallback = LiteLLMProvider(
-                    api_key=backup_key, model=default_model, provider=backup
-                )
-
-                async for chunk in fallback.stream_chat(
-                    messages, tools, system_prompt
-                ):
-                    yield chunk
-            except Exception as fallback_exc:
-                logger.error("备用 Provider %s 也失败: %s", backup, fallback_exc)
-                self._state = LLMState.ERROR
-                self.error_occurred.emit(type(fallback_exc).__name__, str(fallback_exc))
-                yield _SC(type="error", data=str(fallback_exc))
+        except Exception as exc:
+            logger.error("LLM 请求失败: %s", exc)
+            self._state = LLMState.ERROR
+            self.error_occurred.emit(type(exc).__name__, str(exc))
+            yield _SC(type="error", data=str(exc))

@@ -270,6 +270,8 @@ BUG/ANALYZE/DESIGN 文档顶部必须包含状态卡片：
 ```
 
 <!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
+Current plan: `specs/020-llm-manager-refactor/plan.md`
+Research: `specs/020-llm-manager-refactor/research.md`
+Data model: `specs/020-llm-manager-refactor/data-model.md`
+Contracts: `specs/020-llm-manager-refactor/contracts/service-api.md`
 <!-- SPECKIT END -->

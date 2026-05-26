@@ -27,6 +27,19 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 
 ## 近期完成
 
+### 2026-05-26（LLM Manager 模块重构：多 Provider 配置化 + 精简设置 + Thinking + Token 统计）
+
+- 新建 `modules/llm_manager/` 独立模块：Provider 配置管理、Token 用量记录、插件化注册
+- Provider 配置从硬编码（2 个）迁移到 `data/config/llm_providers.json`，支持多 Provider 自定义 API 地址/Key/模型列表
+- 框架层 `LLMConfig` 从 9 字段精简到 2 字段（provider + model_name），移除 temperature/max_tokens/smart_switch/token_budget/budget_alert_threshold
+- `LiteLLMProvider` 支持 `api_base`（自定义 URL）和 `thinking`（Anthropic extended thinking）参数
+- `LLMManager` 精简：移除 smart_switch 降级逻辑、token_budget 预算告警、degradation_occurred 信号
+- 设置面板精简为 Provider 下拉 + Model 下拉 + Thinking 开关 + Base URL/API Key 编辑 + 管理按钮
+- 「管理 Provider」按钮改为直接打开 `llm_providers.json` 系统编辑器
+- 状态栏上下文圆环改为单色填充 + hover tooltip，移除文字标签和颜色区分
+- Token 用量后台 SQLite 记录（四维度：request/conversation/trace/total）
+- Bug 修复：hookimpl 来源错误 → 插件钩子不触发（BUG-002）；ghostBtn 无颜色 → 按钮不可见；模型下拉不填充；QComboBox/QLineEdit 高度不一致
+
 ### 2026-05-25（日志面板 UI 重构：导出迁移 + 控制台 Tab 化 + 设置菜单扩展）
 
 - 底部面板 header 移除「导出」按钮，迁移到右上角设置 → 日志 → 导出日志

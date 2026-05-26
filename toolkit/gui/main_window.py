@@ -589,19 +589,27 @@ class MainWindow(QWidget):
         if not llm_manager:
             logger.warning("LLM Manager 未初始化")
             return
-        dialog = LLMSettingsDialog(llm_manager, parent=self)
-        dialog.exec()
+        self._device_monitor.stop()
+        try:
+            dialog = LLMSettingsDialog(llm_manager, parent=self)
+            dialog.exec()
+        finally:
+            self._device_monitor.start()
 
     def _open_agent_settings(self) -> None:
         """打开 Agent 设置对话框。"""
-        if self._agent_tab and hasattr(self._agent_tab, "_on_open_settings"):
-            self._agent_tab._on_open_settings()
-            return
-        for tab in self._tabs:
-            if hasattr(tab, "_on_open_settings"):
-                tab._on_open_settings()
+        self._device_monitor.stop()
+        try:
+            if self._agent_tab and hasattr(self._agent_tab, "_on_open_settings"):
+                self._agent_tab._on_open_settings()
                 return
-        logger.warning("Agent 模块未加载，无法打开设置")
+            for tab in self._tabs:
+                if hasattr(tab, "_on_open_settings"):
+                    tab._on_open_settings()
+                    return
+            logger.warning("Agent 模块未加载，无法打开设置")
+        finally:
+            self._device_monitor.start()
 
     def _on_screen_changed(self, screen) -> None:
         """跨屏拖动后恢复窗口大小。"""

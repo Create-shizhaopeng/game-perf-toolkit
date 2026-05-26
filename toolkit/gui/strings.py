@@ -47,8 +47,14 @@ LLM_SETTINGS_SMART_SWITCH: Final = "启用失败自动降级"
 LLM_SETTINGS_FORM_SMART_SWITCH: Final = "智能切换:"
 LLM_SETTINGS_FORM_TOKEN_BUDGET: Final = "Token 预算:"
 LLM_SETTINGS_FORM_ALERT_THRESHOLD: Final = "告警阈值:"
+LLM_SETTINGS_PROVIDER_LABEL: Final = "Provider:"
+LLM_SETTINGS_MODEL_LABEL: Final = "Model:"
+LLM_SETTINGS_THINKING: Final = "启用扩展思考"
+LLM_SETTINGS_MANAGE_PROVIDER: Final = "管理 Provider..."
 LLM_SETTINGS_BTN_SAVE: Final = "保存"
 LLM_SETTINGS_BTN_CANCEL: Final = "取消"
+LLM_SETTINGS_NO_API_KEY: Final = "请先配置 API Key"
+LLM_CONTEXT_TOOLTIP_FMT: Final = "{used:,} / {total:,} tokens ({pct:.1f}%)"
 
 
 # ── ToolkitDialog ──

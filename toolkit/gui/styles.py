@@ -229,10 +229,76 @@ QLabel#statusBarText {
     background: transparent;
 }
 
-QLabel#llmTokenLabel {
-    color: #a6adc8;
-    font-size: 11px;
+QComboBox#llmProviderCombo,
+QComboBox#llmModelCombo {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    color: #cdd6f4;
+    font-size: 12px;
+    padding: 2px 8px;
+    min-height: 22px;
+    max-height: 28px;
+}
+QComboBox#llmProviderCombo::drop-down,
+QComboBox#llmModelCombo::drop-down {
+    width: 24px;
+    border: none;
+}
+QComboBox#llmProviderCombo QAbstractItemView,
+QComboBox#llmModelCombo QAbstractItemView {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    color: #cdd6f4;
+    padding: 4px;
+    outline: none;
+}
+QComboBox#llmProviderCombo QAbstractItemView::item,
+QComboBox#llmModelCombo QAbstractItemView::item {
+    padding: 6px 10px;
+    border-radius: 3px;
+}
+QComboBox#llmProviderCombo QAbstractItemView::item:selected,
+QComboBox#llmModelCombo QAbstractItemView::item:selected {
+    background-color: #45475a;
+}
+QCheckBox#thinkingCheck {
+    color: #cdd6f4;
+    font-size: 12px;
+}
+QCheckBox#thinkingCheck::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #45475a;
+    border-radius: 3px;
+    background-color: #313244;
+}
+QCheckBox#thinkingCheck::indicator:checked {
+    background-color: #cba6f7;
+    border-color: #cba6f7;
+}
+QLineEdit#llmUrlEdit,
+QLineEdit#llmApiKeyEdit {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    color: #cdd6f4;
+    font-size: 12px;
+    padding: 2px 8px;
+    min-height: 22px;
+    max-height: 28px;
+}
+QPushButton#manageProviderBtn {
     background: transparent;
+    border: none;
+    color: #a6adc8;
+    font-size: 12px;
+    padding: 4px 0px;
+}
+QPushButton#manageProviderBtn:hover {
+    color: #cdd6f4;
+    text-decoration: underline;
 }
 QLabel#llmModelLabel {
     color: #cba6f7;
@@ -1033,6 +1099,58 @@ QTextEdit#bottomPanelLog {
     font-size: 11px;
 }
 
+/* ── Provider 管理对话框 ── */
+
+QDialog#providerManageDialog {
+    background-color: #1e1e2e;
+    border: 1px solid #45475a;
+    border-radius: 8px;
+}
+QListWidget#providerListWidget {
+    background-color: #181825;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 4px;
+    outline: none;
+}
+QListWidget#providerListWidget::item {
+    background-color: #313244;
+    border-radius: 4px;
+    margin: 2px;
+    padding: 6px 10px;
+    color: #cdd6f4;
+}
+QListWidget#providerListWidget::item:hover {
+    background-color: #45475a;
+}
+QWidget#providerEditPanel {
+    background-color: #181825;
+    border: 1px solid #313244;
+    border-radius: 6px;
+}
+QLineEdit#providerIdEdit,
+QLineEdit#providerNameEdit,
+QLineEdit#providerUrlEdit,
+QLineEdit#prefixEdit,
+QLineEdit#apiKeyEdit,
+QLineEdit#modelNameEdit {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    color: #cdd6f4;
+    font-size: 12px;
+    padding: 4px 8px;
+}
+QSpinBox#contextEdit,
+QSpinBox#thinkingBudgetEdit {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    color: #cdd6f4;
+    font-size: 12px;
+    padding: 4px 8px;
+}
+
 /* ── 右侧面板 (Overlay) ── */
 QWidget#rightPanel {
     background-color: #1e1e2e;
@@ -1329,10 +1447,74 @@ QLabel#statusBarText {
     background: transparent;
 }
 
-QLabel#llmTokenLabel {
-    color: #616161;
-    font-size: 11px;
+QComboBox#llmProviderCombo,
+QComboBox#llmModelCombo {
+    background-color: #e6e9ef;
+    border: 1px solid #ccd0da;
+    border-radius: 4px;
+    color: #4c4f69;
+    font-size: 12px;
+    padding: 2px 8px;
+    min-height: 22px;
+    max-height: 28px;
+}
+QComboBox#llmProviderCombo::drop-down,
+QComboBox#llmModelCombo::drop-down {
+    width: 24px;
+    border: none;
+}
+QComboBox#llmProviderCombo QAbstractItemView,
+QComboBox#llmModelCombo QAbstractItemView {
+    background-color: #e6e9ef;
+    border: 1px solid #ccd0da;
+    border-radius: 4px;
+    color: #4c4f69;
+    padding: 4px;
+    outline: none;
+}
+QComboBox#llmProviderCombo QAbstractItemView::item,
+QComboBox#llmModelCombo QAbstractItemView::item {
+    padding: 6px 10px;
+    border-radius: 3px;
+}
+QComboBox#llmProviderCombo QAbstractItemView::item:selected,
+QComboBox#llmModelCombo QAbstractItemView::item:selected {
+    background-color: #ccd0da;
+}
+QCheckBox#thinkingCheck {
+    color: #4c4f69;
+    font-size: 12px;
+}
+QCheckBox#thinkingCheck::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #ccd0da;
+    border-radius: 3px;
+    background-color: #e6e9ef;
+}
+QCheckBox#thinkingCheck::indicator:checked {
+    background-color: #8839ef;
+    border-color: #8839ef;
+}
+QLineEdit#llmUrlEdit,
+QLineEdit#llmApiKeyEdit {
+    background-color: #f9f9fb;
+    border: 1px solid #ccd0da;
+    border-radius: 4px;
+    color: #4c4f69;
+    font-size: 12px;
+    padding: 4px 8px;
+}
+QPushButton#manageProviderBtn {
     background: transparent;
+    border: none;
+    color: #6c6f85;
+    font-size: 12px;
+    padding: 4px 0px;
+}
+QPushButton#manageProviderBtn:hover {
+    color: #4c4f69;
+    text-decoration: underline;
 }
 QLabel#llmModelLabel {
     color: #8839ef;
@@ -2131,6 +2313,58 @@ QTextEdit#bottomPanelLog {
     border: none;
     font-family: "Cascadia Code", "Consolas", monospace;
     font-size: 11px;
+}
+
+/* ── Provider 管理对话框 ── */
+
+QDialog#providerManageDialog {
+    background-color: #eff1f5;
+    border: 1px solid #ccd0da;
+    border-radius: 8px;
+}
+QListWidget#providerListWidget {
+    background-color: #e6e9ef;
+    border: 1px solid #ccd0da;
+    border-radius: 6px;
+    padding: 4px;
+    outline: none;
+}
+QListWidget#providerListWidget::item {
+    background-color: #f9f9fb;
+    border-radius: 4px;
+    margin: 2px;
+    padding: 6px 10px;
+    color: #4c4f69;
+}
+QListWidget#providerListWidget::item:hover {
+    background-color: #ccd0da;
+}
+QWidget#providerEditPanel {
+    background-color: #e6e9ef;
+    border: 1px solid #ccd0da;
+    border-radius: 6px;
+}
+QLineEdit#providerIdEdit,
+QLineEdit#providerNameEdit,
+QLineEdit#providerUrlEdit,
+QLineEdit#prefixEdit,
+QLineEdit#apiKeyEdit,
+QLineEdit#modelNameEdit {
+    background-color: #f9f9fb;
+    border: 1px solid #ccd0da;
+    border-radius: 4px;
+    color: #4c4f69;
+    font-size: 12px;
+    padding: 4px 8px;
+}
+QSpinBox#contextEdit,
+QSpinBox#thinkingBudgetEdit {
+    background-color: #f9f9fb;
+    border: 1px solid #ccd0da;
+    border-radius: 4px;
+    color: #4c4f69;
+    font-size: 12px;
+    padding: 4px 8px;
 }
 
 /* ── 右侧面板 (Overlay) ── */

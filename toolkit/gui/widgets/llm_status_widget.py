@@ -1,8 +1,5 @@
-# -*- coding: utf-8 -*-
-"""状态栏 LLM 指示器 — 上下文圆环 + Token 用量 + 模型快捷切换。"""
+"""状态栏 LLM 指示器 — 上下文圆环 + 模型名（精简版）。"""
 from __future__ import annotations
-
-import math
 
 from PyQt6.QtCore import Qt, QRectF, pyqtSignal
 from PyQt6.QtGui import QPainter, QColor, QPen
@@ -13,146 +10,119 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from toolkit.gui.theme_colors import get_colors
 from toolkit.gui import strings as s
 
 
-def _format_tokens(n: int) -> str:
-    if n >= 1_000_000:
-        return f"{n / 1_000_000:.1f}M"
-    if n >= 1_000:
-        return f"{n / 1_000:.1f}k"
-    return str(n)
-
-
 class ContextRingWidget(QWidget):
-    """上下文窗口占用空心圆环。"""
+    """上下文窗口占用圆环 — 统一蓝色填充，无颜色区分。"""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._ratio = 0.0
         self.setFixedSize(18, 18)
+        self._ratio = 0.0
+        self._fg_color = QColor("#89b4fa")
+        self._bg_color = QColor("#45475a")
+        self._used_tokens = 0
+        self._total_tokens = 0
 
-    def set_ratio(self, ratio: float) -> None:
+    def set_ratio(self, ratio: float, used: int = 0, total: int = 0) -> None:
         self._ratio = max(0.0, min(1.0, ratio))
+        self._used_tokens = used
+        self._total_tokens = total
+        pct = self._ratio * 100
+        actual_used = self._used_tokens if self._used_tokens > 0 else int(self._ratio * max(self._total_tokens, 1))
+        self.setToolTip(
+            s.LLM_CONTEXT_TOOLTIP_FMT.format(
+                used=actual_used,
+                total=self._total_tokens,
+                pct=pct,
+            )
+        )
         self.update()
 
-    def paintEvent(self, event) -> None:  # noqa: N802
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        rect = QRectF(2, 2, 14, 14)
-        line_w = 2.0
-
-        bg_pen = QPen(QColor("#45475a"), line_w)
-        painter.setPen(bg_pen)
-        painter.drawEllipse(rect)
+        pen_bg = QPen(self._bg_color, 2.0)
+        p.setPen(pen_bg)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawArc(QRectF(2, 2, 14, 14), 0, 360 * 16)
 
         if self._ratio > 0:
-            if self._ratio >= 0.95:
-                color = QColor("#f38ba8")  # red
-            elif self._ratio >= 0.80:
-                color = QColor("#f9e2af")  # yellow
-            else:
-                color = QColor("#a6e3a1")  # green
+            pen_fg = QPen(self._fg_color, 2.0)
+            p.setPen(pen_fg)
+            span = int(self._ratio * 360 * 16)
+            p.drawArc(QRectF(2, 2, 14, 14), 90 * 16, -span)
 
-            fg_pen = QPen(color, line_w)
-            fg_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-            painter.setPen(fg_pen)
-            start = 90 * 16  # 12 o'clock
-            span = -int(self._ratio * 360 * 16)
-            painter.drawArc(rect, start, span)
-
-        painter.end()
+        p.end()
 
 
 class LLMStatusWidget(QWidget):
-    """状态栏 LLM 信息组件 — ContextRing + Token + Model。"""
+    """状态栏 LLM 状态指示器 — 圆环 + 模型名。"""
 
     model_switch_requested = pyqtSignal(str)
 
     def __init__(self, llm_manager: object, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._llm_manager = llm_manager
-        self.setObjectName("llmStatusWidget")
-        self._setup_ui()
-        self._connect_signals()
-        self._refresh()
+        self._theme = "dark"
 
-    def _setup_ui(self) -> None:
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
-        self._ring = ContextRingWidget(self)
+        self._ring = ContextRingWidget()
         layout.addWidget(self._ring)
-
-        self._token_label = QLabel("0 / 100k")
-        self._token_label.setObjectName("llmTokenLabel")
-        layout.addWidget(self._token_label)
 
         self._model_label = QLabel(s.LLM_STATUS_NOT_CONFIGURED)
         self._model_label.setObjectName("llmModelLabel")
-        self._model_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self._model_label.mousePressEvent = self._on_model_clicked
         layout.addWidget(self._model_label)
 
-    def _connect_signals(self) -> None:
-        mgr = self._llm_manager
-        if hasattr(mgr, "token_updated"):
-            mgr.token_updated.connect(self._on_token_updated)  # type: ignore[union-attr]
-        if hasattr(mgr, "provider_changed"):
-            mgr.provider_changed.connect(self._on_provider_changed)  # type: ignore[union-attr]
-        if hasattr(mgr, "config_changed"):
-            mgr.config_changed.connect(self._on_config_changed)  # type: ignore[union-attr]
+        llm_manager.token_updated.connect(self._on_token_updated)
+        llm_manager.provider_changed.connect(self._on_provider_changed)
+        llm_manager.config_changed.connect(self._on_config_changed)
 
-    def _refresh(self) -> None:
-        mgr = self._llm_manager
-        if hasattr(mgr, "get_config"):
-            cfg = mgr.get_config()  # type: ignore[union-attr]
-            self._model_label.setText(cfg.model_name if cfg.is_configured() else s.LLM_STATUS_NOT_CONFIGURED)
-            budget_str = _format_tokens(cfg.token_budget)
-            self._token_label.setText(f"0 / {budget_str}")
+    def set_theme(self, theme: str) -> None:
+        self._theme = theme
+        colors = get_colors(theme)
+        self._ring._bg_color = QColor(colors.get("border", "#45475a"))
+        self.update()
 
-        if hasattr(mgr, "get_context_usage_ratio"):
-            self._ring.set_ratio(mgr.get_context_usage_ratio())  # type: ignore[union-attr]
-
-    def _on_token_updated(self, used: int, budget: int) -> None:
-        self._token_label.setText(f"{_format_tokens(used)} / {_format_tokens(budget)}")
-        if hasattr(self._llm_manager, "get_context_usage_ratio"):
-            self._ring.set_ratio(
-                self._llm_manager.get_context_usage_ratio()  # type: ignore[union-attr]
-            )
+    def _on_token_updated(self, used: int, total: int) -> None:
+        ratio = used / total if total > 0 else 0.0
+        self._ring.set_ratio(ratio, used=used, total=total)
 
     def _on_provider_changed(self, provider_name: str) -> None:
-        if hasattr(self._llm_manager, "get_config"):
-            cfg = self._llm_manager.get_config()  # type: ignore[union-attr]
-            self._model_label.setText(cfg.model_name)
+        cfg = self._llm_manager.get_config()
+        self._model_label.setText(cfg.model_name)
 
     def _on_config_changed(self, config: object) -> None:
-        self._refresh()
+        self._model_label.setText(config.model_name)
 
     def _on_model_clicked(self, event) -> None:
-        provider = self._llm_manager.get_provider()  # type: ignore[union-attr]
-        if not provider:
-            return
-
-        models = provider.get_available_models()
-        if not models:
-            return
-
         menu = QMenu(self)
         menu.setObjectName("modelSwitchMenu")
-        current = self._llm_manager.get_config().model_name  # type: ignore[union-attr]
-
-        for m in models:
-            action = menu.addAction(m)
-            action.setCheckable(True)
-            action.setChecked(m == current)
-            action.triggered.connect(lambda checked, model=m: self._switch_model(model))
-
-        menu.exec(event.globalPosition().toPoint() if hasattr(event, "globalPosition") else self._model_label.mapToGlobal(self._model_label.rect().bottomLeft()))
+        try:
+            svc = self._llm_manager.get_service("llm_manager_service")
+            if svc:
+                prov, _ = svc.get_active_provider_config()
+                for m in prov.models:
+                    action = menu.addAction(m.name)
+                    action.setCheckable(True)
+                    action.setChecked(m.name == self._llm_manager.get_config().model_name)
+                    action.triggered.connect(
+                        lambda checked, n=m.name: self._switch_model(n)
+                    )
+        except Exception:
+            pass
+        if menu.actions():
+            menu.exec(self._model_label.mapToGlobal(
+                self._model_label.rect().bottomLeft()
+            ))
 
     def _switch_model(self, model_name: str) -> None:
-        if hasattr(self._llm_manager, "switch_model"):
-            self._llm_manager.switch_model(model_name)  # type: ignore[union-attr]
-            self._model_label.setText(model_name)
+        self._llm_manager.switch_model(model_name)
+        self.model_switch_requested.emit(model_name)
