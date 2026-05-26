@@ -25,7 +25,7 @@ class ModelConfig(BaseModel):
 class ProviderConfig(BaseModel):
     """单个 LLM Provider 的完整定义。"""
 
-    id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    id: str
     name: str
     base_url: str = ""
     litellm_prefix: str = ""
