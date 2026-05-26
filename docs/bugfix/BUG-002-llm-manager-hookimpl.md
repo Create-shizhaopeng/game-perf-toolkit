@@ -111,3 +111,25 @@ ProviderManageDialog 废弃后，`provider_dialog.py` (255行) 和 `strings_gui.
 3. **新增 QSS objectName 时确保完整定义**（color/font-size/background 一个不能少）
 4. **modal dialog + 后台定时器 + Windows COM = 崩溃三角** — 打开 modal dialog 前暂停后台服务
 5. **废弃功能立即清理** — 对话框改为 `os.startfile()` 后应同步删除旧 GUI 代码和 strings 常量
+
+### BUG-002f: Pydantic ID 正则拒绝大写 → 配置被覆盖
+
+**现象**: 用户编辑 `llm_providers.json` 添加 Provider `"TS"`，重启后配置文件被重置为默认 GLM + Claude。
+
+**根因**: `ProviderConfig.id` 有 `Field(pattern=r"^[a-z][a-z0-9_]*$")` — 要求纯小写开头。`"TS"` 触发 Pydantic 验证失败 → `load()` 的 `except` 回退到 `_default_config()` → `self.save()` 覆盖用户文件。
+
+**修复**: 移除 `pattern` 限制，`id: str` 允许任意字符串。
+
+**受影响文件**: `modules/llm_manager/src/models.py`
+
+### BUG-002g: 设置页 URL/Key 不回写 → 配置无法持久化
+
+**现象**: 用户在设置面板修改 Base URL 和 API Key，点击保存后重启，修改丢失。
+
+**根因**: `_on_save()` 只通过 `LLMConfig` 保存了 `provider_id` 和 `model_name`，从未将 `_url_edit` 和 `_apikey_edit` 的值写回 `ProviderConfig` 并调 `update_provider()`。
+
+**修复**: `_on_save()` 中获取当前 Provider，构造带新 URL/Key/Thinking 的 `ProviderConfig`，调用 `svc.update_provider()` 持久化。
+
+**受影响文件**: `toolkit/gui/llm_settings_dialog.py`
+
+## 经验教训

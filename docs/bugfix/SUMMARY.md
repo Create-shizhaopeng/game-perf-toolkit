@@ -7,7 +7,7 @@
 | 编号 | 简述 | 状态 | 创建日期 | 核心结论（一句话） |
 |------|------|------|----------|-------------------|
 | BUG-001 | 构建打包时 device_info.json 未复制到 dist/data/ | fixed | 2026-05-18 | `data/` → `config/` 路径分离 + build() 构建后自动复制配置文件到 dist/data/
-| BUG-002 | LLM Manager 实现期 bug 合集（hookimpl/QSS/COM/死代码） | fixed | 2026-05-26 | 5 个子 bug：hookimpl 来源错误、ghostBtn 不可见、模型下拉为空、COM 崩溃、死代码残留
+| BUG-002 | LLM Manager 实现期 bug 合集（hookimpl/QSS/COM/死代码/ID正则/回写） | fixed | 2026-05-26 | 7 个子 bug：hookimpl 来源错误、ghostBtn 不可见、模型下拉为空、COM 崩溃、死代码残留、ID 正则拒绝大写、URL/Key 不回写
 
 ## 已归档
 
