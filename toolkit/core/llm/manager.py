@@ -50,6 +50,17 @@ class LLMManager(QObject):
 
     def set_llm_service(self, service: object) -> None:
         self._llm_service = service
+        # 监听配置文件外部变更 → 自动刷新 Provider
+        if hasattr(service, "config_changed"):
+            service.config_changed.connect(self._on_service_config_changed)
+
+    def _on_service_config_changed(self) -> None:
+        """Service 配置文件被外部编辑 → 重新初始化 Provider。"""
+        logger.info("LLM 配置文件变更，自动刷新 Provider")
+        self._init_provider()
+        if self._provider:
+            self.config_changed.emit(self._config)
+            self.provider_changed.emit(self._provider.provider_name)
 
     def get_service(self, name: str):
         if name == "llm_manager_service" and hasattr(self, "_llm_service") and self._llm_service:

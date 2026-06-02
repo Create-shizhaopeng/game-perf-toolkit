@@ -247,13 +247,21 @@ class MainWindow(QWidget):
         logger.info("注册 GUI Tab: %s", tab.tab_title)
 
     def set_agent_panel(self, tab: BaseTab) -> None:
-        """将 AgentTab 设置为右侧面板内容（不进入 ContentStack）。"""
+        """[deprecated] 旧 AgentTab 接口 — 保留向后兼容。"""
         self._agent_tab = tab
         tab.set_theme(self._current_theme)
         self._right_panel.set_agent_widget(tab)
         if self._devices:
             tab.on_devices_changed(self._devices)
         logger.info("Agent Chat 已加载到右侧面板")
+
+    def set_agent_panel_widget(self, widget) -> None:
+        """设置 AgentPanel 为右侧面板内容（新接口）。"""
+        if hasattr(widget, 'set_theme'):
+            widget.set_theme(self._current_theme)
+        self._agent_tab = widget  # Store for toggle/theme access
+        self._right_panel.set_agent_widget(widget)
+        logger.info("AgentPanel 已加载到右侧面板")
 
     def set_module_info(self, modules: list[dict]) -> None:
         """设置已加载模块信息，更新首页。"""
@@ -471,8 +479,12 @@ class MainWindow(QWidget):
     def _on_toggle_right(self, visible: bool) -> None:
         """切换右侧 Agent 面板可见性（Overlay 模式）。"""
         if visible:
-            if self._agent_tab:
-                self._agent_tab.on_activated()
+            agent = self._agent_tab
+            if agent is not None:
+                if hasattr(agent, '_expand'):
+                    agent._expand()  # AgentPanel: expand from collapsed state
+                elif hasattr(agent, 'on_activated'):
+                    agent.on_activated()
             self._right_panel.show()
             from PyQt6.QtCore import QTimer
             w = self._right_saved_width
@@ -481,8 +493,12 @@ class MainWindow(QWidget):
             cur_w = self._right_panel.width()
             if cur_w > 0:
                 self._right_saved_width = cur_w
-            if self._agent_tab:
-                self._agent_tab.on_deactivated()
+            agent = self._agent_tab
+            if agent is not None:
+                if hasattr(agent, '_collapse'):
+                    agent._collapse()
+                elif hasattr(agent, 'on_deactivated'):
+                    agent.on_deactivated()
             self._right_panel.hide()
             self._bottom_wrapper.setContentsMargins(0, 0, 0, 0)
 
@@ -496,11 +512,11 @@ class MainWindow(QWidget):
         self._bottom_wrapper.setContentsMargins(0, 0, w, 0)
 
     def _clamp_right_width(self, w: int) -> int:
-        """限制右侧面板宽度：最小 280，最大不超过 body - 左侧面板宽度。"""
+        """限制右侧面板宽度：240-480px，且不超过 body - 左侧面板宽度。"""
         container = self._body_container
         left_w = self._splitter.sizes()[0] if self._left_panel.isVisible() else 0
-        max_w = container.width() - left_w
-        return max(280, min(w, max_w))
+        max_w = min(480, container.width() - left_w)
+        return max(240, min(w, max_w))
 
     def _on_right_resize_requested(self, new_width: int) -> None:
         """响应右侧面板拖拽手柄的宽度调整请求。"""

@@ -47,6 +47,9 @@ class LiteLLMProvider(LLMProvider):
         self._thinking = thinking
 
         prefix = litellm_prefix or ""
+        # Default to openai/ for custom api_base without explicit prefix
+        if not prefix and api_base:
+            prefix = "openai/"
         if prefix and not model.startswith(prefix):
             self._litellm_model = f"{prefix}{model}"
         else:
@@ -55,6 +58,10 @@ class LiteLLMProvider(LLMProvider):
     @property
     def provider_name(self) -> str:
         return self._provider
+
+    def get_available_models(self) -> list[str]:
+        """返回此 Provider 支持的模型列表。"""
+        return [self._model]
 
     def count_tokens(self, messages: list[dict]) -> int:
         try:

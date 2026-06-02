@@ -11,9 +11,26 @@
 
 Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可用。当前聚焦 Perfetto 分析的 LLM 集成优化和 FPS 采集鲁棒性。
 
-**活跃模块**：perfetto_analysis、perfetto_capture
+**活跃模块**：agent、perfetto_analysis、perfetto_capture
 
 ## 活跃工作
+
+### R6: Agent 核心重构（toolkit/agent）✅
+
+- 目标：`modules/agent_chat/` → `toolkit/agent/`，Tool/Skill/MCP 基础设施下沉到 `toolkit/core/`
+- 设计方案已落盘：[DES-001](design/DES-001-agent-core-refactor.md)，参考 Hermes Agent 开源架构
+- 4 项设计决策已确认：SOP 合并到 Skill、SubAgent 暂不实现、Toolset 预留不分、Agent 不做独立窗口
+- Speckit 流程全部完成，Phase 1-6 实现完毕（80/80 tasks）
+- 217/217 测试通过，SC-004 (零反向依赖) + SC-006 (测试通过率) 达成 ✅
+
+### R7: Hermes Agent 深度引入 — Agent 框架升级（toolkit/agent）
+
+- 目标：在 DES-001 基础上，深度引入 Hermes 的对话循环鲁棒性 + 质量保障 + 知识库 + 记忆管理能力
+- 设计方案已落盘：[DES-002](design/DES-002-hermes-agent-upgrade.md)（2026-06-02，draft）
+- 核心差距分析完成：lv-game-toolkit 已有 6 项 Hermes 模式，缺失/薄弱 12 项
+- 四阶段路线：Phase 1 韧性基础（ErrorClassifier/CircuitBreaker/Watchdog）→ Phase 2 质量保障（Verification/ContextCompressor）→ Phase 3 知识库（KnowledgeBase/Memory）→ Phase 4 SubAgent
+- 2026-06-02: agent-wiring-fix 49/50 完成后，对照 DES-002 全量差距分析 — **确认 20 项新交付物全部待开始**，详见 DES-002 文档
+- 待进入 Speckit 流程（建议先创建 `hermes-phase1-resilience` change）
 
 ### R1: LLM 上下文优化（perfetto_analysis）
 
@@ -26,6 +43,53 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 - 待实现：SF latency 数据校验、Android 16 layer name regex、诊断日志
 
 ## 近期完成
+
+### 2026-06-02（agent-wiring-fix 收尾 + DES-002 差距分析）
+
+- agent-wiring-fix: 49/50 任务完成。本会话完成剩余 13 项任务：
+  - 10.1: SkillsManager.create_agent_tools() 委托到 build_skill_tools()
+  - 4.6: AgentPanel drag-to-resize（240-480px clamp），RightPanel/AgentPanel 宽度解锁
+  - 4.7: AgentPanel session selector（QComboBox + 新建按钮 + 会话切换/消息加载）
+  - 11.3: 消除最后一条反向依赖 — builtin.py 迁移到 `toolkit/agent/builtin.py`
+  - 10.2: 修复 test_no_executor_returns_error（GLMProvider mock → provider 注入）
+  - 1.5/9.5/11.6: 全部测试套件通过（agent_skill_tools 10p + mcp_registry 8p + agent_chat 37p）
+  - 11.1-11.7: 全量语法/导入/反向依赖/启动链路验证通过
+  - 仅剩 11.8（需 LLM API Key 手动 GUI 验证）
+- DES-002 vs agent-wiring-fix 差距分析：确认 **20 项新交付物未覆盖**（ErrorClassifier/CircuitBreaker/Watchdog/ConversationLoop/ContextCompressor/Verification/KnowledgeBase/MemoryManager/SubAgent 等）
+- 启动链路验证: 7 plugins, 24 tools (13 plugin + 9 skill + 2 builtin), service created OK
+
+### 2026-05-26（Hermes Agent 深度引入 — 框架升级设计）
+
+- 深度分析 AI-Performance-Platform 项目中 Hermes Agent 的完整能力矩阵（107 agent + 97 tools + 571 skills）
+- 对比 lv-game-toolkit 当前架构（DES-001 完成态）与 Hermes 全景能力，识别 6 项已有 / 6 项薄弱 / 12 项缺失
+- 撰写 [DES-002](design/DES-002-hermes-agent-upgrade.md) 框架升级设计文档，涵盖：
+  - 对话循环升级：朴素递归 → 状态机驱动的鲁棒编排（ErrorClassifier + CircuitBreaker + Watchdog + RetryPolicy）
+  - 工具执行安全层：ToolGuardrail 三层检查（静态规则 / 动态规则 / 自定义规则）
+  - 上下文管理升级：ContextCompressor（关键数字保留 + 摘要）+ MemoryManager（跨会话记忆）
+  - 分析质量保障：Verification + Reflection + ConfidenceModel（五级置信度）+ PlanGate（分析计划门禁）
+  - 知识库体系：从空壳 ReportIndex → 可检索 KnowledgeBase（TF-IDF 搜索 Skill + 案例 + SOP + Vendor）
+  - SubAgent 启步 + 错误韧性全链路
+- 四阶段实施路线：Phase 1 韧性基础（3-5 天）→ Phase 2 质量保障（3-5 天）→ Phase 3 知识库与记忆（5-7 天）→ Phase 4 SubAgent（5-7 天）
+
+### 2026-05-26（Agent 核心重构实现 — 80 tasks）
+
+- `modules/agent_chat/` → `toolkit/agent/`：Agent 从"聊天模块"提升为框架级核心引擎
+- `ToolRegistry`/`ToolExecutor`/`MCP Framework` 提升到 `toolkit/core/`，消除循环依赖
+- `SkillRegistry` 增强：合并 discovery 扫描 + 三级渐进加载 + 平台过滤
+- Agent GUI 从中央 Tab 改为右侧可展开面板（AgentPanel），独占 RightPanel 内容区
+- System Prompt 三段式重构（Stable/Context/Volatile），借鉴 Hermes Agent 设计
+- SOP 系统合并到 Skill 体系；SubAgent 空实现移除；AgentConfig 废弃 LLM 字段清理
+- `llm_manager` 统一管理 LLM Provider，Agent 不再自行创建
+- MCP 统一前缀 `mcp__{server}__{tool}`，支持 local/external/remote 三种来源
+- 217/217 测试通过（6 deprecated、2 SubAgent/LLM 文件删除）
+
+### 2026-05-26（Agent 核心重构设计方案）
+
+- 完成 Agent 核心架构重构设计文档 [DES-001](design/DES-001-agent-core-refactor.md)
+- 确定重构方向：`modules/agent_chat/` → `toolkit/agent/` + Core 基础设施下沉
+- 参考 Hermes Agent 架构：Registry Pattern、Progressive Disclosure、三段式 System Prompt
+- 关键决策：模块 Tool 不再直接暴露，统一封装为 Skill 或 MCP Tool
+- 确定三层架构：Core (注册中心) → Agent (编排引擎) → Modules (能力提供者)
 
 ### 2026-05-26（LLM Manager 模块重构：多 Provider 配置化 + 精简设置 + Thinking + Token 统计）
 

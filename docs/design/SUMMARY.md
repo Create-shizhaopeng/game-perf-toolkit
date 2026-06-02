@@ -6,6 +6,8 @@
 
 | 编号 | 简述 | 状态 | 创建日期 | 核心结论（一句话） |
 |------|------|------|----------|-------------------|
+| [DES-001](DES-001-agent-core-refactor.md) | Agent 核心重构：agent_chat → toolkit/agent + Core 基础设施下沉 | implemented | 2026-05-26 | modules/agent_chat 提升为 toolkit/agent；ToolRegistry/SkillRegistry/MCP 统一收归 core；Module Tool 封装为 Skill/MCP |
+| [DES-002](DES-002-hermes-agent-upgrade.md) | Hermes Agent 深度引入 — Agent 框架升级设计 | draft | 2026-06-02 | 在 DES-001 基础上引入 ErrorClassifier/CircuitBreaker/ContextCompressor/Verification/KnowledgeBase/Memory 六大能力 |
 
 ## 已归档
 

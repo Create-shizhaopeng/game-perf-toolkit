@@ -9,14 +9,8 @@ from enum import Enum
 from typing import Any, Callable
 
 
-@dataclass
-class ToolDefinition:
-    """工具定义（用于 LLM Function Calling）。"""
-
-    name: str
-    description: str
-    parameters: dict[str, Any] = field(default_factory=dict)
-    method: Callable | None = None
+# Re-export from core models for backward compatibility
+from toolkit.core.models import ToolDefinition
 
 
 class StreamChunkType(str, Enum):

@@ -57,7 +57,7 @@ class RightPanel(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("rightPanel")
-        self.setMinimumWidth(280)
+        self.setMinimumWidth(240)
 
         outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)

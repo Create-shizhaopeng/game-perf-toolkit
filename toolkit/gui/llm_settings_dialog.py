@@ -125,6 +125,11 @@ class LLMSettingsDialog(ToolkitDialog):
         self._load_config()
         self._snapshot()
 
+        # 监听配置文件外部变更 → 实时刷新 UI
+        svc = self._llm_manager.get_service("llm_manager_service")
+        if svc and hasattr(svc, "config_changed"):
+            svc.config_changed.connect(self._on_external_config_change)
+
     # ------------------------------------------------------------------
     # Provider 列表
     # ------------------------------------------------------------------
@@ -151,6 +156,32 @@ class LLMSettingsDialog(ToolkitDialog):
         if idx < 0:
             return
         self._refresh_models(idx)
+
+    def _on_external_config_change(self) -> None:
+        """配置文件被外部编辑 → 刷新 Provider 列表 + 保留当前选中项。"""
+        current_prov = self._provider_combo.currentData()
+        current_model = self._model_combo.currentData() or self._model_combo.currentText()
+
+        self._load_providers()
+
+        # 尝试恢复之前的选中项
+        prov_idx = 0
+        for i in range(self._provider_combo.count()):
+            if self._provider_combo.itemData(i) == current_prov:
+                prov_idx = i
+                break
+        if self._provider_combo.count() > 0:
+            self._provider_combo.setCurrentIndex(prov_idx)
+            self._refresh_models(prov_idx)
+
+        # 恢复 model 选中
+        for i in range(self._model_combo.count()):
+            if (self._model_combo.itemData(i) or self._model_combo.itemText(i)) == current_model:
+                self._model_combo.setCurrentIndex(i)
+                break
+
+        # 更新 snapshot 防止误报"未保存"
+        self._snapshot()
 
     # ------------------------------------------------------------------
     # 加载 / 保存

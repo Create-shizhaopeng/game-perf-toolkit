@@ -191,6 +191,7 @@ specs/                  # Speckit 输出的需求/计划/任务（所有模块�
 8. **GUI 样式**：MUST 通过 `objectName` + `toolkit/gui/styles.py` 全局 QSS；MUST NOT 硬编码主题颜色（用 `theme_colors.get_colors()`）；对话框 MUST 继承 `ToolkitDialog`（详见 [.claude/rules/ui-style-guide.md](.claude/rules/ui-style-guide.md)）
 9. **中文硬编码字符串**：用户可见的中文文本 MUST 提取到 `strings_*.py` 中的 `Final[str]` 常量，按功能前缀分组；日志输出、调试诊断信息中的中文不需要提取（详见 [.claude/rules/string-extraction-gate.md](.claude/rules/string-extraction-gate.md)）
 10. **历史面板**：历史树组件 MUST 继承 `BaseHistoryTreeWidget`；图标 MUST 使用 codicon 字体（禁止 Unicode Emoji）；输出目录 MUST 通过 `get_output_dir()` 统一获取；分析历史 MUST 直接映射文件系统结构（详见 [.claude/rules/history-panel.md](.claude/rules/history-panel.md)）
+11. **代码质量门禁**：代码移动 MUST cp+Edit（禁止 Write 重写）；完成后 MUST 执行启动验证（`python -m toolkit.app` 或无头路径）；禁止用 sed 跳过测试；新建模块 MUST 包含单元测试（详见 [.claude/rules/code-quality-gate.md](.claude/rules/code-quality-gate.md)）
 ### Speckit 开发流程
 
 模块新功能开发遵循 Spec-Driven 流程（详见 `.claude/rules/spec-workflow.md`）：
@@ -270,8 +271,8 @@ BUG/ANALYZE/DESIGN 文档顶部必须包含状态卡片：
 ```
 
 <!-- SPECKIT START -->
-Current plan: `specs/020-llm-manager-refactor/plan.md`
-Research: `specs/020-llm-manager-refactor/research.md`
-Data model: `specs/020-llm-manager-refactor/data-model.md`
-Contracts: `specs/020-llm-manager-refactor/contracts/service-api.md`
+Current plan: `specs/021-agent-core-refactor/plan.md`
+Research: `specs/021-agent-core-refactor/research.md`
+Data model: `specs/021-agent-core-refactor/data-model.md`
+Contracts: `specs/021-agent-core-refactor/contracts/service-api.md`
 <!-- SPECKIT END -->

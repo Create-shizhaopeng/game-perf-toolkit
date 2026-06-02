@@ -66,6 +66,9 @@ def _build_context() -> dict:
     event_bus = EventBus()
     service_registry = ServiceRegistry()
 
+    from toolkit.core.tool_registry import tool_registry
+    from toolkit.core.mcp.registry import MCPRegistry
+
     return {
         "config_manager": config_manager,
         "db_manager": db_manager,
@@ -73,6 +76,8 @@ def _build_context() -> dict:
         "service_registry": service_registry,
         "root_dir": ROOT_DIR,
         "data_dir": DATA_DIR,
+        "tool_registry": tool_registry,
+        "mcp_registry": MCPRegistry(tool_registry=tool_registry),
     }
 
 
@@ -168,19 +173,43 @@ def run_gui() -> None:
 
         gui_sink.log_record.connect(_route_log_record)
 
+    # Agent: 改为右侧面板，不再作为 Tab 出现在导航栏中
+    from toolkit.agent.orchestrator import AgentOrchestrator
+    from toolkit.agent.gui.agent_panel import AgentPanel
+
+    tool_registry = context["tool_registry"]
+    tool_registry.collect_from_plugins(pm)
+
+    # Refresh LLM provider AFTER plugins have registered their services
+    llm_mgr = context.get("llm_manager")
+    if llm_mgr:
+        llm_mgr.refresh_provider()
+
+    orchestrator = AgentOrchestrator(context)
+    orchestrator.init()
+    agent_panel = AgentPanel(orchestrator=orchestrator)
+    agent_panel.set_event_bus(context.get("event_bus"))
+    window.set_agent_panel_widget(agent_panel)
+
+    # Schedule async MCP connection after event loop starts
+    import asyncio
+    from PyQt6.QtCore import QTimer
+
+    def _start_mcp() -> None:
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        loop.create_task(orchestrator.init_async())
+
+    QTimer.singleShot(100, _start_mcp)
+
+    # 模块 Tab 统一通过 add_tab() 添加到中央区域
     tabs = pm.pm.hook.register_gui_tab()
-    agent_tab = None
-    other_tabs = []
     for tab in tabs:
-        if tab is not None:
-            if getattr(tab, "tab_title", "") == "Agent 智能助手":
-                agent_tab = tab
-            else:
-                other_tabs.append(tab)
-    for tab in other_tabs:
-        window.add_tab(tab)
-    if agent_tab:
-        window.set_agent_panel(agent_tab)
+        if tab is not None and getattr(tab, "tab_title", "") != "Agent 智能助手":
+            window.add_tab(tab)
 
     modules_info = [
         {k: v for k, v in m.items() if not k.startswith("_")}
@@ -202,7 +231,7 @@ def run_mcp_server(transport: str = "stdio", port: int = 8765) -> None:
 
     在所有模块 on_startup() 完成后调用，确保 ToolRegistry 已填充。
     """
-    from toolkit.core.mcp_server import run_sse, run_stdio
+    from toolkit.core.mcp.server import run_sse, run_stdio
 
     context = _build_context()
     pm = _load_plugins(context)
@@ -211,20 +240,24 @@ def run_mcp_server(transport: str = "stdio", port: int = 8765) -> None:
     # 初始化 LLM Manager（需要 QApplication 上下文，MCP 模式可跳过）
     _init_llm_manager(context)
 
-    # 构建 ToolRegistry 和 ToolExecutor
-    from modules.agent_chat.src.tools.registry import ToolRegistry
-    from modules.agent_chat.src.tools.executor import ToolExecutor
+    # 使用 toolkit.core 单例 ToolRegistry + ToolExecutor
+    from toolkit.core.tool_registry import tool_registry
+    from toolkit.core.tool_executor import ToolExecutor
 
-    registry = ToolRegistry()
-    registry.collect_from_plugins(pm)
+    tool_registry.collect_from_plugins(pm)
 
-    executor = ToolExecutor(registry)
+    # Register skill tools for MCP server mode
+    from toolkit.agent.orchestrator import AgentOrchestrator
+    orch = AgentOrchestrator(context)
+    orch.init()
+
+    executor = ToolExecutor(tool_registry)
 
     logger.info("MCP Server 启动（transport=%s, port=%d）", transport, port)
     if transport == "sse":
-        run_sse(registry, executor, port=port)
+        run_sse(tool_registry, executor, port=port)
     else:
-        run_stdio(registry, executor)
+        run_stdio(tool_registry, executor)
 
     pm.pm.hook.on_shutdown()
     context["db_manager"].close()

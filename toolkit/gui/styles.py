@@ -1167,6 +1167,83 @@ QLabel#rightPanelPlaceholder {
     font-size: 12px;
 }
 
+/* ── Agent 右侧面板 ── */
+QWidget#agentPanel {
+    background-color: #1e1e2e;
+}
+QWidget#agentPanelHeader {
+    background-color: #181825;
+    border-bottom: 1px solid #313244;
+}
+QLabel#agentPanelTitle {
+    color: #cba6f7;
+    font-size: 14px;
+    font-weight: bold;
+}
+QScrollArea#agentPanelMsgScroll {
+    background-color: #1e1e2e;
+    border: none;
+}
+QWidget#agentPanelInputBar {
+    background-color: #181825;
+    border-top: 1px solid #313244;
+}
+QTextEdit#agentPanelInput {
+    background-color: #313244;
+    color: #cdd6f4;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+QPushButton#agentPanelSendBtn {
+    background-color: #cba6f7;
+    color: #1e1e2e;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+}
+QPushButton#agentPanelToggleBtn {
+    background: transparent;
+    border: none;
+    color: #cba6f7;
+    font-size: 16px;
+}
+QPushButton#agentPanelCollapseBtn {
+    background: transparent;
+    border: none;
+    color: #cdd6f4;
+}
+/* Agent Session Selector */
+QWidget#agentPanelSessionBar {
+    background-color: #1e1e2e;
+    border-bottom: 1px solid #313244;
+}
+QComboBox#agentPanelSessionCombo {
+    background-color: #313244;
+    color: #cdd6f4;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 12px;
+}
+QComboBox#agentPanelSessionCombo QAbstractItemView {
+    background-color: #313244;
+    color: #cdd6f4;
+    selection-background-color: #45475a;
+    border: 1px solid #45475a;
+}
+QPushButton#agentPanelNewSessionBtn {
+    background: transparent;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    color: #a6adc8;
+    font-size: 14px;
+}
+QPushButton#agentPanelNewSessionBtn:hover {
+    background-color: #313244;
+    color: #cba6f7;
+}
+
 /* ── 左侧面板 — 历史区域 ── */
 QWidget#leftPanel {
     background-color: #1e1e2e;
@@ -2381,6 +2458,36 @@ QWidget#rightPanelResizeHandle:hover {
 QLabel#rightPanelPlaceholder {
     color: #9ca0b0;
     font-size: 12px;
+}
+/* Agent Session Selector (Light) */
+QWidget#agentPanelSessionBar {
+    background-color: #eff1f5;
+    border-bottom: 1px solid #ccd0da;
+}
+QComboBox#agentPanelSessionCombo {
+    background-color: #e6e9ef;
+    color: #4c4f69;
+    border: 1px solid #ccd0da;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 12px;
+}
+QComboBox#agentPanelSessionCombo QAbstractItemView {
+    background-color: #e6e9ef;
+    color: #4c4f69;
+    selection-background-color: #ccd0da;
+    border: 1px solid #ccd0da;
+}
+QPushButton#agentPanelNewSessionBtn {
+    background: transparent;
+    border: 1px solid #ccd0da;
+    border-radius: 4px;
+    color: #5c5f77;
+    font-size: 14px;
+}
+QPushButton#agentPanelNewSessionBtn:hover {
+    background-color: #e6e9ef;
+    color: #1e66f5;
 }
 
 /* ── 左侧面板 — 历史区域 ── */

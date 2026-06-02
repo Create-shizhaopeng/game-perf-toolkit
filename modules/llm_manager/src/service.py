@@ -1,10 +1,12 @@
-"""LLMManagerService — Provider 配置管理 + Token 记录。"""
+"""LLMManagerService — Provider 配置管理 + Token 记录 + 文件监听。"""
 
 from __future__ import annotations
 
 import logging
 import uuid
 from pathlib import Path
+
+from PyQt6.QtCore import QFileSystemWatcher, QObject, pyqtSignal
 
 from toolkit.core.app_paths import get_exe_dir
 from toolkit.core.db_manager import DatabaseManager
@@ -25,18 +27,24 @@ class LLMConfigNotFoundError(LLMConfigError):
     """配置文件不存在且无法重建。"""
 
 
-class LLMManagerService:
-    """LLM Provider 配置管理服务。
+class LLMManagerService(QObject):
+    """LLM Provider 配置管理服务（QObject，支持文件监听 + 信号通知）。
 
     通过 ServiceRegistry 注册为 "llm_manager_service"。
     负责 llm_providers.json 的读写、Provider CRUD、配置迁移。
+    内置 QFileSystemWatcher 监听配置文件外部变更，自动 reload 并通知消费者。
     """
 
+    config_changed = pyqtSignal()
+
     def __init__(self, db_manager: DatabaseManager | None = None) -> None:
+        super().__init__()
         self._config_path = get_exe_dir() / "data" / "config" / "llm_providers.json"
         self._config: LLMProvidersConfig | None = None
         self._db_manager = db_manager
         self._token_tracker: "TokenTracker | None" = None
+        self._watcher: QFileSystemWatcher | None = None
+        self._start_watching()
 
     # ------------------------------------------------------------------
     # 配置加载 / 保存
@@ -62,9 +70,10 @@ class LLMManagerService:
         return self._config
 
     def save(self) -> None:
-        """保存配置（原子写入）。"""
+        """保存配置（原子写入 + 防抖：写前暂停 watcher 避免自触发）。"""
         if self._config is None:
             return
+        self._pause_watcher()
         tmp = self._config_path.with_suffix(".tmp")
         try:
             tmp.write_text(
@@ -77,6 +86,8 @@ class LLMManagerService:
             if tmp.exists():
                 tmp.unlink(missing_ok=True)
             raise LLMConfigError("Failed to write config")
+        finally:
+            self._resume_watcher()
 
     def reload(self) -> LLMProvidersConfig:
         """强制重新加载（忽略缓存）。"""
@@ -256,6 +267,55 @@ class LLMManagerService:
             LOGGER.info("已从旧配置迁移 LLM API Key")
         except Exception:
             self._generate_default_config()
+
+    # ------------------------------------------------------------------
+    # 文件监听（实时感知外部编辑）
+    # ------------------------------------------------------------------
+
+    def _start_watching(self) -> None:
+        """启动 QFileSystemWatcher 监听配置文件外部变更。"""
+        try:
+            self._config_path.parent.mkdir(parents=True, exist_ok=True)
+            if not self._config_path.exists():
+                self._config_path.touch()
+            self._watcher = QFileSystemWatcher([str(self._config_path)])
+            self._watcher.fileChanged.connect(self._on_file_changed)
+            LOGGER.debug("LLM 配置文件监听已启动: %s", self._config_path)
+        except Exception:
+            LOGGER.warning("无法监听 LLM 配置文件", exc_info=True)
+
+    def _pause_watcher(self) -> None:
+        """临停 watcher，防止 save() 触发自己。"""
+        if self._watcher:
+            try:
+                self._watcher.blockSignals(True)
+            except Exception:
+                pass
+
+    def _resume_watcher(self) -> None:
+        """恢复 watcher（save 完成后调用）。"""
+        if self._watcher:
+            try:
+                self._watcher.blockSignals(False)
+            except Exception:
+                pass
+
+    def _on_file_changed(self, path: str) -> None:
+        """配置文件被外部编辑 → reload 并通知消费者。"""
+        LOGGER.info("检测到 LLM 配置文件变更，自动 reload")
+        try:
+            self.reload()
+            self.config_changed.emit()
+        except Exception:
+            LOGGER.warning("LLM 配置热重载失败", exc_info=True)
+        # 重新添加 watcher（原子写入 replace 后 inode 可能变化）
+        if self._watcher:
+            try:
+                paths = self._watcher.files()
+                if str(self._config_path) not in paths:
+                    self._watcher.addPath(str(self._config_path))
+            except Exception:
+                pass
 
     def _generate_default_config(self) -> None:
         self._config = self._default_config()
