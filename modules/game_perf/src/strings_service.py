@@ -60,15 +60,9 @@ PROGRESS_RESET_VERIFY_OK_FMT: Final = "✓ 设备已重置，当前 version = {a
 # pull_device_config_from_device() 进度
 # ---------------------------------------------------------------------------
 
-PROGRESS_PULL_STEP1: Final = "[拉取 1/5] adb root..."
-PROGRESS_PULL_ROOT_OK: Final = "✓ adb root 成功"
-PROGRESS_PULL_STEP2: Final = "[拉取 2/5] adb remount..."
-PROGRESS_PULL_REMOUNT_OK: Final = "✓ adb remount 成功"
-PROGRESS_PULL_STEP3: Final = "[拉取 3/5] setenforce 0..."
-PROGRESS_PULL_SETENFORCE_OK: Final = "✓ setenforce 0 成功"
-PROGRESS_PULL_STEP4_FMT: Final = "[拉取 4/5] pull → {local_path}..."
+PROGRESS_PULL_STEP1_FMT: Final = "[拉取 1/2] pull → {local_path}..."
 PROGRESS_PULL_PULL_OK: Final = "✓ pull 成功"
-PROGRESS_PULL_STEP5: Final = "[拉取 5/5] 校验 XML..."
+PROGRESS_PULL_STEP2: Final = "[拉取 2/2] 校验 XML..."
 PROGRESS_PULL_XML_OK: Final = "✓ XML 校验通过"
 
 # ---------------------------------------------------------------------------

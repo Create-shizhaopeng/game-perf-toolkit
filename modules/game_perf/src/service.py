@@ -280,7 +280,7 @@ class GamePerfService:
     ) -> AutoDevicePullResult:
         """将设备上的 ``gameperfconfig.xml`` 拉到本地缓存目录并校验 XML。
 
-        与 push 前半段一致：root → remount → setenforce → adb pull，供 GUI 在后台线程调用。
+        纯读操作（adb pull），不需要 root 权限，避免触发设备 adbd 重启。
         成功时 ``local_path`` 指向 ``data_dir/pull_cache/<serial>/gameperfconfig.xml``。
         ``cancel_event`` 置位后会在各步骤间隙中止（无法打断单次 adb 阻塞调用）。
         """
@@ -303,25 +303,7 @@ class GamePerfService:
             if cancelled():
                 return self._pull_cancelled_result(local_path, cache_dir)
 
-            self._notify(on_progress, "[拉取 1/5] adb root...")
-            self._adb.root(serial)
-            self._notify(on_progress, "✓ adb root 成功")
-            if cancelled():
-                return self._pull_cancelled_result(local_path, cache_dir)
-
-            self._notify(on_progress, "[拉取 2/5] adb remount...")
-            self._adb.remount(serial, on_progress=on_progress)
-            self._notify(on_progress, "✓ adb remount 成功")
-            if cancelled():
-                return self._pull_cancelled_result(local_path, cache_dir)
-
-            self._notify(on_progress, "[拉取 3/5] setenforce 0...")
-            self._adb.shell(serial, "setenforce 0")
-            self._notify(on_progress, "✓ setenforce 0 成功")
-            if cancelled():
-                return self._pull_cancelled_result(local_path, cache_dir)
-
-            self._notify(on_progress, f"[拉取 4/5] pull → {local_path}...")
+            self._notify(on_progress, f"[拉取 1/2] pull → {local_path}...")
             self._adb.pull(serial, REMOTE_CONFIG_PATH, local_path)
             self._notify(on_progress, "✓ pull 成功")
             if cancelled():
@@ -346,7 +328,7 @@ class GamePerfService:
         if cancelled():
             return self._pull_cancelled_result(local_path, cache_dir)
 
-        self._notify(on_progress, "[拉取 5/5] 校验 XML...")
+        self._notify(on_progress, "[拉取 2/2] 校验 XML...")
         xml_err = self.validate_xml(local_path)
         if xml_err is not None:
             self._cleanup_pull_target(local_path, cache_dir)

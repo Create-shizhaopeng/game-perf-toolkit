@@ -104,6 +104,8 @@ DLG_TITLE_EMPTY_NOTES: Final = "备注为空"
 DLG_TITLE_NO_FILE: Final = "未选择文件"
 DLG_TITLE_FILE_NOT_FOUND: Final = "文件不存在"
 DLG_TITLE_UNSAVED_CHANGES: Final = "未保存的修改"
+DLG_TITLE_RESET_FAILED: Final = "无法重置"
+DLG_TITLE_OPERATION_RUNNING: Final = "操作进行中"
 
 # ---------------------------------------------------------------------------
 # 对话框消息
@@ -123,6 +125,8 @@ MSG_NO_FILE_SELECTED: Final = "请先选择要推送的配置文件"
 MSG_FILE_NOT_FOUND_FMT: Final = "找不到文件:\n{filepath}"
 MSG_DISCARD_CHANGES: Final = "当前配置有未保存的修改。是否放弃修改并从设备重新载入 gameperfconfig.xml？"
 DLG_CONFIRM_DISCARD: Final = "放弃并载入"
+MSG_NO_BACKUP: Final = "无可用备份，无法重置。请先执行一次 push 操作。"
+MSG_OPERATION_RUNNING: Final = "上一个操作仍在进行中，请等待完成后再试。"
 
 # ---------------------------------------------------------------------------
 # 通用按钮

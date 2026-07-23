@@ -183,14 +183,14 @@ class TestPullDeviceConfig:
         mock_adb.root.assert_not_called()
 
     def test_pull_cancelled_after_root(self, svc, mock_adb):
+        """取消事件在 pull 成功后置位，应在 XML 校验前中止。"""
         ev = threading.Event()
 
-        def root_side_effect(serial):
+        def pull_side_effect(serial, remote, local):
             ev.set()
             return ""
 
-        mock_adb.root.side_effect = root_side_effect
+        mock_adb.pull.side_effect = pull_side_effect
         r = svc.pull_device_config_from_device("DEV001", cancel_event=ev)
         assert r.ok is False
         assert r.failure_kind == "cancelled"
-        mock_adb.remount.assert_not_called()

@@ -918,6 +918,10 @@ class GamePerfTab(BaseTab):
         import logging as _log
         _logger = _log.getLogger(__name__)
 
+        if self._worker is not None and self._worker.isRunning():
+            warning_dialog(self.window(), sg.DLG_TITLE_OPERATION_RUNNING, sg.MSG_OPERATION_RUNNING)
+            return
+
         if not self.require_device():
             return
         filepath = self._file_input.text().strip()
@@ -980,10 +984,18 @@ class GamePerfTab(BaseTab):
     def _on_reset(self):
         if not self.require_device():
             return
-        self._set_progress(0)
-        self._update_push_button_states(False)
+
+        if self._worker is not None and self._worker.isRunning():
+            warning_dialog(self.window(), sg.DLG_TITLE_OPERATION_RUNNING, sg.MSG_OPERATION_RUNNING)
+            return
 
         serial = self._get_serial()
+        if not serial or not self._service.has_backup(serial):
+            warning_dialog(self.window(), sg.DLG_TITLE_RESET_FAILED, sg.MSG_NO_BACKUP)
+            return
+
+        self._set_progress(0)
+        self._update_push_button_states(False)
 
         def do_reset():
             return self._service.reset(serial, on_progress=self._on_progress_safe)
@@ -1144,7 +1156,11 @@ class GamePerfTab(BaseTab):
     def _update_push_button_states(self, enabled: bool):
         self._start_btn.setEnabled(enabled)
         self._clear_btn.setEnabled(True)
-        self._reset_btn.setEnabled(enabled)
+        reset_enabled = enabled
+        if enabled and self._service is not None:
+            serial = self._get_serial()
+            reset_enabled = bool(serial) and self._service.has_backup(serial)
+        self._reset_btn.setEnabled(reset_enabled)
 
     def _append_log(self, text: str, color: str = "#d4d4d4"):
         if "✓" in text or "#608b4e" in color:
