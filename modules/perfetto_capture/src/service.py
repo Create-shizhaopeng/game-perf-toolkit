@@ -43,6 +43,17 @@ logger = logging.getLogger(__name__)
 ProgressCallback = type(None) | type(lambda: None)
 
 
+def _pbtxt_value(v: object) -> str:
+    """将 Python 值格式化为 Perfetto pbtxt 字面量。"""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, int | float):
+        return str(v)
+    if isinstance(v, str):
+        return f'"{v}"'
+    return str(v)
+
+
 class PerfettoCaptureService:
     """Perfetto 抓取核心业务逻辑。"""
 
@@ -145,7 +156,7 @@ class PerfettoCaptureService:
         if cfg.target.mode == "packages":
             atrace_apps = cfg.target.packages
         else:
-            atrace_apps = ["*"]
+            atrace_apps = cfg.atrace_apps_global
 
         def q(s: str) -> str:
             return f'"{s.replace(chr(92), chr(92)*2).replace(chr(34), chr(92)+chr(34))}"'
@@ -159,14 +170,14 @@ class PerfettoCaptureService:
         lines.append("}")
 
         lines.append("buffers {")
-        lines.append("  size_kb: 4096")
+        lines.append(f"  size_kb: {cfg.metadata_buffer_size_kb}")
         lines.append("  fill_policy: RING_BUFFER")
         lines.append("}")
 
-        lines.append("flush_period_ms: 5000")
+        lines.append(f"flush_period_ms: {cfg.flush_period_ms}")
 
         lines.append("incremental_state_config {")
-        lines.append("  clear_period_ms: 15000")
+        lines.append(f"  clear_period_ms: {cfg.clear_period_ms}")
         lines.append("}")
 
         lines.append("builtin_data_sources {")
@@ -185,7 +196,7 @@ class PerfettoCaptureService:
         for evt in cfg.advanced.ftrace_events:
             lines.append(f"      ftrace_events: {q(evt)}")
         lines.append("      compact_sched {")
-        lines.append("        enabled: true")
+        lines.append(f"        enabled: {_pbtxt_value(cfg.compact_sched_enabled)}")
         lines.append("      }")
         lines.append("    }")
         lines.append("  }")
@@ -196,9 +207,9 @@ class PerfettoCaptureService:
         lines.append('    name: "linux.process_stats"')
         lines.append("    target_buffer: 1")
         lines.append("    process_stats_config {")
-        lines.append("      scan_all_processes_on_start: true")
-        lines.append("      record_thread_names: true")
-        lines.append("      proc_stats_poll_ms: 1000")
+        lines.append(f"      scan_all_processes_on_start: {_pbtxt_value(cfg.scan_all_processes_on_start)}")
+        lines.append(f"      record_thread_names: {_pbtxt_value(cfg.record_thread_names)}")
+        lines.append(f"      proc_stats_poll_ms: {cfg.proc_stats_poll_ms}")
         lines.append("    }")
         lines.append("  }")
         lines.append("}")
@@ -211,6 +222,21 @@ class PerfettoCaptureService:
         lines.append("    }")
         lines.append("  }")
         lines.append("}")
+
+        # 额外 data sources（纯配置驱动，加新数据源只需改 JSON）
+        for ds in cfg.data_sources:
+            lines.append("data_sources {")
+            lines.append("  config {")
+            lines.append(f'    name: "{ds.name}"')
+            if ds.target_buffer is not None:
+                lines.append(f"    target_buffer: {ds.target_buffer}")
+            if ds.config_block:
+                lines.append(f"    {ds.config_block} {{")
+                for k, v in ds.config_fields.items():
+                    lines.append(f"      {k}: {_pbtxt_value(v)}")
+                lines.append("    }")
+            lines.append("  }")
+            lines.append("}")
 
         return "\n".join(lines) + "\n"
 
@@ -225,7 +251,7 @@ class PerfettoCaptureService:
         header = (
             f'unique_session_name: "{session_name}"\n'
             "write_into_file: true\n"
-            "file_write_period_ms: 2500\n"
+            f"file_write_period_ms: {cfg.file_write_period_ms}\n"
         )
         return header + base
 

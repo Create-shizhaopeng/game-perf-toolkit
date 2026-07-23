@@ -13,6 +13,19 @@
   "buffer_safety_factor": 1.05,
   "device_trace_dir": "/data/misc/perfetto-traces",
   "output_dir": "output",
+  "flush_period_ms": 5000,
+  "clear_period_ms": 15000,
+  "metadata_buffer_size_kb": 4096,
+  "proc_stats_poll_ms": 1000,
+  "file_write_period_ms": 2500,
+  "compact_sched_enabled": true,
+  "scan_all_processes_on_start": true,
+  "record_thread_names": true,
+  "atrace_apps_global": ["*"],
+  "_data_sources_notes": "推荐可选: android.polling_state(需Android13+), android.input.inputevent",
+  "data_sources": [
+    { "name": "android.surfaceflinger.frametimeline" }
+  ],
   "target": {
     "mode": "global",
     "packages": []

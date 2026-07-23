@@ -14,6 +14,15 @@ from pydantic import BaseModel, Field
 # ── Pydantic 配置模型 (公共 API) ──────────────────────────────────
 
 
+class DataSourceConfig(BaseModel):
+    """通用 Perfetto data source 配置，纯配置驱动，无需改代码即可新增。"""
+
+    name: str  # e.g. "android.surfaceflinger.frametimeline"
+    target_buffer: int | None = None
+    config_block: str | None = None  # e.g. "android_polling_state_config"
+    config_fields: dict[str, Any] = Field(default_factory=dict)  # e.g. {"poll_ms": 500}
+
+
 class TargetConfig(BaseModel):
     mode: str = "global"
     packages: list[str] = Field(default_factory=list)
@@ -170,6 +179,28 @@ class CaptureConfig(BaseModel):
     buffer_safety_factor: float = Field(default=1.2, ge=1.0, le=5.0)
     device_trace_dir: str = "/data/misc/perfetto-traces"
     output_dir: str = "output"
+    # ── pbtxt 生成参数（原硬编码在 service.py，现归一化到配置） ──
+    flush_period_ms: int = Field(default=5000, ge=1000, le=30000)
+    clear_period_ms: int = Field(default=15000, ge=5000, le=60000)
+    metadata_buffer_size_kb: int = Field(default=4096, ge=1024, le=65536)
+    proc_stats_poll_ms: int = Field(default=1000, ge=100, le=10000)
+    file_write_period_ms: int = Field(default=2500, ge=500, le=30000)
+    # ── ftrace / process_stats 微调参数（原硬编码在 service.py） ──
+    compact_sched_enabled: bool = True
+    scan_all_processes_on_start: bool = True
+    record_thread_names: bool = True
+    atrace_apps_global: list[str] = Field(default_factory=lambda: ["*"])
+    # ── 额外 data sources（纯配置驱动，加新数据源只改 JSON，不改代码） ──
+    # 以下为推荐的可选 data source，需设备 Perfetto 支持（按需添加）：
+    #   { "name": "android.polling_state", "config_block": "android_polling_state_config", "config_fields": {"poll_ms": 500} }
+    #     → CPU 频率轮询，锁频时也能显示（需 Android 13+）
+    #   { "name": "android.input.inputevent" }
+    #     → 输入事件 timeline
+    data_sources: list[DataSourceConfig] = Field(
+        default_factory=lambda: [
+            DataSourceConfig(name="android.surfaceflinger.frametimeline"),
+        ]
+    )
     target: TargetConfig = Field(default_factory=TargetConfig)
     advanced: AdvancedConfig = Field(default_factory=AdvancedConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
