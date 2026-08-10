@@ -21,10 +21,14 @@
   "compact_sched_enabled": true,
   "scan_all_processes_on_start": true,
   "record_thread_names": true,
-  "atrace_apps_global": ["*"],
-  "_data_sources_notes": "推荐可选: android.polling_state(需Android13+), android.input.inputevent",
+  "atrace_apps_global": [
+    "*"
+  ],
   "data_sources": [
-    { "name": "android.surfaceflinger.frametimeline" }
+    {
+      "name": "android.surfaceflinger.frametimeline",
+      "config_fields": {}
+    }
   ],
   "target": {
     "mode": "global",

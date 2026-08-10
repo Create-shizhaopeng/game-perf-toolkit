@@ -60,7 +60,19 @@ class AppSelector(QWidget):
         self._combo.currentIndexChanged.connect(self._on_selection_changed)
         layout.addWidget(self._combo)
 
-    def set_apps(self, apps: list[AppInfo]) -> None:
+    def set_apps(
+        self,
+        apps: list[AppInfo],
+        select_foreground: bool = False,
+    ) -> None:
+        """填充应用列表。
+
+        Args:
+            apps: 应用列表（is_foreground 标记当前前台应用）。
+            select_foreground: 为 True 时，刷新后自动选中当前前台应用
+                （用于启动监测/勾选检测时跟随前台，支持前台应用热切换）。
+                为 False 时保留当前选中项。
+        """
         self._apps = apps
         current_pkg = self.selected_package
 
@@ -72,13 +84,20 @@ class AppSelector(QWidget):
         else:
             self._combo.setPlaceholderText("选择应用...")
 
+        foreground_pkg = ""
         for app in apps:
             display = app.package_name
             if app.is_foreground:
                 display = f"★ {display}"
+                if not foreground_pkg:
+                    foreground_pkg = app.package_name
             self._combo.addItem(display, app.package_name)
 
-        if current_pkg:
+        if select_foreground and foreground_pkg:
+            idx = self._combo.findData(foreground_pkg)
+            if idx >= 0:
+                self._combo.setCurrentIndex(idx)
+        elif current_pkg:
             idx = self._combo.findData(current_pkg)
             if idx >= 0:
                 self._combo.setCurrentIndex(idx)
