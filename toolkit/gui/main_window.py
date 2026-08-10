@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import Qt, QRect, QPoint
+from PyQt6.QtCore import QPoint, QRect, Qt
 from PyQt6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -51,6 +51,8 @@ class _BodyContainer(QWidget):
         rp.raise_()
 
 from toolkit.core.adb_manager import AdbManager
+from toolkit.core.perf_debug import TimeIt
+from toolkit.gui import strings as s
 from toolkit.gui.base_tab import BaseTab
 from toolkit.gui.device_monitor import DeviceMonitor
 from toolkit.gui.home_tab import HomeTab
@@ -60,7 +62,6 @@ from toolkit.gui.panels.left_panel import LeftPanel
 from toolkit.gui.panels.right_panel import RightPanel
 from toolkit.gui.styles import get_theme_stylesheet
 from toolkit.gui.widgets.title_bar import TitleBar
-from toolkit.gui import strings as s
 
 logger = logging.getLogger(__name__)
 
@@ -235,14 +236,15 @@ class MainWindow(QWidget):
 
     def add_tab(self, tab: BaseTab) -> None:
         """添加一个模块页面到内容区。"""
-        tab_index = len(self._tabs)
-        self._tabs.append(tab)
-        self._content_stack.addWidget(tab)
-        self._left_panel.add_tab_button(tab.tab_title, tab.tab_icon)
-        tab.set_theme(self._current_theme)
+        with TimeIt(f"add_tab({tab.tab_title})", min_ms=200):
+            tab_index = len(self._tabs)
+            self._tabs.append(tab)
+            self._content_stack.addWidget(tab)
+            self._left_panel.add_tab_button(tab.tab_title, tab.tab_icon)
+            tab.set_theme(self._current_theme)
 
-        for title, hw in tab.history_widgets():
-            self._left_panel.register_history(title, hw)
+            for title, hw in tab.history_widgets():
+                self._left_panel.register_history(title, hw)
 
         logger.info("注册 GUI Tab: %s", tab.tab_title)
 
@@ -288,18 +290,20 @@ class MainWindow(QWidget):
         super().closeEvent(event)
 
     def _on_tab_selected(self, index: int) -> None:
-        if 0 <= index < len(self._tabs):
-            old_index = self._content_stack.currentIndex()
-            if 0 <= old_index < len(self._tabs):
-                self._tabs[old_index].on_deactivated()
-            self._content_stack.setCurrentIndex(index)
-            tab = self._tabs[index]
+        if not (0 <= index < len(self._tabs)):
+            return
+        old_index = self._content_stack.currentIndex()
+        if 0 <= old_index < len(self._tabs):
+            self._tabs[old_index].on_deactivated()
+        self._content_stack.setCurrentIndex(index)
+        tab = self._tabs[index]
+        with TimeIt(f"切换Tab({tab.tab_title}).on_activated", min_ms=300):
             tab.on_activated()
-            hw_list = tab.history_widgets()
-            if hw_list:
-                self._left_panel.switch_history_to_module(hw_list[0][0])
-            else:
-                self._left_panel.switch_history_to_module(tab.tab_title)
+        hw_list = tab.history_widgets()
+        if hw_list:
+            self._left_panel.switch_history_to_module(hw_list[0][0])
+        else:
+            self._left_panel.switch_history_to_module(tab.tab_title)
 
     def _on_devices_changed(self, devices: list[str]) -> None:
         self._devices = devices

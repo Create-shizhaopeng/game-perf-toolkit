@@ -11,6 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
+from toolkit.core.perf_debug import TimeIt
 from toolkit.sdk.exceptions import AdbError, DeviceNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,17 @@ class AdbManager:
         """
         cmd = [self._adb_path, *args]
         logger.debug("执行: %s", " ".join(cmd))
+        with TimeIt("adb: " + " ".join(args[:2]), min_ms=500):
+            return self._run_cmd_raw_impl(args, timeout, input_text)
+
+    def _run_cmd_raw_impl(
+        self,
+        args: list[str],
+        timeout: int = 30,
+        input_text: str | None = None,
+    ) -> AdbCmdResult:
+        """_run_cmd_raw 的实际执行体（TimeIt 包裹耗时统计）。"""
+        cmd = [self._adb_path, *args]
         try:
             creation_flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
             if input_text is not None:

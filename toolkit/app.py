@@ -37,10 +37,17 @@ from toolkit.core.db_manager import DatabaseManager
 from toolkit.core.event_bus import EventBus
 from toolkit.core.llm.manager import LLMManager
 from toolkit.core.logger import setup_logging
-from toolkit.core.unified_logger import UnifiedLogger
+from toolkit.core.perf_debug import (
+    MainThreadWatchdog,
+    TimeIt,
+    is_debug_enabled,
+    set_debug_enabled,
+    start_main_thread_heartbeat,
+)
 from toolkit.core.plugin_manager import PluginManager
 from toolkit.core.service_registry import ServiceRegistry
 from toolkit.core.skill_registry import SkillRegistry
+from toolkit.core.unified_logger import UnifiedLogger
 
 logger = logging.getLogger(__name__)
 
@@ -58,27 +65,28 @@ DATA_DIR = Path(sys.executable).parent / "data" if getattr(sys, "frozen", False)
 
 def _build_context() -> dict:
     """构建核心服务上下文，注入到所有模块。"""
-    config_manager = ConfigManager(DATA_DIR / "config" / "toolkit_config.json")
+    with TimeIt("构建核心服务上下文", min_ms=500):
+        config_manager = ConfigManager(DATA_DIR / "config" / "toolkit_config.json")
 
-    db_manager = DatabaseManager(DATA_DIR / "db" / "toolkit.db")
-    db_manager.connect()
+        db_manager = DatabaseManager(DATA_DIR / "db" / "toolkit.db")
+        db_manager.connect()
 
-    event_bus = EventBus()
-    service_registry = ServiceRegistry()
+        event_bus = EventBus()
+        service_registry = ServiceRegistry()
 
-    from toolkit.core.tool_registry import tool_registry
-    from toolkit.core.mcp.registry import MCPRegistry
+        from toolkit.core.mcp.registry import MCPRegistry
+        from toolkit.core.tool_registry import tool_registry
 
-    return {
-        "config_manager": config_manager,
-        "db_manager": db_manager,
-        "event_bus": event_bus,
-        "service_registry": service_registry,
-        "root_dir": ROOT_DIR,
-        "data_dir": DATA_DIR,
-        "tool_registry": tool_registry,
-        "mcp_registry": MCPRegistry(tool_registry=tool_registry),
-    }
+        return {
+            "config_manager": config_manager,
+            "db_manager": db_manager,
+            "event_bus": event_bus,
+            "service_registry": service_registry,
+            "root_dir": ROOT_DIR,
+            "data_dir": DATA_DIR,
+            "tool_registry": tool_registry,
+            "mcp_registry": MCPRegistry(tool_registry=tool_registry),
+        }
 
 
 def _init_llm_manager(context: dict) -> None:
@@ -93,6 +101,12 @@ def _init_llm_manager(context: dict) -> None:
 
 def _load_plugins(context: dict) -> PluginManager:
     """发现并加载所有模块。"""
+    with TimeIt("加载插件 + on_startup", min_ms=1000):
+        return _load_plugins_impl(context)
+
+
+def _load_plugins_impl(context: dict) -> PluginManager:
+    """_load_plugins 的实际执行体（TimeIt 包裹耗时统计）。"""
     pm = PluginManager(MODULES_DIR)
     pm.load_all()
 
@@ -126,14 +140,22 @@ def _load_plugins(context: dict) -> PluginManager:
 
 def run_gui() -> None:
     """启动 GUI 应用。"""
+    from PyQt6.QtGui import QIcon
     from PyQt6.QtWidgets import QApplication
 
     from toolkit.gui.main_window import MainWindow
 
-    from PyQt6.QtGui import QIcon
-
     app = QApplication(sys.argv)
     app.setApplicationName("LV Game Toolkit")
+
+    # debug 模式：主线程卡死检测（心跳定时器 + 后台 watchdog 线程）
+    _heartbeat_timer = None
+    _watchdog = None
+    if is_debug_enabled():
+        _heartbeat_timer = start_main_thread_heartbeat(app)
+        _watchdog = MainThreadWatchdog(timeout_s=5.0, parent=app)
+        _watchdog.start()
+        logger.debug("debug 模式：主线程卡死检测已启用")
 
     icon_path = ROOT_DIR / "assets" / "app.ico"
     if icon_path.exists():
@@ -154,7 +176,6 @@ def run_gui() -> None:
     window = MainWindow(context)
 
     # 启用 GUI 日志 Sink，连接 UnifiedLogger -> LogManager -> BottomPanel
-    from toolkit.core.unified_logger import UnifiedLogger
 
     gui_sink = UnifiedLogger().enable_gui_sink(window)
     log_mgr = context.get("log_manager")
@@ -174,8 +195,8 @@ def run_gui() -> None:
         gui_sink.log_record.connect(_route_log_record)
 
     # Agent: 改为右侧面板，不再作为 Tab 出现在导航栏中
-    from toolkit.agent.orchestrator import AgentOrchestrator
     from toolkit.agent.gui.agent_panel import AgentPanel
+    from toolkit.agent.orchestrator import AgentOrchestrator
 
     tool_registry = context["tool_registry"]
     tool_registry.collect_from_plugins(pm)
@@ -193,6 +214,7 @@ def run_gui() -> None:
 
     # Schedule async MCP connection after event loop starts
     import asyncio
+
     from PyQt6.QtCore import QTimer
 
     def _start_mcp() -> None:
@@ -206,7 +228,8 @@ def run_gui() -> None:
     QTimer.singleShot(100, _start_mcp)
 
     # 模块 Tab 统一通过 add_tab() 添加到中央区域
-    tabs = pm.pm.hook.register_gui_tab()
+    with TimeIt("register_gui_tab（创建模块 Tab）", min_ms=500):
+        tabs = pm.pm.hook.register_gui_tab()
     for tab in tabs:
         if tab is not None and getattr(tab, "tab_title", "") != "Agent 智能助手":
             window.add_tab(tab)
@@ -220,6 +243,9 @@ def run_gui() -> None:
     logger.info("GUI 模式启动（已加载 %d 个模块）", len(pm.loaded_modules))
     window.show()
     exit_code = app.exec()
+
+    if _watchdog is not None:
+        _watchdog.stop_watchdog()
 
     pm.pm.hook.on_shutdown()
     context["db_manager"].close()
@@ -241,8 +267,8 @@ def run_mcp_server(transport: str = "stdio", port: int = 8765) -> None:
     _init_llm_manager(context)
 
     # 使用 toolkit.core 单例 ToolRegistry + ToolExecutor
-    from toolkit.core.tool_registry import tool_registry
     from toolkit.core.tool_executor import ToolExecutor
+    from toolkit.core.tool_registry import tool_registry
 
     tool_registry.collect_from_plugins(pm)
 
@@ -296,6 +322,7 @@ def main() -> None:
     """
     log_level = _resolve_log_level()
     setup_logging(log_level)
+    set_debug_enabled(log_level <= logging.DEBUG)
 
     if len(sys.argv) > 1 and sys.argv[1] == "mcp-serve":
         transport = "stdio"

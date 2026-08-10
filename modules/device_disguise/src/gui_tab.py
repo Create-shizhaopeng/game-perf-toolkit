@@ -76,6 +76,9 @@ class DeviceDisguiseTab(BaseTab):
         super().__init__(context, parent)
         self._theme = "dark"
         self._worker: _DisguiseWorker | None = None
+        # 设备序列号缓存：由 on_devices_changed 写入，供 _get_serial() 读取
+        # （避免主线程同步 adb 查询导致 UI 卡死）
+        self._cached_serial = ""
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -196,6 +199,7 @@ class DeviceDisguiseTab(BaseTab):
 
     def on_devices_changed(self, devices: list[str]) -> None:
         super().on_devices_changed(devices)
+        self._cached_serial = devices[0] if devices else ""
         has_device = len(devices) > 0
         self._btn_reset.setEnabled(has_device)
         self._on_input_changed()
@@ -275,13 +279,12 @@ class DeviceDisguiseTab(BaseTab):
         self._btn_disguise.setEnabled(has_input and self.device_connected)
 
     def _get_serial(self) -> str | None:
-        from toolkit.core.adb_manager import AdbManager
+        """返回当前设备序列号（读取设备轮询缓存，不做主线程同步 adb 查询）。
 
-        adb: AdbManager | None = self.context.get("dd_adb")
-        if not adb:
-            return None
-        devices = adb.get_connected_devices()
-        return devices[0] if devices else None
+        设备列表由 DeviceMonitor 轮询并通过 on_devices_changed() 传入缓存，
+        此处 MUST NOT 再调用 adb.get_connected_devices() 阻塞主线程。
+        """
+        return self._cached_serial or None
 
     def _on_disguise(self) -> None:
         if not self.require_device():
