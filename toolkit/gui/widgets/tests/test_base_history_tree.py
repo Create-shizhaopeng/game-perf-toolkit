@@ -4,17 +4,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QTreeWidgetItem
 
 from toolkit.gui.widgets.base_history_tree import BaseHistoryTreeWidget
 
 
-def _ensure_app() -> QApplication:
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication([])
-    return app
+@pytest.fixture(scope="session")
+def qapp() -> QApplication:
+    """保持 QApplication 在整个测试会话存活。
+
+    注意：不能把 QApplication 作为局部变量创建后丢弃（引用计数归零会被 GC），
+    否则后续创建 QWidget 时 Qt 会报 "Must construct a QApplication before a QWidget"
+    并调用 qFatal/abort，导致进程以 127 异常退出（表现为 hang）。
+    """
+    app = QApplication.instance() or QApplication([])
+    yield app
 
 
 class TestSendPayload:
@@ -65,8 +71,7 @@ class TestFormatSize:
 class TestFilterByKeyword:
     """filter_by_keyword 测试。"""
 
-    def test_filter_shows_matching(self):
-        _ensure_app()
+    def test_filter_shows_matching(self, qapp):
         tree = BaseHistoryTreeWidget()
 
         item_a = QTreeWidgetItem()
@@ -81,8 +86,7 @@ class TestFilterByKeyword:
         assert not item_a.isHidden()
         assert item_b.isHidden()
 
-    def test_filter_empty_shows_all(self):
-        _ensure_app()
+    def test_filter_empty_shows_all(self, qapp):
         tree = BaseHistoryTreeWidget()
         item = QTreeWidgetItem()
         item.setText(0, "Test")
@@ -96,8 +100,7 @@ class TestFilterByKeyword:
 class TestSelectedItemsData:
     """_get_selected_items_data 测试。"""
 
-    def test_returns_user_role_data(self):
-        _ensure_app()
+    def test_returns_user_role_data(self, qapp):
         tree = BaseHistoryTreeWidget()
 
         item = QTreeWidgetItem()
@@ -114,8 +117,7 @@ class TestSelectedItemsData:
 class TestTheme:
     """主题应用测试。"""
 
-    def test_set_theme_applies_stylesheet(self):
-        _ensure_app()
+    def test_set_theme_applies_stylesheet(self, qapp):
         tree = BaseHistoryTreeWidget()
         tree.set_theme("dark")
         ss = tree.styleSheet()

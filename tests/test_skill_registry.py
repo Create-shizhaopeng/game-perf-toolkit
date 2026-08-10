@@ -43,7 +43,8 @@ def test_skill_registry_load_valid_skill():
         assert skills[0].name == "test-skill"
         assert skills[0].description == "A test skill"
         assert skills[0].category == "test"
-        assert skills[0].triggers == {"keywords": ["test"]}
+        # triggers 为 list[str]：frontmatter 中 dict 结构（keywords/patterns）时取键名
+        assert skills[0].triggers == ["keywords"]
         assert "Body content." in reg.get_skill_content("test-skill")
     finally:
         path.unlink()
@@ -105,10 +106,8 @@ def test_skill_registry_parse_all_frontmatter_fields():
         assert skill.category == "device-operation"
         assert skill.icon == "device"
         assert skill.tags == ["android", "adb"]
-        assert skill.triggers == {
-            "keywords": ["伪装"],
-            "patterns": ["伪装.*品牌"],
-        }
+        # triggers 为 list[str]：dict 结构取键名（keywords/patterns）
+        assert skill.triggers == ["keywords", "patterns"]
     finally:
         path.unlink()
 

@@ -13,12 +13,18 @@ import pytest
 
 @pytest.fixture()
 def modules_tmp(tmp_path: Path, monkeypatch):
-    """将脚手架的 MODULES_DIR 重定向到临时目录。"""
+    """将脚手架的 MODULES_DIR 重定向到临时目录。
+
+    同时跳过 speckit 初始化：``create_module()`` 末尾会调用 ``_init_speckit()``，
+    其中 ``uvx --from git+...spec-kit specify init`` 需要从 GitHub 联网下载，
+    慢网/无网环境下 subprocess 超时 120s 导致测试挂起。
+    """
     import scripts.create_module as cm
 
     mod_dir = tmp_path / "modules"
     mod_dir.mkdir()
     monkeypatch.setattr(cm, "MODULES_DIR", mod_dir)
+    monkeypatch.setattr(cm, "_init_speckit", lambda *args, **kwargs: None)
     return mod_dir
 
 

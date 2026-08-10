@@ -26,6 +26,7 @@ TEST_GROUPS: list[tuple[str, str]] = [
     ("perfetto_analysis 模块", "modules/perfetto_analysis/tests/"),
     ("workspace_tools 模块", "modules/workspace_tools/tests/"),
     ("agent_chat 模块", "modules/agent_chat/tests/"),
+    ("llm_manager 模块", "modules/llm_manager/tests/"),
 ]
 
 
@@ -43,6 +44,11 @@ def main() -> int:
         print(f"\n{'=' * 60}")
         print(f"  [{label}] {path}")
         print("=" * 60)
+
+        # 空测试目录（无 test_*.py）跳过，不因 pytest 返回码 5（0 tests）误判失败
+        if not list(full_path.glob("test_*.py")):
+            print("  （无测试文件，跳过）")
+            continue
 
         result = subprocess.run(
             [PYTHON, "-m", "pytest", str(full_path), "-v", "--tb=short"],

@@ -9,7 +9,7 @@ class TestBuildToolHandler:
 
     def test_handler_created_with_proper_signature(self):
         """handler 有正确的参数签名。"""
-        from toolkit.core.mcp_server import _build_tool_handler
+        from toolkit.core.mcp.server import _build_tool_handler
 
         executor = MagicMock()
         parameters = {
@@ -33,7 +33,7 @@ class TestBuildToolHandler:
 
     def test_handler_name_is_tool_name(self):
         """handler 函数名等于 tool_name。"""
-        from toolkit.core.mcp_server import _build_tool_handler
+        from toolkit.core.mcp.server import _build_tool_handler
 
         handler = _build_tool_handler(
             executor=MagicMock(),
@@ -45,7 +45,7 @@ class TestBuildToolHandler:
 
     def test_handler_async(self):
         """handler 是协程函数。"""
-        from toolkit.core.mcp_server import _build_tool_handler
+        from toolkit.core.mcp.server import _build_tool_handler
 
         handler = _build_tool_handler(
             executor=MagicMock(),
@@ -57,7 +57,7 @@ class TestBuildToolHandler:
 
     def test_handler_with_nested_parameters(self):
         """处理嵌套参数（object/array 类型）。"""
-        from toolkit.core.mcp_server import _build_tool_handler
+        from toolkit.core.mcp.server import _build_tool_handler
 
         parameters = {
             "properties": {
@@ -84,31 +84,31 @@ class TestJsonTypeToPython:
     """_json_type_to_python 映射测试。"""
 
     def test_string(self):
-        from toolkit.core.mcp_server import _json_type_to_python
+        from toolkit.core.mcp.server import _json_type_to_python
         assert _json_type_to_python("string") is str
 
     def test_integer(self):
-        from toolkit.core.mcp_server import _json_type_to_python
+        from toolkit.core.mcp.server import _json_type_to_python
         assert _json_type_to_python("integer") is int
 
     def test_number(self):
-        from toolkit.core.mcp_server import _json_type_to_python
+        from toolkit.core.mcp.server import _json_type_to_python
         assert _json_type_to_python("number") is float
 
     def test_boolean(self):
-        from toolkit.core.mcp_server import _json_type_to_python
+        from toolkit.core.mcp.server import _json_type_to_python
         assert _json_type_to_python("boolean") is bool
 
     def test_array(self):
-        from toolkit.core.mcp_server import _json_type_to_python
+        from toolkit.core.mcp.server import _json_type_to_python
         assert _json_type_to_python("array") is list
 
     def test_object(self):
-        from toolkit.core.mcp_server import _json_type_to_python
+        from toolkit.core.mcp.server import _json_type_to_python
         assert _json_type_to_python("object") is dict
 
     def test_unknown_defaults_to_str(self):
-        from toolkit.core.mcp_server import _json_type_to_python
+        from toolkit.core.mcp.server import _json_type_to_python
         assert _json_type_to_python("unknown_type") is str
 
 
@@ -117,7 +117,7 @@ class TestCreateMcpServer:
 
     def test_server_creation(self):
         """FastMCP 实例可以成功创建。"""
-        from toolkit.core.mcp_server import create_mcp_server
+        from toolkit.core.mcp.server import create_mcp_server
 
         tool_registry = MagicMock()
         tool_registry.get_definitions.return_value = []
@@ -130,7 +130,7 @@ class TestCreateMcpServer:
     def test_tools_without_method_are_skipped(self, caplog):
         """没有 method 的 ToolDefinition 被跳过。"""
         import logging
-        from toolkit.core.mcp_server import create_mcp_server
+        from toolkit.core.mcp.server import create_mcp_server
 
         td = MagicMock()
         td.name = "no_method_tool"
