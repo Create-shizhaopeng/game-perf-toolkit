@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -113,17 +115,30 @@ class TestHistoryService:
         assert len(storage.get_session_ids()) == 1
 
     def test_cleanup_empty_directory(self, service, setup_dirs):
-        """自动清理空目录。"""
+        """超过宽限期的空会话目录会被自动清理。"""
         _, trace_dir = setup_dirs
 
-        # 创建空会话目录
+        # 创建空会话目录，并将 mtime 改为很久以前（模拟遗留空目录）
         empty_dir = trace_dir / "2026_04_02-20_15_30"
         empty_dir.mkdir(parents=True)
+        old = time.time() - 3600
+        os.utime(empty_dir, (old, old))
 
         # 扫描应该清理空目录
         sessions = service.scan_sessions()
         assert len(sessions) == 0
         assert not empty_dir.exists()
+
+    def test_scan_keeps_recent_empty_directory(self, service, setup_dirs):
+        """刚创建的空目录（可能正在抓取、尚未导出 trace）不被扫描清理。"""
+        _, trace_dir = setup_dirs
+
+        empty_dir = trace_dir / "2026_04_02-20_15_30"
+        empty_dir.mkdir(parents=True)
+
+        sessions = service.scan_sessions()
+        assert len(sessions) == 0
+        assert empty_dir.exists()
 
     def test_delete_session(self, service, setup_dirs, storage):
         """删除会话。"""

@@ -273,3 +273,41 @@ class TestService:
         session = svc.create_session("DEV001")
         assert session.device_serial == "DEV001"
         assert not session.export_session_dir.exists()
+
+
+# ── 导出目录被历史扫描清理后的防御重建 ──────────────────────────
+
+
+class TestExportDirRecreation:
+    def test_stop_and_export_recreates_missing_export_dir(self, tmp_path) -> None:
+        """导出目录被历史扫描当作空目录清理后，导出前自动重建，pull 目标落盘成功。"""
+        import shutil
+        from pathlib import Path
+
+        from modules.perfetto_capture.src.models import TraceItem
+
+        def _fake_pull(serial: str, src: str, dst: str) -> AdbCmdResult:
+            Path(dst).write_bytes(b"x")
+            return AdbCmdResult("", "", 0)
+
+        adb = MagicMock()
+        adb.pull_raw.side_effect = _fake_pull
+        svc = PerfettoCaptureService(adb=adb, data_dir=tmp_path)
+
+        session = svc.create_session("DEV001")
+        session.saved_traces.append(
+            TraceItem(
+                kind=TraceKind.NORMAL,
+                device_path="/data/t.pb",
+                export_filename="t.pb",
+            )
+        )
+        # 模拟：save 创建了导出目录，之后历史扫描把它当空目录清理了
+        session.export_session_dir.mkdir(parents=True)
+        shutil.rmtree(session.export_session_dir)
+        assert not session.export_session_dir.exists()
+
+        exported = svc.session_stop_and_export("DEV001")
+        assert len(exported) == 1
+        assert exported[0].parent.exists()  # 目录已重建
+        assert exported[0].exists()         # pull 成功落盘

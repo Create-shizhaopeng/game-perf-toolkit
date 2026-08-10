@@ -15,6 +15,7 @@ from toolkit.core.adb_manager import AdbCmdResult, AdbManager
 from toolkit.core.app_paths import get_exe_dir, is_frozen
 
 from .config_manager import load_config, save_config
+from .pending_export_store import PENDING_EXPORT_FILENAME, PendingExportItem, PendingExportStore
 from .models import (
     CaptureConfig,
     CaptureMode,
@@ -62,6 +63,17 @@ class PerfettoCaptureService:
         self._data_dir = data_dir or (get_exe_dir() / "data")
         self._cfg: CaptureConfig | None = None
         self._session: CaptureSession | None = None
+        self._pending_store: PendingExportStore | None = None
+
+    @property
+    def pending_store(self) -> PendingExportStore:
+        """待导出清单（位于 trace 输出目录下，延迟初始化）。"""
+        if self._pending_store is None:
+            self._pending_store = PendingExportStore(
+                self.output_dir / PENDING_EXPORT_FILENAME
+            )
+            self._pending_store.load()
+        return self._pending_store
 
     def get_service_info(self) -> dict:
         return {"name": "perfetto_capture", "display_name": SERVICE_DISPLAY_NAME, "version": "1.0.0"}
@@ -499,6 +511,18 @@ class PerfettoCaptureService:
         )
         session.saved_traces.append(item)
 
+        # 持久化到待导出清单，供设备重连后接续导出（入队失败不应中断抓取）
+        try:
+            self.pending_store.add(PendingExportItem(
+                serial=serial,
+                device_path=item.device_path,
+                export_filename=item.export_filename,
+                session_dir=session.export_session_dir.name,
+                device_model=device_info.model,
+            ))
+        except Exception as e:
+            logger.warning("写入待导出清单失败: %s", e)
+
         session.trace_idx += 1
         new_device_path = (
             f"{device_trace_dir}/current_{session.trace_idx}.perfetto-trace"
@@ -588,11 +612,17 @@ class PerfettoCaptureService:
                 item.export_path = dest
                 item.exported = True
                 exported.append(dest)
+                try:
+                    self.pending_store.remove(serial, item.export_filename)
+                except Exception:
+                    pass
                 continue
 
             if on_progress:
                 on_progress(f"导出中: {item.export_filename}")
 
+            # 防御：会话导出目录可能被历史扫描当作空目录清理，导出前确保存在
+            ensure_dir(session.export_session_dir)
             pull_res = self._adb.pull_raw(serial, item.device_path, str(dest))
             if pull_res.returncode != 0:
                 if is_device_unavailable(pull_res):
@@ -612,12 +642,68 @@ class PerfettoCaptureService:
             item.export_path = dest
             item.exported = True
             exported.append(dest)
+            try:
+                self.pending_store.remove(serial, item.export_filename)
+            except Exception:
+                pass
 
         session.capture_state = CaptureState.IDLE
         self._session = None
         logger.info("会话结束，已导出 %d 个文件", len(exported))
         return exported
 
+    def resume_pending_exports(self, serial: str) -> dict:
+        """接续导出：把该设备未导出的 trace 项补导到本地。
+
+        按 serial 强隔离，只处理当前连接设备对应的待导出项；其他设备的项不受影响。
+
+        Returns:
+            结果统计字典：
+            - exported: list[Path] 本次成功导出的本地路径（含已存在直接判定导出的项）
+            - skipped_missing: list[str] 设备端文件已不存在的文件名（已出队）
+            - failed: list[str] 本次 pull 失败、保留待下次重试的文件名
+        """
+        items = self.pending_store.get_for_serial(serial)
+        if not items:
+            return {"exported": [], "skipped_missing": [], "failed": []}
+
+        exported: list[Path] = []
+        skipped_missing: list[str] = []
+        failed: list[str] = []
+
+        for item in items:
+            dest = self.output_dir / item.session_dir / item.export_filename
+
+            # 1. 本地已存在且非空 → 视为已导出，直接出队
+            if dest.exists() and dest.stat().st_size > 0:
+                self.pending_store.remove(serial, item.export_filename)
+                exported.append(dest)
+                continue
+
+            # 2. 设备端文件是否仍存在（可能被新抓取覆盖或已清理）
+            ls_res = self._adb.shell_raw(serial, f"ls {item.device_path}")
+            if ls_res.returncode != 0:
+                self.pending_store.remove(serial, item.export_filename)
+                skipped_missing.append(item.export_filename)
+                continue
+
+            # 3. pull 到本地（防御目录缺失）
+            ensure_dir(dest.parent)
+            pull_res = self._adb.pull_raw(serial, item.device_path, str(dest))
+            if pull_res.returncode != 0:
+                if is_device_unavailable(pull_res):
+                    raise DeviceUnavailableError(
+                        (pull_res.stderr or "").strip() or (pull_res.stdout or "").strip()
+                    )
+                failed.append(item.export_filename)
+                continue
+
+            self.pending_store.remove(serial, item.export_filename)
+            exported.append(dest)
+
+        logger.info("接续导出完成: serial=%s exported=%d missing=%d failed=%d",
+                    serial, len(exported), len(skipped_missing), len(failed))
+        return {"exported": exported, "skipped_missing": skipped_missing, "failed": failed}
 
     def session_abandon(self) -> None:
         """放弃当前会话，不尝试导出。用于设备断开后用户主动放弃。"""
@@ -626,6 +712,12 @@ class PerfettoCaptureService:
             return
         session.capture_state = CaptureState.IDLE
         session.running = None
+        # 放弃会话 = 不再导出这些 trace，同步清空其待导出清单项
+        for item in session.saved_traces:
+            try:
+                self.pending_store.remove(session.device_serial, item.export_filename)
+            except Exception:
+                pass
         logger.info("会话已放弃 (session_id=%s, 已保存 %d 段)", session.session_id, len(session.saved_traces))
         self._session = None
 

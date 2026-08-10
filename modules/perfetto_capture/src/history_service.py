@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -18,6 +19,11 @@ from .utils import parse_session_dirname, parse_trace_filename
 logger = logging.getLogger(__name__)
 
 TRACE_EXTENSION = ".perfetto-trace"
+
+# 扫描时对"可能正在抓取、尚未导出 trace"的空会话目录的宽限时间（秒）。
+# 抓取会话目录在首次 save 时创建，但 trace 文件要等导出阶段才 pull 进来，
+# 期间的目录是空的；若扫描立即清理会被误删，导致后续导出 pull 目标目录不存在。
+_EMPTY_DIR_GRACE_SECONDS = 600
 
 
 class HistoryService:
@@ -120,9 +126,9 @@ class HistoryService:
             if device_soc is None and info.soc:
                 device_soc = info.soc
 
-        # 空目录处理：自动清理
+        # 空目录处理：自动清理（带宽限期，避免误删正在抓取的会话目录）
         if not traces:
-            self._cleanup_empty_dir(dir_path)
+            self._cleanup_empty_dir(dir_path, _EMPTY_DIR_GRACE_SECONDS)
             return None
 
         return HistorySession(
@@ -164,8 +170,19 @@ class HistoryService:
             for trace in session.traces:
                 self.storage.insert_trace(trace)
 
-    def _cleanup_empty_dir(self, dir_path: Path) -> None:
-        """清理空的会话目录。"""
+    def _cleanup_empty_dir(self, dir_path: Path, grace_seconds: int = 0) -> None:
+        """清理空的会话目录。
+
+        grace_seconds > 0 时，仅清理修改时间距今超过宽限期的目录，
+        避免误删刚创建、尚未导出 trace 的抓取会话目录。
+        """
+        if grace_seconds > 0:
+            try:
+                mtime = dir_path.stat().st_mtime
+            except OSError:
+                return
+            if time.time() - mtime < grace_seconds:
+                return
         try:
             # 只删除空目录或只包含非 trace 文件的目录
             contents = list(dir_path.iterdir())

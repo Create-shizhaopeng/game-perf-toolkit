@@ -296,6 +296,21 @@ HIST_ANALYSIS_ITEM_FMT: Final = "{name} — {time}"
 HIST_SEPARATOR_COMMA: Final = "、"
 
 # ────────────────────────────────────────────────────────────────────────────
+# 待接续导出
+# ────────────────────────────────────────────────────────────────────────────
+
+DLG_TITLE_RESUME_EXPORT: Final = "发现待导出的 trace"
+MSG_RESUME_EXPORT_FMT: Final = "发现 {count} 个未导出的 trace（设备 {serial}，型号 {model}）。\n\n设备端文件可能被新的抓取覆盖，是否立即接续导出？"
+BTN_RESUME_EXPORT: Final = "接续导出"
+RESUME_EXPORT_START_FMT: Final = "开始接续导出 {serial} 的待导出 trace..."
+RESUME_EXPORT_OK_FMT: Final = "✓ 已接续导出 {n} 个文件:"
+RESUME_EXPORT_MISSING_FMT: Final = "⚠ {n} 个 trace 在设备上已不存在，已跳过"
+RESUME_EXPORT_FAIL_FMT: Final = "✗ {n} 个 trace 接续导出失败"
+RESUME_EXPORT_EMPTY: Final = "无待接续导出的 trace"
+RESUME_EXPORT_RETRY_HINT: Final = "接续导出将在设备再次连接时自动重试"
+LOG_OPERATION_RUNNING: Final = "操作进行中，请等待完成后再试"
+
+# ────────────────────────────────────────────────────────────────────────────
 # 其他
 # ────────────────────────────────────────────────────────────────────────────
 

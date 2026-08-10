@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from toolkit.gui.toolkit_dialog import warning_dialog
+from toolkit.gui.toolkit_dialog import confirm_dialog, warning_dialog
 
 from .strings_gui import *
 
@@ -88,6 +88,7 @@ class _CaptureWorker(QThread):
     started_ok = pyqtSignal()
     save_ok = pyqtSignal(int)
     export_ok = pyqtSignal(list)
+    resume_ok = pyqtSignal(object)   # 接续导出结果 dict
     error = pyqtSignal(str)
 
     def __init__(self, action: str, service: Any, serial: str, **kwargs: Any) -> None:
@@ -147,8 +148,31 @@ class _CaptureWorker(QThread):
                 self.progress.emit(WORKER_CAPTURE_RESUMED)
                 self.started_ok.emit()
 
+            elif self._action == "resume_export":
+                result = self._svc.resume_pending_exports(self._serial)
+                self.resume_ok.emit(result)
+
         except Exception as e:
             self.error.emit(str(e))
+
+
+class _DeviceInfoWorker(QThread):
+    """后台获取设备信息（adb getprop），避免主线程同步 adb 阻塞。"""
+
+    done = pyqtSignal(object)   # DeviceInfo
+    failed = pyqtSignal(str)    # 错误消息
+
+    def __init__(self, service: Any, serial: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._svc = service
+        self._serial = serial
+
+    def run(self) -> None:
+        try:
+            info = self._svc.get_device_info(self._serial)
+            self.done.emit(info)
+        except Exception as e:
+            self.failed.emit(str(e))
 
 
 class PerfettoCaptureTab(BaseTab):
@@ -163,6 +187,16 @@ class PerfettoCaptureTab(BaseTab):
         self._device_info = None
         self._device_dir: str | None = None
         self._worker: _CaptureWorker | None = None
+        self._device_info_worker: _DeviceInfoWorker | None = None
+        self._last_history_signature: tuple | None = None
+        # 待接续导出：记录已提示过的 serial（避免设备列表抖动反复弹窗）与接续进行中标志
+        self._last_resume_serial: str = ""
+        self._resuming = False
+        # 历史热更新轮询 — 外部删除/新增 trace_report、trace 目录时实时感知。
+        # 复用 _history_dir_signature()（目录 mtime）做签名比较，仅变化时才做完整扫描刷新。
+        self._history_poll_timer = QTimer(self)
+        self._history_poll_timer.setInterval(2000)
+        self._history_poll_timer.timeout.connect(self._maybe_refresh_history)
         self._capturing = False
         self._waiting_reconnect = False
         self._saved_count = 0
@@ -459,6 +493,31 @@ class PerfettoCaptureTab(BaseTab):
         except Exception as exc:
             self._log(LOG_SEND_AGENT_FAIL_FMT.format(exc), "error")
 
+    def _history_dir_signature(self) -> tuple:
+        """历史目录变更签名（目录 mtime）— 用于跳过无变化的重复刷新。"""
+        try:
+            trace_dir = self._history_service.trace_dir
+            report_dir = self._history_service.output_dir / "trace_report"
+            return (
+                trace_dir.stat().st_mtime_ns if trace_dir.exists() else 0,
+                report_dir.stat().st_mtime_ns if report_dir.exists() else 0,
+            )
+        except OSError:
+            return (0, 0)
+
+    def _maybe_refresh_history(self) -> None:
+        """切 Tab 时按需刷新历史 — 目录无变化则跳过，避免重复文件扫描。
+
+        显式操作（抓取结束、删除、清理）仍调用 _refresh_history() 强制刷新。
+        """
+        if self._history_service is None:
+            return
+        signature = self._history_dir_signature()
+        if signature == self._last_history_signature:
+            return
+        self._last_history_signature = signature
+        self._refresh_history()
+
     def _refresh_history(self) -> None:
         """刷新历史记录和分析历史。"""
         if not self._history_service:
@@ -698,7 +757,10 @@ class PerfettoCaptureTab(BaseTab):
 
     def on_activated(self) -> None:
         self._ensure_history_panel()
-        self._refresh_history()
+        self._maybe_refresh_history()
+        # 前台时启动历史热更新轮询，感知外部文件夹增删
+        if self._history_service is not None and not self._history_poll_timer.isActive():
+            self._history_poll_timer.start()
         if self.context:
             self._service = self.context.get("pe_service")
             self._adb = self.context.get("pe_adb")
@@ -721,6 +783,11 @@ class PerfettoCaptureTab(BaseTab):
             ):
                 self._try_fetch_device_info()
 
+    def on_deactivated(self) -> None:
+        """切到后台时停止历史热更新轮询，避免无谓的目录 stat 开销。"""
+        if self._history_poll_timer.isActive():
+            self._history_poll_timer.stop()
+
     def on_devices_changed(self, devices: list[str]) -> None:
         super().on_devices_changed(devices)
         if devices:
@@ -731,6 +798,7 @@ class PerfettoCaptureTab(BaseTab):
             elif not self._capturing:
                 self._btn_start.setEnabled(True)
                 self._lbl_status.setText(LABEL_STATUS_READY_EMOJI)
+                self._maybe_prompt_resume_export(devices[0])
         else:
             old_serial = self._serial
             self._serial = None
@@ -743,25 +811,120 @@ class PerfettoCaptureTab(BaseTab):
                 self._btn_start.setEnabled(False)
                 self._lbl_status.setText(LABEL_STATUS_DEVICE_DISCONNECTED)
 
+    # ------------------------------------------------------------------
+    # 待接续导出（设备连接后检测清单 → 半自动确认 → QThread 接续）
+    # ------------------------------------------------------------------
+
+    def _maybe_prompt_resume_export(self, serial: str) -> None:
+        """设备连接时检查待导出清单，存在未导出 trace 则弹确认框。
+
+        同一 serial 只提示一次（避免设备列表抖动反复弹窗）。
+        """
+        if self._resuming:
+            return
+        if serial == self._last_resume_serial:
+            return
+        self._last_resume_serial = serial
+        if not self._service:
+            return
+        try:
+            store = self._service.pending_store
+            items = store.get_for_serial(serial)
+        except Exception as e:
+            logger.warning("检查待接续导出失败: %s", e)
+            return
+        if not items:
+            return
+        model = items[0].device_model or "未知"
+        ok = confirm_dialog(
+            self.window(),
+            DLG_TITLE_RESUME_EXPORT,
+            MSG_RESUME_EXPORT_FMT.format(count=len(items), serial=serial, model=model),
+            confirm_text=BTN_RESUME_EXPORT,
+        )
+        if ok:
+            self._start_resume_export(serial)
+
+    def _start_resume_export(self, serial: str) -> None:
+        """启动接续导出（QThread，禁止主线程 adb）。"""
+        if self._worker is not None and self._worker.isRunning():
+            self._log(LOG_OPERATION_RUNNING, "warning")
+            return
+        if not self._service:
+            return
+        self._resuming = True
+        self._log(RESUME_EXPORT_START_FMT.format(serial=serial), "info")
+        worker = _CaptureWorker("resume_export", self._service, serial)
+        worker.resume_ok.connect(self._on_resume_export_done)
+        worker.error.connect(self._on_resume_export_error)
+        worker.finished.connect(lambda: setattr(self, "_worker", None))
+        self._worker = worker
+        worker.start()
+
+    def _on_resume_export_done(self, result) -> None:
+        """接续导出完成后的结果日志。"""
+        self._resuming = False
+        exported = result.get("exported", []) or []
+        skipped = result.get("skipped_missing", []) or []
+        failed = result.get("failed", []) or []
+        if exported:
+            self._log(RESUME_EXPORT_OK_FMT.format(n=len(exported)), "success")
+            for p in exported:
+                self._log(f"  {p}")
+            export_dir = Path(str(exported[0])).parent
+            if export_dir.exists():
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(export_dir)))
+        if skipped:
+            self._log(RESUME_EXPORT_MISSING_FMT.format(n=len(skipped)), "warning")
+        if failed:
+            self._log(RESUME_EXPORT_FAIL_FMT.format(n=len(failed)), "error")
+        if not exported and not skipped and not failed:
+            self._log(RESUME_EXPORT_EMPTY, "info")
+        self._refresh_history()
+
+    def _on_resume_export_error(self, msg: str) -> None:
+        """接续导出失败（如设备又断开）——清单保留，等待下次重试。"""
+        self._resuming = False
+        self._log(f"✗ 接续导出失败: {msg}", "error")
+        self._log(RESUME_EXPORT_RETRY_HINT, "warning")
+
     def _try_fetch_device_info(self) -> None:
-        """尝试获取设备信息；service 未就绪或 ADB 失败时使用 fallback。"""
+        """后台获取设备信息；service 未就绪或 ADB 失败时使用 fallback。
+
+        在 QThread 中执行 adb getprop，完成后经信号回主线程更新 UI，
+        避免主线程同步 adb 阻塞导致切 Tab 卡死。
+        """
         from .models import DeviceInfo
 
         if not self._serial:
             return
-        if self._service:
-            try:
-                info = self._service.get_device_info(self._serial)
-                self._lbl_device.setText(LABEL_DEVICE + ": " + f"{info.model} ({self._serial})")
-                self._device_info = info
-                return
-            except Exception:
-                self._log(LOG_CANNOT_READ_DEVICE, "warning")
+        if not self._service:
+            self._device_info = DeviceInfo(
+                serial=self._serial, model="unknown", soc="unknown",
+            )
+            self._lbl_device.setText(f"{LABEL_DEVICE}: {self._serial}")
+            return
 
-        self._device_info = DeviceInfo(
-            serial=self._serial, model="unknown", soc="unknown",
-        )
-        self._lbl_device.setText(f"{LABEL_DEVICE}: {self._serial}")
+        # 防重入：已有在途请求则不重复发起
+        if self._device_info_worker is not None and self._device_info_worker.isRunning():
+            return
+
+        serial = self._serial
+        worker = _DeviceInfoWorker(self._service, serial, parent=self)
+
+        def _on_done(info):
+            # 仅当设备未切换时更新 UI（避免旧请求覆盖新设备）
+            if self._serial == serial:
+                self._lbl_device.setText(LABEL_DEVICE + ": " + f"{info.model} ({serial})")
+                self._device_info = info
+
+        def _on_failed(_err):
+            self._log(LOG_CANNOT_READ_DEVICE, "warning")
+
+        worker.done.connect(_on_done)
+        worker.failed.connect(_on_failed)
+        worker.start()
+        self._device_info_worker = worker
 
     def _on_import_config(self) -> None:
         """弹出文件选择对话框，默认指向当前模块配置目录，导入用户选择的 JSON 配置。"""
@@ -1107,10 +1270,20 @@ class PerfettoCaptureTab(BaseTab):
         self._jank_group.setVisible(checked)
         self._jank_enabled = checked
         if checked and self._adb and self._serial:
-            self._refresh_jank_apps()
+            self._refresh_jank_apps(auto_select_foreground=True)
 
-    def _refresh_jank_apps(self) -> None:
-        """刷新应用列表。"""
+    def _refresh_jank_apps(
+        self,
+        auto_select_foreground: bool = False,
+        refresh_threshold: bool = True,
+    ) -> None:
+        """刷新应用列表。
+
+        Args:
+            auto_select_foreground: 为 True 时刷新后自动选中当前前台应用，
+                用于支持前台应用热切换（停止后切到另一款游戏再启动时跟随前台）。
+            refresh_threshold: 为 False 时跳过默认阈值重置，避免覆盖用户手动设置。
+        """
         if not self._adb or not self._serial:
             self._log("⚠ 请先连接设备", "warning")
             return
@@ -1119,10 +1292,13 @@ class PerfettoCaptureTab(BaseTab):
             from .jank_service import JankMonitorService
             svc = JankMonitorService(self._adb, self._serial)
             apps = svc.get_running_apps()
-            self._jank_config_panel.app_selector.set_apps(apps)
+            self._jank_config_panel.app_selector.set_apps(
+                apps, select_foreground=auto_select_foreground
+            )
 
-            threshold = svc.get_default_threshold()
-            self._jank_config_panel.set_default_threshold(threshold)
+            if refresh_threshold:
+                threshold = svc.get_default_threshold()
+                self._jank_config_panel.set_default_threshold(threshold)
         except Exception as e:
             self._log(f"⚠ 获取应用列表失败: {e}", "warning")
 
@@ -1175,6 +1351,12 @@ class PerfettoCaptureTab(BaseTab):
         """启动 Jank 监控。不阻塞 Perfetto 抓取。"""
         if not self._adb or not self._jank_enabled:
             return
+
+        # 启动前刷新应用列表并自动选中当前前台应用：
+        # 支持前台应用热切换（停止后切到另一款游戏再启动时，目标自动跟随前台，
+        # 否则会继续监测已退到后台的旧游戏导致帧率曲线不再统计）。
+        # refresh_threshold=False 避免覆盖用户手动设置的阈值。
+        self._refresh_jank_apps(auto_select_foreground=True, refresh_threshold=False)
 
         config = self._jank_config_panel.get_config()
         if not config.target_package:
