@@ -69,6 +69,9 @@ class GamePerfTab(BaseTab):
         self._document_dirty = False
         # 避免设备列表轮询时重复自动拉取；仅在序列号变化或断连后重连时拉取
         self._last_known_device_serial = ""
+        # 设备序列号缓存：由 on_devices_changed 写入，供 _get_serial() 读取
+        # （避免主线程同步 adb 查询导致 UI 卡死）
+        self._cached_serial = ""
         self._cancel_pull_event: threading.Event | None = None
         # 上次在 Start 弹窗中填写的备注，用于下次弹窗预填（主界面不展示备注框）
         self._push_notes_cache = ""
@@ -164,6 +167,12 @@ class GamePerfTab(BaseTab):
         self._game_cbx.setMinimumWidth(120)
         self._game_cbx.setMaximumWidth(200)
         row.addWidget(self._game_cbx)
+
+        self._add_game_btn = QPushButton(sg.BTN_ADD_GAME)
+        self._add_game_btn.setFixedHeight(28)
+        self._add_game_btn.setFixedWidth(52)
+        self._add_game_btn.setToolTip(sg.DLG_TITLE_ADD_GAME)
+        row.addWidget(self._add_game_btn)
 
         row.addWidget(QLabel(sg.LABEL_MODE))
         self._mode_cbx = QComboBox()
@@ -272,6 +281,7 @@ class GamePerfTab(BaseTab):
         self._browse_btn.clicked.connect(self._on_browse)
         self._game_cbx.currentTextChanged.connect(self._on_game_changed)
         self._mode_cbx.currentTextChanged.connect(self._on_mode_changed)
+        self._add_game_btn.clicked.connect(self._on_add_game)
         self._save_as_btn.clicked.connect(self._on_save_as)
         self._config_table.cellChanged.connect(self._on_cell_changed)
         self._start_btn.clicked.connect(self._on_push_start)
@@ -658,10 +668,13 @@ class GamePerfTab(BaseTab):
         grid.addWidget(QLabel(sg.LABEL_KEY), 0, 0)
         grid.addWidget(QLabel(sg.LABEL_VALUE), 0, 1)
         if is_bindcore:
-            grid.addWidget(QLabel(sg.LABEL_ACTION), 0, 2)
+            # BindCore：额外「二进制」列展示绑核 mask 的二进制形式，便于判断绑了哪些核
+            grid.addWidget(QLabel(sg.LABEL_BINARY), 0, 2)
+            grid.addWidget(QLabel(sg.LABEL_ACTION), 0, 3)
             grid.setColumnStretch(0, 2)
             grid.setColumnStretch(1, 3)
-            grid.setColumnStretch(2, 0)
+            grid.setColumnStretch(2, 2)
+            grid.setColumnStretch(3, 0)
         else:
             grid.setColumnStretch(0, 2)
             grid.setColumnStretch(1, 3)
@@ -682,6 +695,13 @@ class GamePerfTab(BaseTab):
             grid.addWidget(kl, row_idx, 0)
             grid.addWidget(ed, row_idx, 1)
             if is_bindcore:
+                # 二进制列：仅 mask 值行（mode=="text"）显示二进制；线程名 attr 行为空
+                if p.get("mode") == "text":
+                    bin_lbl = QLabel(GamePerfParser.format_bindmask_binary(str(p.get("value", ""))))
+                    bin_lbl.setObjectName("fieldHint")
+                    grid.addWidget(bin_lbl, row_idx, 2)
+                else:
+                    grid.addWidget(QLabel(""), row_idx, 2)
                 target = self._bindcore_direct_child_for_remove(item.element, p["dom"])
                 del_btn: Optional[QPushButton] = None
                 if target is not None:
@@ -694,9 +714,9 @@ class GamePerfTab(BaseTab):
                             functools.partial(self._on_bindcore_remove_row, target)
                         )
                 if del_btn is not None:
-                    grid.addWidget(del_btn, row_idx, 2)
+                    grid.addWidget(del_btn, row_idx, 3)
                 else:
-                    grid.addWidget(QLabel(""), row_idx, 2)
+                    grid.addWidget(QLabel(""), row_idx, 3)
             row_idx += 1
         bl.addLayout(grid)
         parent_layout.addWidget(block)
@@ -865,6 +885,67 @@ class GamePerfTab(BaseTab):
         )
         if path and self.parser.save_as(path):
             info_dialog(self.window(), "保存成功", f"已保存到：\n{path}")
+
+    def _on_add_game(self):
+        """新增游戏：弹窗输入包名与可选别名，写入 XML 并选中新游戏。"""
+        if not self.parser:
+            warning_dialog(self.window(), sg.DLG_TITLE_ADD_GAME, sg.MSG_NO_DOCUMENT)
+            return
+
+        from toolkit.gui.toolkit_dialog import ToolkitDialog
+
+        dlg = ToolkitDialog(sg.DLG_TITLE_ADD_GAME, self.window(), min_width=420)
+        lbl = QLabel(sg.MSG_ADD_GAME_HINT)
+        lbl.setWordWrap(True)
+        lbl.setObjectName("dlgMsgLabel")
+        dlg.content_layout.addWidget(lbl)
+
+        pkg_edit = QLineEdit()
+        pkg_edit.setPlaceholderText(sg.PLACEHOLDER_PACKAGE_NAME)
+        dlg.content_layout.addWidget(pkg_edit)
+
+        alias_edit = QLineEdit()
+        alias_edit.setPlaceholderText(sg.PLACEHOLDER_GAME_ALIAS)
+        dlg.content_layout.addWidget(alias_edit)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_cancel = QPushButton(sg.BTN_CANCEL)
+        btn_cancel.setObjectName("secondaryBtn")
+        btn_cancel.setFixedWidth(80)
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_row.addWidget(btn_cancel)
+
+        ok_btn = QPushButton(sg.BTN_CONFIRM)
+        ok_btn.setObjectName("primaryBtn")
+        ok_btn.setFixedWidth(80)
+        ok_btn.setEnabled(False)
+        ok_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(ok_btn)
+        pkg_edit.textChanged.connect(lambda t: ok_btn.setEnabled(bool(t.strip())))
+        dlg.content_layout.addLayout(btn_row)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        package_name = pkg_edit.text().strip()
+        alias = alias_edit.text().strip()
+        ok, err = self.parser.add_game(package_name, alias)
+        if not ok:
+            warning_dialog(self.window(), sg.DLG_TITLE_ADD_GAME, err)
+            return
+
+        self._document_dirty = True
+        self._game_cbx.blockSignals(True)
+        self._game_cbx.clear()
+        self._game_cbx.addItems(self.parser.get_game_names())
+        self._game_cbx.blockSignals(False)
+        alias_shown = self.parser.get_alias_for_package(package_name)
+        idx = self._game_cbx.findText(alias_shown)
+        if idx >= 0:
+            self._game_cbx.setCurrentIndex(idx)
+        self._on_game_changed()
+        self._log(sg.LOG_GAME_ADDED_FMT.format(package=package_name))
 
     # ------------------------------------------------------------------
     # 推送/清除/还原
@@ -1147,11 +1228,12 @@ class GamePerfTab(BaseTab):
         self._run_background(do_pull, self._on_auto_pull_done)
 
     def _get_serial(self) -> str:
-        if self._adb:
-            devices = self._adb.get_connected_devices()
-            if devices:
-                return devices[0]
-        return ""
+        """返回当前设备序列号（读取设备轮询缓存，不做主线程同步 adb 查询）。
+
+        设备列表由 DeviceMonitor 轮询并通过 on_devices_changed() 传入缓存，
+        此处 MUST NOT 再调用 adb.get_connected_devices() 阻塞主线程。
+        """
+        return self._cached_serial
 
     def _update_push_button_states(self, enabled: bool):
         self._start_btn.setEnabled(enabled)
@@ -1199,6 +1281,7 @@ class GamePerfTab(BaseTab):
 
     def on_devices_changed(self, devices: list[str]):
         super().on_devices_changed(devices)
+        self._cached_serial = devices[0] if devices else ""
         self._update_push_button_states(bool(devices))
         if not devices or not self._service:
             self._last_known_device_serial = ""

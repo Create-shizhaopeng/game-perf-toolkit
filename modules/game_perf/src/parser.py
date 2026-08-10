@@ -121,7 +121,9 @@ class GamePerfParser:
 
         for game in gp.findall("Game"):
             game_name = game.get("name", "")
-            game_alias = self._resolve_alias(game_name)
+            # 用户自定义别名持久化在 <Game alias="…"> 属性上，优先于内置映射
+            node_alias = (game.get("alias") or "").strip()
+            game_alias = node_alias or self._resolve_alias(game_name)
 
             game_items: list[StrategyItem] = []
             for child in game:
@@ -188,6 +190,25 @@ class GamePerfParser:
             return None
         a, b = p
         return f"{a}_{b}"
+
+    @staticmethod
+    def format_bindmask_binary(value: str) -> str:
+        """十六进制绑核 mask → 二进制字符串（位宽按 4 的倍数向上取整，至少 8 位）。
+
+        如 ``"3c"`` → ``"00111100"``、``"c0"`` → ``"11000000"``；
+        空串或非法十六进制返回空串。
+        """
+        s = (value or "").strip()
+        if not s:
+            return ""
+        try:
+            v = int(s, 16)
+        except ValueError:
+            return ""
+        if v < 0:
+            return ""
+        bits = max(8, ((v.bit_length() + 3) // 4) * 4)
+        return format(v, f"0{bits}b")
 
     def _cluster_freq_count(self, cluster: str) -> int:
         if cluster == "Gpu" and self.gpu_cluster:
@@ -452,6 +473,80 @@ class GamePerfParser:
 
     def write_to_path(self, path: str | Path) -> bool:
         return self._write_xml(str(path))
+
+    # ------------------------------------------------------------------
+    # 新增游戏
+    # ------------------------------------------------------------------
+
+    def get_alias_for_package(self, package_name: str) -> str:
+        """返回包名当前展示用的别名（对齐 freq_rows 中的 game_alias）。"""
+        for r in self.freq_rows:
+            if r.package_name == package_name:
+                return r.game_alias
+        return self._resolve_alias(package_name)
+
+    def add_game(self, package_name: str, alias: str = "") -> tuple[bool, str]:
+        """新增游戏节点到 XML 并重新解析。
+
+        - 在 ``<GamePolicy>`` 下创建 ``<Game>`` 默认结构（Normal 模式 + 默认温控策略）
+        - 在 ``<BaseInfo>`` 下创建对应 ``<Game><SceneList/>``
+        - 用户指定别名且与内置映射不同时，注册实例级别名覆盖
+
+        返回 ``(是否成功, 错误消息)``；成功后可通过 ``get_game_names()`` 查询到新游戏。
+        """
+        package_name = (package_name or "").strip()
+        if not package_name:
+            return False, "包名不能为空"
+        if "." not in package_name:
+            return False, "包名须为完整包名（如 com.example.game）"
+
+        existing = {r.package_name for r in self.freq_rows}
+        if package_name in existing:
+            return False, f"游戏已存在: {package_name}"
+
+        if self._root is None:
+            return False, "XML 根节点不存在"
+
+        # 1. GamePolicy 下创建 <Game> 默认结构（Normal 模式 + 默认温控策略）
+        gp = self._root.find("GamePolicy")
+        if gp is None:
+            gp = etree.SubElement(self._root, "GamePolicy")
+        game_el = etree.SubElement(gp, "Game")
+        game_el.set("name", package_name)
+
+        tsc_el = etree.SubElement(game_el, "ThermalSceneCode")
+        tsc_el.text = "4000"
+
+        mode_el = etree.SubElement(game_el, "Mode")
+        mode_el.set("name", "Normal")
+        mode_tsc = etree.SubElement(mode_el, "ThermalSceneCode")
+        mode_tsc.text = "4000"
+        policy_el = etree.SubElement(mode_el, "Policy")
+        temp_el = etree.SubElement(policy_el, "TempLevel")
+        temp_el.set("level", "0")
+        temp_el.set("temp", "36")
+        for cluster in ("Gold", "Prime", "Gpu"):
+            item_el = etree.SubElement(temp_el, "item")
+            item_el.set("name", cluster)
+            item_el.text = "0_0"
+
+        # 2. BaseInfo 下创建对应 <Game><SceneList/>
+        bi = self._root.find("BaseInfo")
+        if bi is not None:
+            bi_game = etree.SubElement(bi, "Game")
+            bi_game.set("name", package_name)
+            etree.SubElement(bi_game, "SceneList")
+
+        # 3. 用户自定义别名持久化到 <Game alias="…"> 属性（与内置映射相同时不写，保持 XML 干净）
+        if alias and alias.strip():
+            alias_val = alias.strip()
+            if GAME_ALIAS_MAP.get(package_name) != alias_val:
+                game_el.set("alias", alias_val)
+
+        # 4. 重新解析 GamePolicy 与 BaseInfo
+        self._refresh_game_policy()
+        self._parse_base_info()
+        return True, ""
 
     # ------------------------------------------------------------------
     # 内部辅助

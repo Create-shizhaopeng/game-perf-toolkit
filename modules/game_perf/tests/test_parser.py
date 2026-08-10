@@ -253,3 +253,81 @@ class TestBindCoreAddFormatting:
         for line in text.splitlines():
             if "</BindCore>" in line:
                 assert "</tid>" not in line, f"闭合 BindCore 不应与 tid 末标签同行: {line!r}"
+
+
+class TestAddGame:
+    """新增游戏：创建默认 Game/Mode/Policy 结构并可查询、可持久化。"""
+
+    def test_add_game_creates_nodes(self, parser_copy):
+        ok, err = parser_copy.add_game("com.example.newgame", "新游戏")
+        assert ok, err
+        assert "新游戏" in parser_copy.get_game_names()
+        rows = parser_copy.get_filtered_rows("新游戏", "Normal")
+        assert len(rows) >= 1
+        assert rows[0].package_name == "com.example.newgame"
+        assert rows[0].temp_level == "0"
+        # 别名覆盖在重新解析后依然生效
+        assert parser_copy.get_package_for_alias("新游戏") == "com.example.newgame"
+
+    def test_add_game_no_alias_uses_last_segment(self, parser_copy):
+        ok, err = parser_copy.add_game("com.example.another")
+        assert ok, err
+        assert "another" in parser_copy.get_game_names()
+
+    def test_add_duplicate_rejected(self, parser_copy):
+        ok, err = parser_copy.add_game("com.tencent.tmgp.sgame")
+        assert not ok
+        assert "已存在" in err
+
+    def test_add_game_invalid_package(self, parser_copy):
+        ok, err = parser_copy.add_game("")
+        assert not ok
+        ok, err = parser_copy.add_game("no-dot")
+        assert not ok
+
+    def test_add_game_persists_to_xml(self, parser_copy, tmp_path):
+        ok, err = parser_copy.add_game("com.example.newgame", "新游戏")
+        assert ok, err
+        out = tmp_path / "with_game.xml"
+        assert parser_copy.save_as(str(out))
+        # 重新解析应能读到新游戏（含别名与默认策略行）
+        p2 = GamePerfParser(str(out))
+        assert "新游戏" in p2.get_game_names()
+        assert p2.get_package_for_alias("新游戏") == "com.example.newgame"
+        rows = p2.get_filtered_rows("新游戏", "Normal")
+        assert len(rows) == 1
+        assert rows[0].gold_index == "0_0"
+
+    def test_add_game_existing_games_untouched(self, parser_copy):
+        before_names = parser_copy.get_game_names()
+        ok, err = parser_copy.add_game("com.example.newgame")
+        assert ok, err
+        after_names = parser_copy.get_game_names()
+        assert set(before_names) <= set(after_names)
+
+
+class TestBindMaskBinary:
+    """绑核 mask 十六进制 → 二进制显示（GUI BindCore 列复用）。"""
+
+    def test_3c(self):
+        assert GamePerfParser.format_bindmask_binary("3c") == "00111100"
+
+    def test_c0(self):
+        assert GamePerfParser.format_bindmask_binary("c0") == "11000000"
+
+    def test_upper_hex_keeps_width(self):
+        assert GamePerfParser.format_bindmask_binary("0C") == "00001100"
+
+    def test_zero(self):
+        assert GamePerfParser.format_bindmask_binary("0") == "00000000"
+
+    def test_large_mask_expands_width(self):
+        # 0x1ff = 9 bit → 按 4 的倍数向上取整为 12 位
+        assert GamePerfParser.format_bindmask_binary("1ff") == "000111111111"
+
+    def test_0x_prefix(self):
+        assert GamePerfParser.format_bindmask_binary("0x3c") == "00111100"
+
+    def test_invalid_input_returns_empty(self):
+        assert GamePerfParser.format_bindmask_binary("") == ""
+        assert GamePerfParser.format_bindmask_binary("zz") == ""

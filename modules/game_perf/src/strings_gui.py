@@ -37,6 +37,18 @@ POLICY_VERSION_FMT: Final = "策略版本: {v}"
 POLICY_VERSION_NONE: Final = "策略版本: —"
 
 # ---------------------------------------------------------------------------
+# 新增游戏
+# ---------------------------------------------------------------------------
+
+BTN_ADD_GAME: Final = "新增"
+DLG_TITLE_ADD_GAME: Final = "新增游戏"
+MSG_ADD_GAME_HINT: Final = "输入新游戏包名（必填）。别名可选，留空自动取包名末段；创建后可在频率表与策略页配置该游戏的各模式参数。"
+PLACEHOLDER_PACKAGE_NAME: Final = "com.example.game"
+PLACEHOLDER_GAME_ALIAS: Final = "别名（可选）"
+MSG_NO_DOCUMENT: Final = "请先加载 gameperfconfig.xml 配置文件"
+LOG_GAME_ADDED_FMT: Final = "✓ 已新增游戏: {package}"
+
+# ---------------------------------------------------------------------------
 # 频率表
 # ---------------------------------------------------------------------------
 
@@ -67,6 +79,7 @@ TAB_MODE_STRATEGY: Final = "性能模式策略"
 LABEL_KEY: Final = "Key"
 LABEL_VALUE: Final = "Value"
 LABEL_ACTION: Final = "操作"
+LABEL_BINARY: Final = "二进制"
 LABEL_DATA: Final = "数据:"
 BTN_ADD_ROW: Final = "+ 添加"
 BTN_DELETE_BLOCK: Final = "× 删除整块"
