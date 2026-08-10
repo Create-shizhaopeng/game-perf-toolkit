@@ -37,6 +37,9 @@
 - [P32 — Bug 修复中用瞬时值替代稳定基准值导致级联回归](#p32--bug-修复中用瞬时值替代稳定基准值导致级联回归)
 - [P33 — 技术选型阶段重复造轮子](#p33--技术选型阶段重复造轮子)
 - [P34 — Pydantic AI + LiteLLM prompt 超出模型上下文限制](#p34--pydantic-ai--litellm-prompt-超出模型上下文限制)
+- [P35 — GUI 主线程同步 ADB/文件扫描导致卡死](#p35--gui-主线程同步-adb文件扫描导致卡死)
+- [P36 — 实例属性缓存的编辑状态不跨保存持久化](#p36--实例属性缓存的编辑状态不跨保存持久化)
+- [P37 — 空目录自动清理误删正在使用的会话目录](#p37--空目录自动清理误删正在使用的会话目录)
 - [按子系统快速索引](#按子系统快速索引)
   - [插件框架](#插件框架)
   - [GUI / PyQt6](#gui--pyqt6)
@@ -75,9 +78,11 @@
 | P21 | QTableWidget 操作按钮刷新竞态 | 中等 | blockSignals、cellWidget |
 | P29 | Python 短路求值传 None 给 Qt setEnabled() | 中等 | setEnabled、短路求值、bool |
 | P30 | QWidget 子类 CSS 背景不渲染 | 中等 | paintEvent、QStyleOption、透明 |
+| P36 | 实例属性缓存的编辑状态不跨保存持久化 | 中等 | 编辑状态、持久化、XML、重载丢失 |
 | P31 | 函数早返回跳过资源清理逻辑 | 严重 | 早返回、cleanup、线程停止 |
 | P32 | Bug 修复中用瞬时值替代稳定基准值导致级联回归 | 严重 | 瞬时值、基准、回归、Jank 检测 |
 | P33 | 技术选型阶段重复造轮子 | 严重 | 技术选型、第三方库、LiteLLM、LLM Provider |
+| P35 | GUI 主线程同步 ADB/文件扫描导致卡死 | 严重 | 主线程阻塞、adb、get_serial、卡死、watchdog |
 
 ### ADB / 设备
 
@@ -96,6 +101,7 @@
 | P17 | Ring buffer clone 覆盖的时间范围 | 中等 | ring_buffer、clone、时间窗口 |
 | P26 | Jank 检测误判（阈值与首周期） | 中等 | jank_1、jank_3、VSync、首周期 |
 | P28 | SurfaceView 游戏帧数据采集需 SF fallback | 严重 | SurfaceView、gfxinfo、SurfaceFlinger |
+| P37 | 空目录自动清理误删正在使用的会话目录 | 严重 | 轮询、空目录清理、导出竞态 |
 
 ### 构建 / PyInstaller
 
@@ -1343,3 +1349,101 @@ GLM-4-Plus（ZhipuAI）返回 `ZaiException - Prompt exceeds max length`，尽�
 - 注册的工具 MUST 无功能重叠，冗余工具及时清理
 - 新增工具时 MUST 评估其返回值大小，超过 1K token 的原始数据 MUST 经过压缩
 - 上下文超限 MUST 有降级方案，不可直接终止用户操作
+
+## P35 — GUI 主线程同步 ADB/文件扫描导致卡死
+
+### 严重程度：严重
+
+### 现象
+
+应用"首次启动 / 切换 Tab"卡死，Windows 报"未响应"，用户被迫强退。慢设备/冷启动 adb 场景下尤其明显（首次启动 adb server 冷启动 + 设备响应慢放大为数十秒冻结）。
+
+### 根因
+
+GUI 主线程同步执行阻塞操作，典型链路：
+
+1. `DeviceMonitor._poll()`（主线程 QTimer 每 2s）→ 设备变化 → `MainWindow._on_devices_changed` → **遍历所有 Tab 同步调用 `on_devices_changed`**，其中任一 Tab 同步调 `adb.get_connected_devices()` 即阻塞主线程
+2. Tab `on_activated()` / `on_devices_changed()` 内同步执行多次 `adb shell getprop`（如 `_try_fetch_device_info` 每次 6 个 key × timeout 10s）
+3. 同步文件系统扫描：`scan_sessions()` / 递归扫 `trace_report/`（trace 目录可达数百 MB）
+
+实测（adb 命令 0.8s/次 mock）：`_on_devices_changed` 卡 2.6s，切 Tab 卡 0.87-0.99s；真实设备假死时放大为数十秒。
+
+### 修复方案
+
+- **`_get_serial()` MUST 读缓存，禁止同步调 adb**：设备列表已由 `DeviceMonitor` 轮询并通过 `on_devices_changed(devices)` 传入，Tab 内维护 `_cached_serial`（在 `on_devices_changed` 写入），`_get_serial()` 直接读缓存
+- **同步 ADB 操作 MUST 走 QThread**：如设备信息获取用 `_DeviceInfoWorker(QThread)` + pyqtSignal 回主线程更新 UI
+- **文件扫描加目录签名缓存**：`on_activated` 的自动刷新用 `_maybe_refresh_history()`（目录 mtime 变化才扫描），显式操作仍强制刷新
+- **轮询防重入**：`DeviceMonitor._poll` 加 `_polling` 标志，adb 慢时跳过积压 poll
+
+### 预防措施
+
+- Tab 内任何 adb 调用前自问：这是否可能在主线程执行？是则 MUST 改后台线程或读缓存
+- 设备列表类查询 MUST 复用 `on_devices_changed(devices)` 传入的缓存，MUST NOT 重复 `get_connected_devices()`
+- 启用 debug 模式（`--debug`）排查：`perf_debug` 的 `TimeIt` 会输出慢操作告警（adb/poll/切 Tab），`MainThreadWatchdog` 卡死超 5s 自动 dump 主线程堆栈
+
+## P36 — 实例属性缓存的编辑状态不跨保存持久化
+
+### 严重程度：中等
+
+### 现象
+
+给 XML 编辑工具新增"覆盖状态"（如 game_perf 新游戏的用户自定义别名）时，先放在**实例属性**里（`self._alias_overrides[包名] = 别名`）。当前会话内下拉框显示正确；但 `save_as()` / `write_to_path()` 保存 XML、重新 `GamePerfParser(path)` 加载后，覆盖状态丢失，回落为默认值（包名末段）。测试 `add_game` → 保存 → 重新解析后才暴露，单元测试仅断言会话内状态时"假通过"。
+
+### 根因
+
+编辑工具的目标产物是**磁盘文件**（XML），而实例属性只活在当前 Python 对象生命周期内。只要目标状态没有写进被保存的载体，重新加载必然丢失。任何"用户可改、需要随文件走"的状态，若只存内存即为隐患。
+
+### 修复方案
+
+把覆盖状态写入被保存的载体本身：
+
+- **XML 属性**：`<Game name="包名" alias="别名">`，解析时 `game.get("alias")` 优先于内置映射。前提是目标文件无 DTD/schema 校验（`gameperfconfig.xml` 满足，推送验证仅做 `ET.parse` 格式检查），标准解析器会忽略未知属性
+- 解析顺序：**节点属性 → 内置映射 → 兜底规则**（此处为包名末段）
+
+### 预防措施
+
+- 为编辑工具设计"用户可改且需持久化"的状态时，先问：**保存后重新加载，这个状态还在吗？** 答案取决于是否写入了持久化载体，而非当前对象
+- 新增编辑功能 MUST 补"保存 → 重新加载"往返测试（`test_add_game_persists_to_xml` 即此类），仅测会话内状态不够
+
+## P37 — 空目录自动清理误删正在使用的会话目录
+
+### 严重程度：严重
+
+### 现象
+
+抓取导出 trace 时报：
+
+```
+✗ adb: error: cannot create file/directory '...\data\output\trace\2026_08_07-16_25_02\XXX.perfetto-trace': No such file or directory
+```
+
+目标会话目录不存在。手工排查目录从未创建或已被删除。
+
+### 根因
+
+会话导出目录是**延迟创建**的（`create_session` 注释"目录延迟到首次保存 trace 时创建"），trace 文件要到**导出阶段**才 pull 进来，期间的目录是**空的**。若任何机制频繁扫描并清理"空目录"，就会把正在抓取的空会话目录当垃圾删除：
+
+- 历史服务 `scan_sessions()` → `_parse_session_dir()` → `_cleanup_empty_dir()` 会删除无 `.perfetto-trace` 文件的会话目录
+- 新增 2s 轮询热更新（切前台轮询目录签名）后，`scan_sessions()` 被频繁触发，save 与 export 之间的空目录窗口被命中删除
+
+save 创建目录与 export 真正写入文件之间是**长时间窗口**（用户可能连续抓多段），竞态窗口极大。
+
+### 修复方案
+
+双层防御：
+
+1. **空目录清理加宽限期**：`_cleanup_empty_dir(path, grace_seconds)`，扫描路径传 `_EMPTY_DIR_GRACE_SECONDS = 600`，仅清理"年龄"超过宽限期的空目录；`delete_trace` 主动清理路径传默认 0（用户删完最后一个 trace 仍立即清目录）
+2. **关键写入路径防御性重建**：`session_stop_and_export` 在 `adb pull` 前 `ensure_dir(session.export_session_dir)`，即使目录已被清理也能重建
+
+### 预防措施
+
+- "延迟创建目录 + 轮询/异步扫描"组合时，扫描清理逻辑 MUST 考虑目录的**中间态**（目录已创建、内容未就绪）
+- 对"可能正在被使用"的目录，清理 MUST 带宽限期或显式跳过条件
+- 关键写入路径（pull/导出/落盘）MUST 有重建兜底，不能假设目录一定存在
+
+### 延伸：待导出 trace 的时效性
+
+设备端 trace 文件名是固定的 `current_N.pb`，且**新会话抓取会从 `current_1` 重新计数——直接覆盖旧会话未导出的文件**。因此"接续导出"有保质期：
+
+- 设备重连后 MUST 优先接续导出（弹确认框提示"旧 trace 可能被新抓取覆盖"），避免用户先开新抓取导致旧文件被覆盖
+- 标准做法：本地持久化待导出清单（`pending_export_store.py`，serial 强隔离防跨设备串扰）+ 设备重连检测 + 半自动确认接续

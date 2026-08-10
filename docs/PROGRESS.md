@@ -44,6 +44,77 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 
 ## 近期完成
 
+### 2026-08-08（导出失败后设备重连自动接续导出）
+
+- **背景**：修复"轮询误删抓取会话目录导致导出失败"后，进一步解决导出失败（设备断开 / 进程退出）后的 trace 接续导出
+- **方案**（与用户讨论确认）：待导出清单持久化 + 设备重连半自动确认接续；关键决策：serial 强隔离防跨设备串扰、JSON 载体、确认框提示时效性
+- **实现**：
+  - 新增 `pending_export_store.py`：`PendingExportItem` + `PendingExportStore`（JSON 原子写 tmp+rename、线程锁、按 serial 过滤/出队/清理）
+  - `service.py`：`session_save_trace` 入队 / `session_stop_and_export` 出队 / `session_abandon` 清理当前会话清单项 / 新增 `resume_pending_exports(serial)` 接续导出（本地已存在→视为已导出、设备端文件缺失→跳过出队、pull 失败→保留重试、设备不可用→抛错）
+  - `gui_tab.py`：设备连接时检测 pending → 半自动确认框（serial/型号/数量 + "可能被新抓取覆盖"提示）→ `_CaptureWorker("resume_export")` QThread 接续 → 结果日志 + 打开导出目录
+- **测试**：`test_pending_export_store.py` 12 用例 + `test_pending_export_resume.py` 9 用例（含跨设备隔离、失败保留、设备不可用抛错、入队/出队）
+- **验证**：perfetto_capture 184 passed（此前 161）；全量测试 8 组通过 0 组失败；启动链 7 插件加载通过
+
+### 2026-08-07（分析历史文件夹热更新 + game_perf 新增游戏 + BindCore 二进制显示）
+
+- **BindCore 二进制显示**（game_perf）：BindCore 策略块的绑核 value 为十六进制 CPU mask（如 `3c`），新增「二进制」列同步显示 mask 的二进制形式（`3c → 00111100`），便于判断绑了哪些核；位宽按 4 的倍数向上取整、至少 8 位，编辑后随策略区刷新自动更新。转换逻辑放 `GamePerfParser.format_bindmask_binary()`（纯函数，新增 7 个测试）
+- **分析历史实时热更新**（perfetto_capture）：
+  - 问题：抓取/分析历史不随 `trace_report/`、`trace/` 目录的实际增删而刷新，只有下次保存（分析完成）或切 Tab 时才更新列表
+  - 方案：Tab 前台时启动 2s `QTimer` 轮询，复用 `_history_dir_signature()`（目录 mtime）签名比较，仅签名变化时才做完整扫描刷新；`on_deactivated()` 停止轮询避免无谓 stat 开销
+  - 代价：约 20 行，无新依赖；stat 目录 mtime 微秒级，不阻塞主线程
+- **game_perf 支持新增游戏**：
+  - 问题：性能配置模块只能修改现有游戏参数，无法新增游戏
+  - 方案：筛选区「游戏」下拉框旁新增「新增」按钮 → 弹窗输入包名+可选别名 → `GamePerfParser.add_game()` 在 XML 创建默认 `Game / Normal Mode / Policy / TempLevel` 结构 → 刷新下拉框并选中新游戏
+  - 别名持久化：写入 `<Game alias="…">` 属性（gameperfconfig.xml 无 DTD，标准解析器忽略未知属性；推送验证仅做格式检查），避免实例属性在重新加载后丢失
+  - 测试：新增 6 个 `TestAddGame` 用例（节点创建 / 默认别名 / 重复拒绝 / 非法包名 / 持久化 / 不破坏既有游戏）
+- **热更新回归修复：轮询误删抓取会话目录导致导出失败**（perfetto_capture）：
+  - 现象：导出 trace 时 `adb: error: cannot create file/directory ... No such file or directory`，目标会话目录不存在
+  - 根因：当日新加的 2s 轮询热更新使 `scan_sessions()` 频繁扫描，`_cleanup_empty_dir()` 把「首次 save 创建、trace 尚未 pull 进来」的空会话目录当垃圾删除，export 阶段 pull 目标目录已不存在
+  - 修复：① `_cleanup_empty_dir` 扫描路径加 600s 宽限期（新空目录不删；`delete_trace` 主动清理路径不受影响）；② `session_stop_and_export` 在 pull 前防御性 `ensure_dir` 重建
+  - 测试：新增 `test_scan_keeps_recent_empty_directory`（新空目录保留）、`TestExportDirRecreation`（目录被删后导出自动重建落盘）；`test_cleanup_empty_directory` 改为模拟旧 mtime
+- **验证**：全量测试 8 组通过 0 组失败；启动链加载 7 插件通过；GUI 无头实例化 + 集成流程验证通过
+
+### 2026-08-06（Jank 监测前台应用热切换修复 + pytest GUI 测试 QApplication GC 崩溃根因修复）
+
+- **问题**：停止监测后不重连设备，切换前台游戏（和平精英 → 王者荣耀）再重新启动监测，应用列表标星仍为旧游戏，且帧率曲线不再向后统计
+- **根因**（两个现象同一根因）：`_start_jank_monitor()` 启动时直接使用 `AppSelector` combo 的**上次选中项**，从不重新刷新应用列表
+  - ① 列表标星不变：应用列表只在「勾选 Jank 检测」时刷新一次，重新启动时王者不会标 ★ 也不会被选中
+  - ② 曲线不统计：target 仍是已退到后台的和平精英，`JankMonitorWorker._check_foreground_state()` 首轮检测到非前台 → `_on_app_background()` → `_paused=True`，帧率采集暂停，曲线不再更新
+- **修复**：
+  - `jank_panel.py`：`AppSelector.set_apps()` 新增 `select_foreground` 参数，为 True 时刷新后自动选中当前前台应用
+  - `gui_tab.py`：`_refresh_jank_apps()` 新增 `auto_select_foreground` / `refresh_threshold` 参数透传；`_on_jank_toggled()` 勾选时与 `_start_jank_monitor()` 启动前均调用刷新并自动选中前台应用（`refresh_threshold=False` 避免覆盖用户手动设置的阈值）
+- **pytest GUI 测试 QApplication GC 崩溃根因**（顺带定位并修复，导致多个 GUI 测试套件卡住）：
+  - **根因**：测试把 `QApplication` 作为局部变量创建后丢弃返回值（`_ensure_app()`），引用计数归零被 Python GC，后续创建 QWidget 时 Qt 报 `QWidget: Must construct a QApplication before a QWidget` → `qFatal` → `abort()` → 进程 exit 127、未刷新缓冲丢失看起来像 hang
+  - **修复**：4 个测试文件统一改为 `@pytest.fixture(scope="session")` 的 `qapp` fixture 保持 QApplication 存活；`test_agent_context_injection.py` / `test_history_agent_context.py` 中引用已随 Agent 重构移除的旧接口（`compose_message_with_context`、旧 AgentTab 私有属性）的死测试迁移到 `toolkit/agent/gui/agent_panel.py` 新接口或标记 skip 注明
+- **验证**：perfetto_capture 全量 161 passed, 3 skipped（此前卡 23% 无法出汇总）；agent_chat 全量 196 passed, 1 skipped；toolkit/gui/widgets 11 passed；启动链 7 模块加载通过
+- **主项目 tests/ 既有问题已修复（同日）**：
+  - `test_mcp_server.py`：import `toolkit.core.mcp_server` 不存在（MCP Server 重构后迁移到 `toolkit/core/mcp/server.py`）→ 更新 import 路径，13 passed
+  - `test_skill_registry.py`：`SkillMetadata.triggers` 断言与解析逻辑不匹配（triggers 为 `list[str]`，dict 结构取键名）→ 更新断言匹配实现，8 passed
+  - `test_scaffold.py`：`create_module()` 内 `uvx --from git+...spec-kit specify init` 联网下载导致每个测试超时 120s → `modules_tmp` fixture monkeypatch `_init_speckit`，19 passed in 0.7s
+- **run_all_tests 暴露的模块级测试遗留已修复（同日）**：
+  - `perfetto_analysis`：11 个测试文件 import 已随 Agent 重构移除的模块（`src.agent`、`src.result_compressor`、`src.mcp_client` 等），10 个收集失败 + g3 运行时失败 → 新增 `tests/conftest.py` 用 `collect_ignore` 保留备查不收集；补 `test_service.py` 冒烟测试（4 passed）
+  - `perfdog_insights`：tests/ 空目录（0 tests → pytest returncode 5 误判失败）→ 补 `test_service.py` 冒烟测试（2 passed）
+  - `scripts/run_all_tests.py`：空测试目录跳过不判失败（修复 0 tests 误判）；`llm_manager` 纳入 TEST_GROUPS
+- **最终验证**：`python scripts/run_all_tests.py` → **8 组通过, 0 组失败，全部通过**（主项目 196 passed + perfetto_capture 161 + agent_chat 196 + 各模块）
+
+### 2026-08-05（首启/切 Tab 卡死性能修复 + debug 诊断日志系统完善）
+
+- **根因定位**：GUI 主线程同步执行阻塞操作导致"首次启动/切换 Tab 卡死退出"
+  - ① 主线程同步 ADB：`DeviceMonitor._poll`（主线程 QTimer）→ 设备变化 → 各 Tab `on_devices_changed`/`on_activated` 同步调 `adb get_connected_devices` / 多次 `adb getprop`。慢 adb 场景实测 `_on_devices_changed` 卡 2.6s、切 Tab 卡 0.87-0.99s，真实设备假死时放大为数十秒 → Windows 未响应 → 强退
+  - ② 主线程文件系统扫描：`perfetto_capture` 每次 `on_activated` 重复 `scan_sessions()` + 递归扫 `trace_report/`（trace 目录 225MB）
+  - ③ 首次冷启动 import `pyqtgraph`（3s+）/`pandas`（2s+）拉长窗口显示前黑屏期
+- **修复**：
+  - `game_perf` / `device_disguise`：`_get_serial()` 从同步调 adb 改为读缓存（`on_devices_changed` 已传入 devices，不再重复查询）
+  - `perfetto_capture`：`_try_fetch_device_info` 异步化（`_DeviceInfoWorker` QThread）；`on_activated` 历史刷新加目录签名缓存（`_maybe_refresh_history`）
+  - `DeviceMonitor._poll`：防重入 + 耗时统计
+  - 验证：慢 adb 场景切 Tab 遍历从 2.7s → **0.002s**，`_on_devices_changed` 2.6s → **0.001s**
+- **新增 debug 诊断日志系统**（`toolkit/core/perf_debug.py`）：
+  - `TimeIt` 耗时打点上下文管理器/`timed` 装饰器（慢操作超阈值 warning，debug 输出明细）
+  - `MainThreadWatchdog` 主线程卡死检测：心跳超时自动 dump 主线程堆栈到日志（解决"卡死但无日志"）
+  - 集成：`AdbManager` 每次命令耗时、`DeviceMonitor._poll` 耗时、`MainWindow.add_tab`/`_on_tab_selected` 耗时、`app.py` 启动阶段打点
+  - `--debug` 参数自动启用；`tests/test_perf_debug.py` 19 个测试
+- 新增诊断脚本 `scripts/diag_startup_perf.py`（无头实测各阶段耗时 + 模拟慢 adb 复现卡死）
+
 ### 2026-06-02（agent-wiring-fix 收尾 + DES-002 差距分析）
 
 - agent-wiring-fix: 49/50 任务完成。本会话完成剩余 13 项任务：
