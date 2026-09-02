@@ -52,6 +52,13 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 
 ## 近期完成
 
+### 2026-09-02（修复 TitleBar 启动崩溃）
+
+- **现象**：`python -m toolkit.app` 启动崩溃 `AttributeError: 'TitleBar' object has no attribute 'output_dir_requested'`（main_window.py:113）
+- **根因**：`toolkit/gui/widgets/title_bar.py` 重构 log-panel-header 时，`TitleBar` 作为桥接层遗漏了 `output_dir_requested` 信号的声明与转发——`SettingsButton` 已定义并 emit 该信号，但 `TitleBar` 只转发了 `theme/llm/agent/log_*` 6 个信号，唯独漏了 `output_dir_requested`，导致 `MainWindow.__init__` 访问 `self._title_bar.output_dir_requested` 时崩溃
+- **修复**：`TitleBar` 补齐 `output_dir_requested = pyqtSignal()` 信号声明 + `self._settings_btn.output_dir_requested.connect(self.output_dir_requested.emit)` 桥接，顺序对齐 `SettingsButton`
+- **验证**：无头完整启动链（`_build_context → _load_plugins → MainWindow`）通过，`output_dir_requested` 已连接 1 个 receiver；`tests/ -k title_bar/main_window` 1 passed 无回归
+
 ### 2026-09-01（项目重命名 + game_perf 模块排除公开发布）
 
 - **背景**：项目将公开发布到 GitHub，需重命名仓库/项目为 `game-perf-toolkit`，且内部模块 `game_perf`（游戏性能配置，含两个子 tab）源码、发布产物、本地 db 数据均不上传公开仓库

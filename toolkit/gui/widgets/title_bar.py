@@ -452,6 +452,7 @@ class TitleBar(QWidget):
     theme_toggled = pyqtSignal()
     llm_settings_requested = pyqtSignal()
     agent_settings_requested = pyqtSignal()
+    output_dir_requested = pyqtSignal()
     toggle_nav_panel = pyqtSignal(bool)
     toggle_bottom_panel = pyqtSignal(bool)
     toggle_right_panel = pyqtSignal(bool)
@@ -508,6 +509,9 @@ class TitleBar(QWidget):
         )
         self._settings_btn.agent_settings_requested.connect(
             self.agent_settings_requested.emit
+        )
+        self._settings_btn.output_dir_requested.connect(
+            self.output_dir_requested.emit
         )
         self._settings_btn.log_export_requested.connect(
             self.log_export_requested.emit
