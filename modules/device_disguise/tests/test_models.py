@@ -154,9 +154,10 @@ class TestResolveDeviceInfoJsonPath:
         assert p.parent.name == "config"
         assert "device_disguise" in p.parts
 
-    def test_frozen_points_next_to_exe(
+    def test_frozen_points_to_roaming_root(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """frozen 模式配置走 roaming APPDATA 根，扁平命名（非 exe 同级 data/config）。"""
         import sys
 
         exe = tmp_path / "Toolkit.exe"
@@ -164,7 +165,13 @@ class TestResolveDeviceInfoJsonPath:
         monkeypatch.setattr(sys, "frozen", True, raising=False)
         monkeypatch.setattr(sys, "executable", str(exe))
         p = resolve_device_info_json_path()
-        assert p == exe.parent / "data" / "config" / f"device_disguise_{DEVICE_INFO_FILENAME}"
+        # 扁平命名 device_disguise_<filename>
+        assert p.name == f"device_disguise_{DEVICE_INFO_FILENAME}"
+        # 在 roaming 配置根下（不再在 exe 同级 data/config）
+        from toolkit.core.app_paths import get_user_config_dir
+
+        assert p.parent == get_user_config_dir()
+        assert "data" not in p.parts
 
 
 class TestLegacyMigration:

@@ -7,6 +7,7 @@ import logging
 from PyQt6.QtCore import QPoint, QRect, Qt
 from PyQt6.QtWidgets import (
     QApplication,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QSplitter,
@@ -109,6 +110,7 @@ class MainWindow(QWidget):
         self._title_bar.theme_toggled.connect(self._toggle_theme)
         self._title_bar.llm_settings_requested.connect(self._open_llm_settings)
         self._title_bar.agent_settings_requested.connect(self._open_agent_settings)
+        self._title_bar.output_dir_requested.connect(self._open_output_dir_settings)
         self._title_bar.toggle_nav_panel.connect(self._on_toggle_nav)
         self._title_bar.toggle_bottom_panel.connect(self._on_toggle_bottom)
         self._title_bar.toggle_right_panel.connect(self._on_toggle_right)
@@ -630,6 +632,33 @@ class MainWindow(QWidget):
             logger.warning("Agent 模块未加载，无法打开设置")
         finally:
             self._device_monitor.start()
+
+    def _open_output_dir_settings(self) -> None:
+        """选择输出目录并写入 config，即时生效（无需重启）。
+
+        get_output_dir 的 _resolve_output_root 每次调用都读 config，
+        故改完 output_dir 后续调用立即返回新路径。
+        """
+        from toolkit.core.app_paths import get_output_dir, get_user_output_dir
+
+        config = self.context.get("config_manager")
+        if config is None:
+            logger.warning("ConfigManager 未就绪，无法设置输出目录")
+            return
+
+        current = config.get("output_dir", "") or str(get_user_output_dir())
+        new_dir = QFileDialog.getExistingDirectory(
+            self, s.DLG_OUTPUT_DIR_TITLE, current
+        )
+        if not new_dir:
+            return
+        config.set("output_dir", new_dir)
+        # 触发一次 get_output_dir 确认新路径可解析
+        confirmed = str(get_output_dir())
+        msg = s.DLG_OUTPUT_DIR_SUCCESS_FMT.format(dir=confirmed)
+        if self._log_manager is not None:
+            self._log_manager.log("MainWindow", msg, level="success")
+        logger.info("输出目录已更新: %s", confirmed)
 
     def _on_screen_changed(self, screen) -> None:
         """跨屏拖动后恢复窗口大小。"""

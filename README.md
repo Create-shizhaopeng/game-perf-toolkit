@@ -1,8 +1,8 @@
-# LV Game Toolkit
+# Game Perf Toolkit
 
-游戏开发测试工具集 — 集成设备管理、性能分析、日志分析等能力。
+游戏性能测试工具集 — 集成设备管理、性能分析、日志分析等能力。
 
-**远程仓库**：<https://gitee.com/lv-game-toolkit/lv-game-toolkit>
+**远程仓库**：GitHub `game-perf-toolkit`（公开）
 
 ## 目录
 
@@ -16,9 +16,13 @@
 
 ## 快速开始
 
-### 用户（解压即用）
+### 用户（安装版）
 
-下载发布包 → 解压 → 双击 `Toolkit.exe`。
+下载 `Setup.exe` → 双击安装 → 从开始菜单或桌面快捷方式启动。
+
+应用内自动检查更新（GitHub Releases feed），有新版本后台 delta 下载，下次启动生效。用户数据独立保存，升级不丢失。
+
+> 老便携版（zip）用户：首次启动新安装版会弹出数据迁移助手，选择旧便携版目录即可迁移历史数据。
 
 要求：Windows 10+ x64，Android 设备已开启 USB 调试。
 
@@ -150,19 +154,25 @@ python scripts/run_all_tests.py
 ## 构建
 
 ```bash
-# 完整构建（GUI + CLI + 打包）
+# 完整构建（PyInstaller → Velopack 打包 Setup.exe + delta 更新包）
 python scripts/build.py
 
-# 仅构建 GUI 用于测试
+# 仅构建 GUI 用于测试（不打包）
 python scripts/build.py --gui-only --no-package
+
+# 额外产出便携 zip（过渡期兼容）
+python scripts/build.py --zip
 ```
 
 构建产物：
-- `Toolkit.exe` — GUI 入口（双击启动，无控制台窗口）
-- `toolkit-cli.exe` — CLI 入口（终端使用）
-- `dist/lv-game-toolkit-v1.0.0-windows.zip` — 最终分发包
+- `dist/publish/` — PyInstaller `--onedir` 产出（Velopack 打包输入）
+- `dist/Setup.exe` — Velopack 安装包（首次安装）
+- `dist/*.nupkg` / delta 包 — 发布到 GitHub Releases feed 供自动更新
+- `--zip` 时额外产 `dist/lv-game-toolkit-v{version}-windows.zip`（便携包）
 
-详细说明参见 [构建脚本文档](scripts/doc/build.md)。
+> Velopack 打包前置：`dotnet tool install -g vpk`（需 .NET SDK）。代码签名可选（环境变量 `VP_SIGNING_CERT`）。
+
+详细说明参见 [构建脚本文档](scripts/doc/build.md) 与 [分发架构](docs/architecture/distribution-paths-architecture.md)。
 
 ## Git 与提交规范
 

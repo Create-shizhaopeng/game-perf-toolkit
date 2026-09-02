@@ -8,7 +8,12 @@ from pathlib import Path
 
 from PyQt6.QtCore import QFileSystemWatcher, QObject, pyqtSignal
 
-from toolkit.core.app_paths import get_exe_dir
+from toolkit.core.app_paths import (
+    get_config_path,
+    get_exe_dir,
+    get_user_config_dir,
+    get_user_data_dir,
+)
 from toolkit.core.db_manager import DatabaseManager
 from .models import LLMProvidersConfig, ProviderConfig, ModelConfig
 
@@ -39,7 +44,7 @@ class LLMManagerService(QObject):
 
     def __init__(self, db_manager: DatabaseManager | None = None) -> None:
         super().__init__()
-        self._config_path = get_exe_dir() / "data" / "config" / "llm_providers.json"
+        self._config_path = get_config_path("llm_manager", "llm_providers.json")
         self._config: LLMProvidersConfig | None = None
         self._db_manager = db_manager
         self._token_tracker: "TokenTracker | None" = None
@@ -232,7 +237,7 @@ class LLMManagerService(QObject):
     def _migrate_from_old_config(self) -> None:
         """从 toolkit_config.json["llm"] 迁移旧 API Key。"""
         try:
-            cfg_path = get_exe_dir() / "data" / "config" / "toolkit_config.json"
+            cfg_path = get_user_config_dir() / "toolkit_config.json"
             if not cfg_path.exists():
                 self._generate_default_config()
                 return
@@ -345,7 +350,7 @@ class TokenTracker:
         try:
             import sqlite3
 
-            db_path = get_exe_dir() / "data" / "db" / "llm_token_usage.db"
+            db_path = get_user_data_dir() / "db" / "llm_token_usage.db"
             db_path.parent.mkdir(parents=True, exist_ok=True)
             conn = sqlite3.connect(str(db_path))
             conn.execute(
@@ -397,7 +402,7 @@ class TokenTracker:
         try:
             import sqlite3
 
-            db_path = get_exe_dir() / "data" / "db" / "llm_token_usage.db"
+            db_path = get_user_data_dir() / "db" / "llm_token_usage.db"
             conn = sqlite3.connect(str(db_path))
             row = conn.execute(
                 f"SELECT SUM(prompt_tokens), SUM(completion_tokens), COUNT(*) "

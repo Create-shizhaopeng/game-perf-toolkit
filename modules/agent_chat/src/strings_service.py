@@ -15,11 +15,11 @@ SERVICE_DISPLAY_NAME: Final = "Agent 智能助手"
 # ---------------------------------------------------------------------------
 
 SYS_PROMPT_IDENTITY_ZH: Final = (
-    "你是 LV Game Toolkit 的 Agent 智能助手，专注于游戏性能分析。"
+    "你是 Game Perf Toolkit 的 Agent 智能助手，专注于游戏性能分析。"
     "请用简洁专业的中文回复用户。"
 )
 SYS_PROMPT_IDENTITY_EN: Final = (
-    "You are the Agent assistant of LV Game Toolkit, "
+    "You are the Agent assistant of Game Perf Toolkit, "
     "specialized in game performance analysis. "
     "Reply concisely and professionally in English."
 )

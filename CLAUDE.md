@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目简介
 
-LV Game Toolkit 是一个基于插件架构的游戏开发测试工具集，支持 GUI（PyQt6）交互和 MCP Server / Skill 标准化 Agent 调用。核心框架提供配置、数据库、事件总线、服务注册表、插件管理、MCP Server、Skill Registry 等基础设施，各功能以独立模块形式存在于 `modules/` 目录。
+Game Perf Toolkit 是一个基于插件架构的游戏性能测试工具集，支持 GUI（PyQt6）交互和 MCP Server / Skill 标准化 Agent 调用。核心框架提供配置、数据库、事件总线、服务注册表、插件管理、MCP Server、Skill Registry 等基础设施，各功能以独立模块形式存在于 `modules/` 目录。
 
 **技术栈**：Python 3.12+ / PyQt6 / pluggy 1.3+ / Pydantic 2.0+ / MCP (FastMCP) / SQLite / uv（推荐包管理）/ pytest / Ruff。详见 [README.md](README.md)。
 
@@ -31,6 +31,9 @@ python -m toolkit.app
 python -m toolkit.app mcp-serve
 python -m toolkit.app mcp-serve --transport sse --port 8765
 ```
+
+> **dev 路径覆盖**：用户数据走 OS 标准路径（`%APPDATA%`/`%LOCALAPPDATA%`/Documents）。
+> 开发时设置环境变量 `LV_TOOLKIT_DATA_DIR=<项目根>/data` 可让 data 层（db/backup/output）回落到项目本地 `data/`，便于测试 fixture。frozen 模式忽略此变量。
 
 ### 测试
 
@@ -59,19 +62,26 @@ ruff format .
 ### 构建
 
 ```bash
-# 完整构建（GUI + 打包为 zip）
+# 完整构建（PyInstaller → Velopack 打包产 Setup.exe + delta 更新包）
 python scripts/build.py
 
-# 仅构建 GUI 用于测试
+# 仅构建 GUI 用于测试（不打包）
 python scripts/build.py --gui-only --no-package
+
+# 额外产出便携 zip（过渡期兼容；默认仅 Velopack Setup.exe）
+python scripts/build.py --zip
 
 # 手动指定版本号
 python scripts/build.py --version 1.2.3
 ```
 
 构建产物位于 `dist/`：
-- `Toolkit/` 目录包含 `Toolkit.exe`（GUI，无控制台窗口）
-- `dist/lv-game-toolkit-v{version}-windows.zip` 为最终分发包
+- `dist/publish/` 为 PyInstaller `--onedir` 产出（Velopack 打包输入）
+- `dist/` 下 Velopack 产出的 `Setup.exe`（首次安装）+ delta 更新包（发 GitHub Releases feed）
+- `--zip` 时额外产 `dist/game-perf-toolkit-v{version}-windows.zip`（便携包，过渡期）
+
+> **Velopack 打包前置**：需安装 vpk CLI（`dotnet tool install -g vpk`，依赖 .NET SDK）。
+> 代码签名可选：环境变量 `VP_SIGNING_CERT` 配置签名凭证，未配置则产出未签名（Windows SmartScreen 警告）。
 
 ### 创建新模块
 

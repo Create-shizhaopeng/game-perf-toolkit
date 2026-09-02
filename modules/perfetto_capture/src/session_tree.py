@@ -92,9 +92,10 @@ class SessionTreeWidget(BaseHistoryTreeWidget):
         candidates: list[_Path] = []
 
         # dev: <root>/data/output/trace_report/<stem>/report.html
-        # frozen: <exe>/output/perfetto_report/<stem>/report.html
+        # frozen: Documents/Game Perf Toolkit/trace_report/<stem>/report.html
         try:
             candidates.append(get_output_dir("trace_report") / trace_stem / "report.html")
+            # 兼容旧版 frozen 在 exe 同级 perfetto_report 的遗留路径
             from toolkit.core.app_paths import get_exe_dir, is_frozen
             if is_frozen():
                 candidates.append(get_exe_dir() / "output" / "perfetto_report" / trace_stem / "report.html")

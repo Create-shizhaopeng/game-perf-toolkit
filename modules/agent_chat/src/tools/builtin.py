@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from toolkit.core.app_paths import get_exe_dir, is_frozen
+from toolkit.core.app_paths import get_output_dir
 
 logger = logging.getLogger(__name__)
 
@@ -14,12 +14,11 @@ logger = logging.getLogger(__name__)
 def _resolve_workspace_root() -> Path:
     """解析工作空间根目录。
 
-    - 打包后: <exe_dir>/output/agent_workspace/
-    - 开发环境: <project_root>/data/agent_workspace/
+    Agent 工作目录属于用户产物，走 output 层：
+    - frozen: Documents/Game Perf Toolkit/agent_workspace/
+    - dev: <data_dir>/output/agent_workspace/（受 LV_TOOLKIT_DATA_DIR 覆盖）
     """
-    if is_frozen():
-        return get_exe_dir() / "output" / "agent_workspace"
-    return get_exe_dir() / "data" / "agent_workspace"
+    return get_output_dir("agent_workspace")
 
 
 def create_workspace(name: str = "") -> str:

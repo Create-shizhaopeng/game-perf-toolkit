@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from toolkit.core.app_paths import get_exe_dir, is_frozen
+from toolkit.core.app_paths import get_output_dir
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,5 @@ class ReportIndex:
         return []
 
     def _get_trace_report_dir(self) -> Path | None:
-        """获取 trace 报告目录路径。"""
-        if is_frozen():
-            return get_exe_dir() / "output" / "trace_report"
-        return get_exe_dir() / "data" / "output" / "trace_report"
+        """获取 trace 报告目录路径（output 层，用户产物）。"""
+        return get_output_dir("trace_report")

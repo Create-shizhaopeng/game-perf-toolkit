@@ -101,3 +101,6 @@ _archived_source/
 # 测试数据（大型二进制文件，不纳入版本库）
 *.perfetto-trace
 modules/perfetto_analysis/tests/2026-*/
+
+# 性能配置模块（内部模块，不上传 GitHub 仓库，发布产物也不含）
+modules/game_perf/

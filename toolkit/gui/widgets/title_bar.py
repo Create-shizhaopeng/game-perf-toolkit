@@ -269,6 +269,7 @@ class SettingsButton(QPushButton):
     theme_toggled = pyqtSignal()
     llm_settings_requested = pyqtSignal()
     agent_settings_requested = pyqtSignal()
+    output_dir_requested = pyqtSignal()
     log_export_requested = pyqtSignal()
     log_open_dir_requested = pyqtSignal()
     log_clear_history_requested = pyqtSignal()
@@ -301,6 +302,9 @@ class SettingsButton(QPushButton):
 
         agent_action = menu.addAction(s.TITLEBAR_MENU_AGENT_SETTINGS)
         agent_action.triggered.connect(self.agent_settings_requested.emit)
+
+        output_dir_action = menu.addAction(s.TITLEBAR_MENU_OUTPUT_DIR)
+        output_dir_action.triggered.connect(self.output_dir_requested.emit)
 
         menu.addSeparator()
 

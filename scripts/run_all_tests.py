@@ -24,7 +24,6 @@ TEST_GROUPS: list[tuple[str, str]] = [
     ("perfdog_insights 模块", "modules/perfdog_insights/tests/"),
     ("perfetto_capture 模块", "modules/perfetto_capture/tests/"),
     ("perfetto_analysis 模块", "modules/perfetto_analysis/tests/"),
-    ("workspace_tools 模块", "modules/workspace_tools/tests/"),
     ("agent_chat 模块", "modules/agent_chat/tests/"),
     ("llm_manager 模块", "modules/llm_manager/tests/"),
 ]

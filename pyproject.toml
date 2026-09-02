@@ -1,7 +1,7 @@
 [project]
-name = "lv-game-toolkit"
+name = "game-perf-toolkit"
 version = "1.0.0"
-description = "LV Game Toolkit — 游戏开发测试工具集"
+description = "Game Perf Toolkit — 游戏性能测试工具集"
 requires-python = ">=3.12"
 dependencies = [
   "PyQt6>=6.5.0",
@@ -18,6 +18,8 @@ dependencies = [
   "Jinja2>=3.1.0",
   "perfetto>=0.16.0",
   "loguru>=0.7.0",
+  "platformdirs>=4.0.0",
+  "velopack>=1.0.0",
 ]
 
 [project.optional-dependencies]

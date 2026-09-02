@@ -1,5 +1,5 @@
 """
-Windows / Linux 构建脚本 — 基于 PyInstaller 打包 LV Game Toolkit。
+Windows / Linux 构建脚本 — 基于 PyInstaller 打包 Game Perf Toolkit。
 
 生成 GUI 可执行文件：
   - Toolkit       (console=False)  双击启动 GUI
@@ -24,7 +24,7 @@ DIST_DIR = ROOT / "dist"
 BUILD_DIR = ROOT / "build"
 ENTRY_POINT = ROOT / "toolkit" / "app.py"
 
-APP_NAME = "lv-game-toolkit"
+APP_NAME = "game-perf-toolkit"
 FALLBACK_VERSION = "1.0.0"
 
 EXCLUDE_MODULES = [
@@ -79,6 +79,9 @@ def _collect_modules() -> list[tuple[str, str]]:
     datas: list[tuple[str, str]] = []
     modules_dir = ROOT / "modules"
 
+    # 不打包的模块（内部模块，发布产物排除）
+    exclude_modules = {"game_perf"}
+
     skip_dirs = {
         "__pycache__", "data", ".pytest_cache", "out",
         ".cursor", ".specify", "specs", "tests", "fixtures",
@@ -87,7 +90,8 @@ def _collect_modules() -> list[tuple[str, str]]:
     skip_exts = {".pyc", ".pyo", ".md"}
 
     for dirpath, dirnames, filenames in os.walk(modules_dir):
-        dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+        # 跳过整个排除模块的顶级目录
+        dirnames[:] = [d for d in dirnames if d not in skip_dirs and d not in exclude_modules]
 
         rel = Path(dirpath).relative_to(ROOT)
         dir_parts = Path(dirpath).parts
@@ -179,6 +183,8 @@ def _hidden_imports() -> list[str]:
         if not manifest.exists():
             continue
         mod_name = mod_dir.name
+        if mod_name in {"game_perf"}:
+            continue
         src_dir = mod_dir / "src"
         if not src_dir.exists():
             continue
@@ -321,12 +327,29 @@ def build(console: bool, name: str, version: str) -> str:
             if not src_config_dir.is_dir():
                 continue
             mod_name = mod_dir.name
+            if mod_name in {"game_perf"}:
+                continue
             for f in src_config_dir.iterdir():
                 if f.is_file() and not f.name.endswith((".pyc", ".pyo")):
                     dest = config_dir / f"{mod_name}_{f.name}"
                     if not dest.exists():
                         shutil.copy2(f, dest)
     print(f"  [OK] Created data/config/ + data/db/ directories with default configs in {out_dir}")
+
+    # 规整产物到 dist/publish/（Velopack 要求 onedir 标准布局）
+    publish_dir = DIST_DIR / "publish"
+    if publish_dir.exists():
+        shutil.rmtree(publish_dir, ignore_errors=True)
+    shutil.copytree(out_dir, publish_dir)
+    # 主 exe 重命名为固定名 Toolkit.exe（PyInstaller 产出带时间戳，Velopack --mainExe 需固定名）
+    ts_exe = next((f for f in publish_dir.glob("Toolkit_*.exe")), None)
+    if ts_exe:
+        target_exe = publish_dir / "Toolkit.exe"
+        if target_exe.exists():
+            target_exe.unlink()
+        ts_exe.rename(target_exe)
+        print(f"  [OK] Renamed {ts_exe.name} -> Toolkit.exe")
+    print(f"  [OK] Staged onedir output to {publish_dir}")
     return build_name
 
 
@@ -383,13 +406,97 @@ def package(version: str, gui_dir_name: str = "Toolkit") -> None:
     print(f"{'='*60}\n")
 
 
+def _resolve_vpk() -> str | None:
+    """解析 vpk 可执行路径：优先 PATH，回退 ~/.dotnet/tools/vpk.exe。
+
+    vpk 通过 ``dotnet tool install -g vpk`` 安装到用户级 tools 目录，
+    新装后当前 shell 的 PATH 可能未刷新，故额外检查默认安装位置。
+    """
+    import shutil as _sh
+
+    path = _sh.which("vpk")
+    if path:
+        return path
+    # 回退：dotnet 全局工具默认安装位置
+    tools_dir = Path(os.path.expanduser("~")) / ".dotnet" / "tools"
+    for name in ("vpk.exe", "vpk"):
+        candidate = tools_dir / name
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def pack_velopack(version: str) -> None:
+    """用 Velopack vpk 打包 dist/publish/ 为 Setup.exe + delta 更新包。
+
+    需 .NET SDK 全局工具 vpk（``dotnet tool install -g vpk``）。
+    代码签名通过环境变量 VP_SIGNING_* 配置，未配置则跳过签名（内部 dev 构建）。
+    """
+    vpk_path = _resolve_vpk()
+    if vpk_path is None:
+        print("  [WARN] vpk CLI 未安装，跳过 Velopack 打包")
+        print("  [INFO] 安装: dotnet tool install -g vpk")
+        return
+
+    publish_dir = DIST_DIR / "publish"
+    if not publish_dir.exists():
+        print("  [ERROR] dist/publish/ 不存在，请先运行 PyInstaller 构建")
+        return
+
+    cmd = [
+        vpk_path, "pack",
+        "--packId", "GamePerfToolkit",
+        "--packVersion", version,
+        "--packDir", str(publish_dir),
+        "--mainExe", "Toolkit.exe",
+    ]
+
+    # 代码签名（可选）：环境变量 VP_SIGNING_* 存在则传签名参数
+    sign_args: list[str] = []
+    for env_key, vpk_flag in (
+        ("VP_SIGNING_CERT", "--signParams"),
+    ):
+        val = os.environ.get(env_key)
+        if val:
+            sign_args.extend([vpk_flag, val])
+    if not sign_args:
+        print("  [INFO] 未配置签名凭证（VP_SIGNING_CERT），产出未签名（Windows SmartScreen 会警告）")
+    else:
+        cmd.extend(sign_args)
+
+    print(f"\n{'='*60}")
+    print(f"  Velopack pack v{version} -> Setup.exe + delta (vpk: {vpk_path})")
+    print(f"{'='*60}\n")
+    # vpk 默认输出到 cwd/Releases。指定 --outputDir 跨目录 MoveFile 在 Windows 上
+    # 易触发文件锁竞态（杀软扫描），故用默认 Releases 后再用 Python 移到 dist/。
+    releases_tmp = ROOT / "Releases"
+    try:
+        subprocess.run(cmd, check=True, cwd=str(ROOT))
+        # 移动产物到 dist/Releases
+        releases_dst = DIST_DIR / "Releases"
+        if releases_dst.exists():
+            shutil.rmtree(releases_dst, ignore_errors=True)
+        if releases_tmp.exists():
+            shutil.move(str(releases_tmp), str(releases_dst))
+        print(f"  [OK] Velopack 打包完成，产物见 {releases_dst}")
+    except subprocess.CalledProcessError as e:
+        print(f"  [ERROR] vpk pack 失败: {e}")
+    except FileNotFoundError:
+        print("  [WARN] vpk 命令未找到，请确认 dotnet tool install -g vpk 已执行")
+
+
 def main() -> None:
     """主流程：构建 GUI 可执行文件，然后打包。"""
     import argparse
 
-    parser = argparse.ArgumentParser(description="LV Game Toolkit 构建脚本")
+    parser = argparse.ArgumentParser(description="Game Perf Toolkit 构建脚本")
     parser.add_argument("--gui-only", action="store_true", help="仅构建 GUI")
-    parser.add_argument("--no-package", action="store_true", help="不打包")
+    parser.add_argument("--no-package", action="store_true", help="不打包（仅构建）")
+    parser.add_argument(
+        "--zip",
+        action="store_true",
+        help="额外产出便携 zip 包（过渡期兼容；默认仅 Velopack Setup.exe）",
+    )
     parser.add_argument("--version", type=str, default="", help="手动指定版本号")
     args = parser.parse_args()
 
@@ -403,7 +510,14 @@ def main() -> None:
     elapsed = _time.time() - t0
     print(f"\n  Build time: {elapsed:.1f}s")
 
-    if not args.no_package:
+    if args.no_package:
+        return
+
+    # 默认走 Velopack 打包（Setup.exe + delta 更新包）
+    pack_velopack(version)
+
+    # 过渡期：--zip 额外产出便携 zip
+    if args.zip:
         package(version, gui_dir_name=gui_dir_name)
 
 

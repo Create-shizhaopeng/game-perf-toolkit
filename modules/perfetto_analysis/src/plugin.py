@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from toolkit.core.app_paths import get_db_path, get_exe_dir
+from toolkit.core.app_paths import get_db_path, get_exe_dir, get_user_data_dir
 from toolkit.core.hookspecs import hookimpl
 from toolkit.sdk.base_plugin import BasePlugin
 
@@ -113,7 +113,7 @@ class PerfettoAnalysisPlugin(BasePlugin):
 
         from .service import PerfettoAnalysisService
 
-        data_dir = get_exe_dir() / "data"
+        data_dir = get_user_data_dir()
         data_dir.mkdir(parents=True, exist_ok=True)
 
         db_manager = context.get("db_manager")

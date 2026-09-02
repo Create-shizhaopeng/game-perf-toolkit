@@ -71,11 +71,11 @@ class AgentPlugin(BasePlugin):
     def on_startup(self, context: dict) -> None:
         self.context = context
 
-        from toolkit.core.app_paths import get_exe_dir
+        from toolkit.core.app_paths import get_user_data_dir
 
         from .models import load_config_with_env
 
-        data_dir = get_exe_dir() / "data"
+        data_dir = get_user_data_dir()
         data_dir.mkdir(parents=True, exist_ok=True)
         (data_dir / "sops").mkdir(exist_ok=True)
         (data_dir / "agent_workspace").mkdir(exist_ok=True)

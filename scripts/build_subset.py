@@ -8,7 +8,7 @@ Windows / Linux 定制构建脚本 — 仅打包指定模块生成 EXE。
 
 生成产物:
   dist/Toolkit_<modules>/           # 可运行目录
-  dist/lv-game-toolkit-<modules>-v{version}-windows.zip  # 分发包
+  dist/game-perf-toolkit-<modules>-v{version}-windows.zip  # 分发包
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ DIST_DIR = ROOT / "dist"
 BUILD_DIR = ROOT / "build"
 ENTRY_POINT = ROOT / "toolkit" / "app.py"
 
-APP_NAME = "lv-game-toolkit"
+APP_NAME = "game-perf-toolkit"
 FALLBACK_VERSION = "1.0.0"
 
 EXCLUDE_MODULES = [
@@ -416,7 +416,7 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="LV Game Toolkit 定制构建脚本 — 仅打包指定模块",
+        description="Game Perf Toolkit 定制构建脚本 — 仅打包指定模块",
     )
     parser.add_argument(
         "--modules", type=str, required=True,

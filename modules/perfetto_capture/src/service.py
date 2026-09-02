@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 
 from toolkit.core.adb_manager import AdbCmdResult, AdbManager
-from toolkit.core.app_paths import get_exe_dir, is_frozen
+from toolkit.core.app_paths import get_exe_dir, get_output_dir, get_user_data_dir, is_frozen
 
 from .config_manager import load_config, save_config
 from .pending_export_store import PENDING_EXPORT_FILENAME, PendingExportItem, PendingExportStore
@@ -60,7 +60,7 @@ class PerfettoCaptureService:
 
     def __init__(self, adb: AdbManager, data_dir: Path | None = None) -> None:
         self._adb = adb
-        self._data_dir = data_dir or (get_exe_dir() / "data")
+        self._data_dir = data_dir or get_user_data_dir()
         self._cfg: CaptureConfig | None = None
         self._session: CaptureSession | None = None
         self._pending_store: PendingExportStore | None = None
@@ -94,8 +94,10 @@ class PerfettoCaptureService:
 
     @property
     def output_dir(self) -> Path:
+        # dev 模式或显式传入 data_dir 时基于 data_dir（保持可测试性）；
+        # frozen 模式走 output 层（Documents，可配置）。
         if is_frozen():
-            return get_exe_dir() / "output" / "trace"
+            return get_output_dir("trace")
         return self._data_dir / self.config.output_dir / "trace"
 
     def reload_config(self, config_path: Path | None = None) -> CaptureConfig:
@@ -456,6 +458,22 @@ class PerfettoCaptureService:
         except Exception:
             pass
 
+    def _purge_device_path(self, serial: str, device_path: str) -> None:
+        """启动 perfetto 前删除目标文件，避免属主冲突导致 Permission denied。
+
+        /data/misc/perfetto-traces 下若存在其他用户（如 root）创建的同名文件，
+        shell 身份的 perfetto 以写模式 open 会 EACCES（errno 13）。先 rm -f 清理，
+        让 perfetto 以当前用户全新创建。删除失败仅告警不中断——目录无写权限时
+        perfetto 会自行报错。
+        """
+        try:
+            res = self._adb.shell_raw(serial, f"rm -f {device_path}", timeout=5)
+            if res.returncode != 0:
+                combined = (res.stderr or "") + (res.stdout or "")
+                logger.warning("清理设备残留 trace 文件失败: %s -> %s", device_path, combined.strip())
+        except Exception as e:
+            logger.warning("清理设备残留 trace 文件异常: %s -> %s", device_path, e)
+
     def session_start_capture(self, serial: str, device_trace_dir: str) -> RunningTrace:
         """在当前会话中启动一段新的抓取。
 
@@ -471,6 +489,7 @@ class PerfettoCaptureService:
         session.trace_idx += 1
         device_path = f"{device_trace_dir}/current_{session.trace_idx}.perfetto-trace"
 
+        self._purge_device_path(serial, device_path)
         running = self.start_tracing_legacy(serial, device_path)
         logger.info("使用自动缓冲模式 (background + 停止-重启)")
 
@@ -527,6 +546,7 @@ class PerfettoCaptureService:
         new_device_path = (
             f"{device_trace_dir}/current_{session.trace_idx}.perfetto-trace"
         )
+        self._purge_device_path(serial, new_device_path)
         running = self.start_tracing_legacy(serial, new_device_path)
         session.running = running
         session.capture_state = CaptureState.CAPTURING

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-_IDENTITY_ZH = """你是 LV Game Toolkit 的智能助手，专注于游戏性能分析与测试工具。
+_IDENTITY_ZH = """你是 Game Perf Toolkit 的智能助手，专注于游戏性能分析与测试工具。
 你可以访问已注册的工具和 Skill 来帮助用户完成分析任务。"""
 
 _USAGE_GUIDANCE_ZH = """## 使用指导

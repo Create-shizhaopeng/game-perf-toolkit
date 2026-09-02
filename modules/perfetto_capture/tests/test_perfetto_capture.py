@@ -274,6 +274,37 @@ class TestService:
         assert session.device_serial == "DEV001"
         assert not session.export_session_dir.exists()
 
+    def test_purge_device_path_calls_rm(self) -> None:
+        adb = MagicMock()
+        adb.shell_raw.return_value = AdbCmdResult("", "", 0)
+        svc = PerfettoCaptureService(adb=adb)
+        svc._purge_device_path("DEV001", "/data/misc/perfetto-traces/current_1.perfetto-trace")
+        cmd = adb.shell_raw.call_args[0][1]
+        assert "rm -f" in cmd
+        assert "/data/misc/perfetto-traces/current_1.perfetto-trace" in cmd
+
+    def test_purge_device_path_failure_does_not_raise(self) -> None:
+        adb = MagicMock()
+        adb.shell_raw.return_value = AdbCmdResult("", "Permission denied", 1)
+        svc = PerfettoCaptureService(adb=adb)
+        # 删除失败仅告警，不抛异常
+        svc._purge_device_path("DEV001", "/data/misc/perfetto-traces/current_1.perfetto-trace")
+
+    def test_session_start_capture_purges_target_path(self, tmp_path) -> None:
+        adb = MagicMock()
+        adb.shell_raw.side_effect = [
+            AdbCmdResult("", "", 0),        # pkill (cleanup_stale_sessions)
+            AdbCmdResult("", "", 0),        # rm -f (_purge_device_path)
+            AdbCmdResult("[1234]", "", 0),  # perfetto --background (start_tracing_legacy)
+        ]
+        svc = PerfettoCaptureService(adb=adb, data_dir=tmp_path)
+        svc.create_session("DEV001")
+        running = svc.session_start_capture("DEV001", "/data/misc/perfetto-traces")
+        # 验证启动 perfetto 前删除目标文件，避免属主冲突
+        rm_cmds = [c[0][1] for c in adb.shell_raw.call_args_list if "rm -f" in c[0][1]]
+        assert any("current_1.perfetto-trace" in c for c in rm_cmds)
+        assert running.pid == 1234
+
 
 # ── 导出目录被历史扫描清理后的防御重建 ──────────────────────────
 

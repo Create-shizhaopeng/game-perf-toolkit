@@ -35,6 +35,7 @@ if sys.stderr is not None:
 from toolkit.core.config_manager import ConfigManager
 from toolkit.core.db_manager import DatabaseManager
 from toolkit.core.event_bus import EventBus
+from toolkit.core.app_paths import get_user_config_dir, get_user_data_dir
 from toolkit.core.llm.manager import LLMManager
 from toolkit.core.logger import setup_logging
 from toolkit.core.perf_debug import (
@@ -60,15 +61,16 @@ def _resolve_root() -> Path:
 
 ROOT_DIR = _resolve_root()
 MODULES_DIR = ROOT_DIR / "modules"
-DATA_DIR = Path(sys.executable).parent / "data" if getattr(sys, "frozen", False) else ROOT_DIR / "data"
 
 
 def _build_context() -> dict:
     """构建核心服务上下文，注入到所有模块。"""
     with TimeIt("构建核心服务上下文", min_ms=500):
-        config_manager = ConfigManager(DATA_DIR / "config" / "toolkit_config.json")
+        config_dir = get_user_config_dir()
+        data_dir = get_user_data_dir()
+        config_manager = ConfigManager(config_dir / "toolkit_config.json")
 
-        db_manager = DatabaseManager(DATA_DIR / "db" / "toolkit.db")
+        db_manager = DatabaseManager(data_dir / "db" / "toolkit.db")
         db_manager.connect()
 
         event_bus = EventBus()
@@ -83,7 +85,7 @@ def _build_context() -> dict:
             "event_bus": event_bus,
             "service_registry": service_registry,
             "root_dir": ROOT_DIR,
-            "data_dir": DATA_DIR,
+            "data_dir": data_dir,
             "tool_registry": tool_registry,
             "mcp_registry": MCPRegistry(tool_registry=tool_registry),
         }
@@ -146,7 +148,7 @@ def run_gui() -> None:
     from toolkit.gui.main_window import MainWindow
 
     app = QApplication(sys.argv)
-    app.setApplicationName("LV Game Toolkit")
+    app.setApplicationName("Game Perf Toolkit")
 
     # debug 模式：主线程卡死检测（心跳定时器 + 后台 watchdog 线程）
     _heartbeat_timer = None
@@ -241,7 +243,44 @@ def run_gui() -> None:
     window.set_module_info(modules_info)
 
     logger.info("GUI 模式启动（已加载 %d 个模块）", len(pm.loaded_modules))
+
+    # 便携版数据迁移助手（仅 frozen 安装版检查；dev 模式跳过）
+    if getattr(sys, "frozen", False):
+        from toolkit.gui.portable_migration_dialog import PortableMigrationDialog
+
+        if PortableMigrationDialog.should_show():
+            mig_dlg = PortableMigrationDialog(window)
+            mig_dlg.exec()
+
     window.show()
+
+    # 后台检查更新（Velopack UpdateManager）。非 Velopack 安装环境会 RuntimeError，
+    # 包在 try 内仅 debug 日志，绝不中断启动。更新应用仅在下次启动经 App().run() 生效。
+    def _check_update() -> None:
+        try:
+            import velopack
+
+            cfg = context.get("config_manager")
+            feed = cfg.get("update_feed", "") if cfg else ""
+            if not feed:
+                # 未配置更新源，跳过检查（待用户在设置中配 GitHub repo URL）
+                logger.debug("未配置 update_feed，跳过更新检查")
+                return
+            # Velopack UpdateManager 需 GithubSource（或其他 Source），非 URL 字符串
+            source = velopack.GithubSource(feed)
+            um = velopack.UpdateManager(source)
+            update = um.check_for_updates()
+            if update is not None:
+                logger.info("发现新版本 %s，后台下载中...", update.target_full_version)
+                um.download_updates(update)
+                logger.info("更新已下载，将在下次启动生效")
+            else:
+                logger.debug("已是最新版本")
+        except Exception as e:
+            logger.debug("更新检查跳过: %s", e)
+
+    QTimer.singleShot(3000, _check_update)
+
     exit_code = app.exec()
 
     if _watchdog is not None:
@@ -304,7 +343,7 @@ def _resolve_log_level() -> int:
 
     if not cli_override:
         try:
-            config = ConfigManager(DATA_DIR / "config" / "toolkit_config.json")
+            config = ConfigManager(get_user_config_dir() / "toolkit_config.json")
             level_name = config.get("log_level", "INFO")
             level = getattr(_logging, str(level_name).upper(), _logging.INFO)
         except Exception:
@@ -320,11 +359,23 @@ def main() -> None:
     - `mcp-serve` → MCP Server 模式（stdio/sse）
     - 其他参数 → CLI 模式
     """
+    # Velopack 启动钩子：应用待处理更新（可能重启进程）。
+    # 必须在任何 app 启动代码之前；MCP server 模式绕过以避免中断 stdio 会话。
+    # 在非 Velopack 安装环境（dev/旧 zip）为安全 no-op。
+    is_mcp = len(sys.argv) > 1 and sys.argv[1] == "mcp-serve"
+    if not is_mcp:
+        try:
+            import velopack
+
+            velopack.App().run()
+        except Exception:
+            pass
+
     log_level = _resolve_log_level()
     setup_logging(log_level)
     set_debug_enabled(log_level <= logging.DEBUG)
 
-    if len(sys.argv) > 1 and sys.argv[1] == "mcp-serve":
+    if is_mcp:
         transport = "stdio"
         port = 8765
         if "--transport" in sys.argv:

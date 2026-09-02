@@ -32,6 +32,14 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 - 2026-06-02: agent-wiring-fix 49/50 完成后，对照 DES-002 全量差距分析 — **确认 20 项新交付物全部待开始**，详见 DES-002 文档
 - 待进入 Speckit 流程（建议先创建 `hermes-phase1-resilience` change）
 
+### R8: UI 设计规范与 VSCode 差距补齐（DES-003）
+
+- 目标：解决 GUI 美观度/商用感与 VSCode 的系统性差距
+- 设计方案已落盘：[DES-003](design/DES-003-ui-design-standards.md)（2026-08-12，draft）
+- 产出：Design Token 体系（颜色/间距/字号/圆角/阴影）+ 组件六态规范 + 模块 GUI 审计差距清单（P0-P3）+ 三期实施路线
+- 审计要点：5 个 GUI 模块存在 objectName 命名不一致（`primaryButton`）、4 组件内联样式/硬编码颜色、`sectionCard` class 死代码
+- 待用户审阅后进入 Phase 1（token 落地 + 规范违规清零）
+
 ### R1: LLM 上下文优化（perfetto_analysis）
 
 - ToolReturn 压缩机制已实现（≤300 token 摘要 + metadata 保留原始数据）
@@ -43,6 +51,45 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 - 待实现：SF latency 数据校验、Android 16 layer name regex、诊断日志
 
 ## 近期完成
+
+### 2026-09-01（项目重命名 + game_perf 模块排除公开发布）
+
+- **背景**：项目将公开发布到 GitHub，需重命名仓库/项目为 `game-perf-toolkit`，且内部模块 `game_perf`（游戏性能配置，含两个子 tab）源码、发布产物、本地 db 数据均不上传公开仓库
+- **重命名**：pyproject.toml name、build.py APP_NAME、Velopack packId(`GamePerfToolkit`)、app_paths APP_NAME(`Game Perf Toolkit`)、app.py ApplicationName、README/CLAUDE 标题
+- **排除 game_perf**：.gitignore 加 `modules/game_perf/` + `git rm -r --cached -f`（33 文件移出索引，本地保留）；build.py `_collect_modules`/`_hidden_imports`/config 复制三处跳过 game_perf；data 目录本就由 skip_dirs 排除打包
+- **验证**：git 追踪 0、.gitignore 生效、build.py 语法 OK、无头启动 OK、tests/ 234 passed、game_perf 本地 86 passed（本地仍可用）
+
+### 2026-09-01（installer-distribution-refactor: 安装包分发 + 增量更新 + 数据隔离架构）
+
+- **背景**：原便携绿色包(zip)分发，用户数据堆 exe 同级 `data/`，覆盖升级易丢数据、无更新机制
+- **方案**（基于 explore 调研六条决策）：① 数据路径三层分层(platformdirs: config roaming / data local / output Documents)；② 安装包+更新一体化(Velopack, Squirrel 继任者, delta 差分)；③ 老便携数据迁移助手(半自动)；④ app_paths.py 三层重写 + 清理 ~15 处 `get_exe_dir()/"data"` 直拼旁路点
+- **关键约束**：MCP server 模式无 QCoreApplication，QStandardPaths 无 appname 隔离，故选 platformdirs（实测确认）
+- **实现**：`toolkit/core/app_paths.py` 三层根 + 封装函数内部改走分层；`toolkit/app.py` 植入 `velopack.App().run()` 钩子 + 后台 UpdateManager 检查；`toolkit/core/portable_migration.py` 迁移逻辑 + `toolkit/gui/portable_migration_dialog.py` UI；`scripts/build.py` 对接 vpk pack 产 Setup.exe
+- **测试**：test_app_paths 29 passed（三层路径 + dev 覆盖 + headless 一致性）、test_portable_migration 20 passed；tests/ 全量 234 passed；新文件 ruff 清零
+- **验证**：无头 `_build_context` 启动通过；build.py `--help` 验证新参数
+- **文档**：[ARCH-003](architecture/distribution-paths-architecture.md) 分发与路径架构；CLAUDE.md 构建章节更新
+- **决策遗留**：ConfigManager 接入 FileConfigService 的 config_changed 信号为 config-sync 专项，本 change 以"get_output_dir 每次读 config 即时生效"满足功能需求
+
+### 2026-09-01（perfetto_capture: 修复属主冲突导致启动失败）
+
+- **背景**：Perfetto 抓取报 `Failed to open /data/misc/perfetto-traces/current_1.perfetto-trace ... errno: 13, Permission denied`，提示 "file might have been created by another user, try deleting it first"
+- **根因**：`/data/misc/perfetto-traces/` 下残留同名 trace 文件属主非当前 shell 用户（常见于 userdebug/rooted 设备混用 `adb root` 与普通 shell），perfetto 以写模式 open 已有文件被拒；代码每次会话 `trace_idx` 从 1 递增生成 `current_{idx}`，跨会话重名易命中残留；`cleanup_stale_sessions` 只清进程不清文件
+- **实现**：新增 `PerfettoCaptureService._purge_device_path`，在 `session_start_capture`/`session_save_trace` 启动 perfetto 前 `rm -f` 目标文件，让 perfetto 以当前用户全新创建；删除失败仅告警不中断
+- **测试**：新增 3 用例（rm 命令构造、删除失败不抛异常、启动前清理集成），test_perfetto_capture 31 passed
+- **验证**：语法/导入通过；插件加载链路 + 核心框架 `_build_context` 8 服务无头构建通过
+- **文件**：`modules/perfetto_capture/src/service.py`、`tests/test_perfetto_capture.py`
+
+### 2026-08-12（UI 设计规范 DES-003 落盘）
+
+- **背景**：用户提出 GUI 美观度/商用感与 VSCode 差距大，单进程架构能否借鉴 VSCode 多进程设计
+- **分析结论**：VSCode 是 Electron+TS，代码无法移植；当前 PyQt6 已实现"类 VSCode 布局"；差距在细节层（token 缺失/规范违规/交互缺失）
+- **产出**：[DES-003](design/DES-003-ui-design-standards.md) UI 设计规范文档（draft）
+  - Design Token 体系：颜色（补充 focus_border/badge/shadow 等 9 类）/ 间距（8px 基准）/ 字号 / 圆角 / 阴影
+  - 组件六态规范：normal/hover/pressed/focus/disabled/active + 窗口失活两级
+  - 差距清单：P0（`primaryButton` 命名错）、P1（4 组件内联样式/硬编码颜色）、P2（focus 环/徽标/布局记忆/命令面板）、P3（虚拟滚动）
+  - 实施路线：Phase 1 token 落地+违规清零（低风险）→ Phase 2 交互补强 → Phase 3 动效/性能（可选）
+- **架构借鉴结论**：单进程下借鉴 VSCode 多进程的核心是"UI 不阻塞"，落地为渐进式启动 + QThread 纪律；进程化改造收益有限
+- **验证**：模块 GUI 审计（Explore agent）完成，md-doc 目录校验通过（37/37 一致）
 
 ### 2026-08-08（导出失败后设备重连自动接续导出）
 

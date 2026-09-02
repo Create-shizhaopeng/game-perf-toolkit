@@ -7,7 +7,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from toolkit.core.app_paths import get_exe_dir
+from toolkit.core.app_paths import get_user_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class DatabaseManager:
 
     def __init__(self, db_path: Path | None = None) -> None:
         if db_path is None:
-            db_path = get_exe_dir() / "data" / "db" / "toolkit.db"
+            db_path = get_user_data_dir() / "db" / "toolkit.db"
         self._db_path = db_path
         self._conn: sqlite3.Connection | None = None
 

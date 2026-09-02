@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from toolkit.core.app_paths import get_exe_dir
+from toolkit.core.app_paths import get_user_config_dir
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,8 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     "language": "zh-CN",
     "log_level": "INFO",
     "window": {"width": 1200, "height": 800},
+    "output_dir": "",  # 空表示用默认 Documents\Game Perf Toolkit
+    "update_feed": "",  # 空表示用默认 GitHub Releases；否则为自定义更新源 URL
 }
 
 
@@ -28,7 +30,7 @@ class ConfigManager:
 
     def __init__(self, config_path: Path | None = None) -> None:
         if config_path is None:
-            config_path = get_exe_dir() / "data" / "config" / "toolkit_config.json"
+            config_path = get_user_config_dir() / "toolkit_config.json"
         self._path = config_path
         self._config: dict[str, Any] = {}
         self._load()
