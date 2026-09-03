@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目简介
 
-Game Perf Toolkit 是一个基于插件架构的游戏性能测试工具集，支持 GUI（PyQt6）交互和 MCP Server / Skill 标准化 Agent 调用。核心框架提供配置、数据库、事件总线、服务注册表、插件管理、MCP Server、Skill Registry 等基础设施，各功能以独立模块形式存在于 `modules/` 目录。
+Game Perf Toolkit 是一个基于插件架构的游戏性能测试工具集，支持 GUI（PyQt6）交互和 MCP Server / Skill 标准化 Agent 调用。核心框架提供 Agent 引擎（位于 `toolkit/agent/`）以及配置、数据库、事件总线、服务注册表、插件管理、工具注册表、MCP Server、Skill Registry、LLM 管理等基础设施，其余功能以独立模块形式存在于 `modules/` 目录。
+
+> **公开仓库说明**：`modules/game_perf/`（游戏性能配置）为本地保留模块，已通过 `.gitignore` 排除公开发布，clone 仓库后不会看到该模块。
 
 **技术栈**：Python 3.12+ / PyQt6 / pluggy 1.3+ / Pydantic 2.0+ / MCP (FastMCP) / SQLite / uv（推荐包管理）/ pytest / Ruff。详见 [README.md](README.md)。
 
@@ -65,8 +67,8 @@ ruff format .
 # 完整构建（PyInstaller → Velopack 打包产 Setup.exe + delta 更新包）
 python scripts/build.py
 
-# 仅构建 GUI 用于测试（不打包）
-python scripts/build.py --gui-only --no-package
+# 仅构建 GUI 用于测试（不打包；--no-package 跳过 Velopack 打包）
+python scripts/build.py --no-package
 
 # 额外产出便携 zip（过渡期兼容；默认仅 Velopack Setup.exe）
 python scripts/build.py --zip
@@ -97,21 +99,30 @@ python scripts/create_module.py <module_name> --display-name "显示名称"
 - 无参数 → `run_gui()` → 创建 QApplication → 加载插件 → 显示 MainWindow
 - `mcp-serve` → `run_mcp_server()` → 加载插件 → 启动 MCP Server（stdio/sse）
 
-### 核心服务（在 `_build_context()` 中统一创建并注入）
+### 核心服务
+
+启动时分阶段创建并注入 `context`：多数在 `_build_context()`（`toolkit/app.py`），`PluginManager`/`SkillRegistry` 在 `_load_plugins()` 阶段，`LLMManager` 在 `QApplication` 之后由 `_init_llm_manager()` 注入。
 
 | 服务 | 类 | 说明 |
 |------|-----|------|
-| 配置管理 | `ConfigManager` | JSON 文件（`data/config.json`），支持嵌套键 |
-| 数据库 | `DatabaseManager` | SQLite（`data/toolkit.db`），WAL 模式，支持模块迁移 |
+| 配置管理 | `ConfigManager` | JSON 文件（`toolkit_config.json`，dev: `data/config/`，frozen: `%APPDATA%`），支持嵌套键；实时同步状态见 [config-sync-rules.md](.claude/rules/config-sync-rules.md)「项目现状与待修复」 |
+| 数据库 | `DatabaseManager` | SQLite（`data/db/toolkit.db`，frozen: `%LOCALAPPDATA%`），WAL 模式，支持模块迁移 |
 | 事件总线 | `EventBus` | 同步 pub/sub，事件命名规范：`{module}.{action}` |
 | 服务注册表 | `ServiceRegistry` | 模块在启动时注册服务，供 Agent 和其他模块查找调用 |
-| 插件管理 | `PluginManager` | 基于 pluggy 的模块发现、加载、生命周期管理 |
-| Skill 注册表 | `SkillRegistry` | 发现和加载模块 Skill 文件（SKILL.md），供 Agent 发现和触发 |
-| MCP Server | `FastMCP` | 将 ToolRegistry 中的工具通过标准 MCP 协议暴露（stdio/sse） |
+| 工具注册表 | `ToolRegistry` | 线程安全单例，收集 pluggy hooks / Skill / MCP 桥接工具，供 Agent 与 MCP Server 调用（`_build_context` 注入） |
+| MCP 注册表 | `MCPRegistry` | MCP 服务器全生命周期管理（local/external/remote），`_build_context` 注入 |
+| 插件管理 | `PluginManager` | 基于 pluggy 的模块发现、加载、生命周期管理（`_load_plugins` 阶段创建） |
+| Skill 注册表 | `SkillRegistry` | 发现和加载模块 Skill 文件（SKILL.md），供 Agent 发现和触发（`_load_plugins` 阶段创建） |
+| LLM 管理 | `LLMManager` | 框架层 LLM 能力中心，Provider 生命周期/配置持久化/信号通知（基于 LiteLLM），`QApplication` 后注入 |
+| MCP Server | `FastMCP` | 将 `ToolRegistry` 中的工具通过标准 MCP 协议暴露（stdio/sse/streamable-http），由 `create_mcp_server` 工厂按需创建 |
+
+> 核心基础设施（非 context 注入实例，表外单列）：`toolkit/core/app_paths.py`（用户数据三层分层路径 config/data/output）、`toolkit/core/unified_logger.py`（loguru 统一日志三层路由）、`toolkit/core/config_service.py`（`FileConfigService` 基类，文件型配置服务 MUST 继承）。
 
 ### 模块系统
 
 模块位于 `modules/<name>/`，必须包含 `manifest.json`，核心字段：
+
+> 注：`modules/agent_chat/` 为 R6 重构遗留壳（无 `manifest.json`，不再加载），Agent 插件入口已迁至 `toolkit/agent/__init_plugin.py`（作为框架级内置插件，`name=agent_chat`）。
 
 ```json
 {
@@ -136,8 +147,9 @@ python scripts/create_module.py <module_name> --display-name "显示名称"
 
 ### GUI 框架
 
-- `MainWindow` 管理左侧导航栏和右侧内容区
-- 各模块返回的 `BaseTab` 子类实例被添加到内容区
+- `MainWindow` 布局：自定义标题栏（`TitleBar`）+ 左侧面板（`LeftPanel` = `NavPanel` + `HistoryArea`）+ 中间内容堆栈（各 `BaseTab`）+ 底部日志面板（`BottomPanel`）+ 右侧 Agent Overlay 面板（`RightPanel`）+ 状态栏
+- 框架级组件：`toolkit/gui/panels/`（`LeftPanel`/`BottomPanel`/`RightPanel`/`HistoryArea`）、`toolkit/gui/widgets/`（`TitleBar`/`NavPanel`/`BaseHistoryTreeWidget`/`LLMStatusWidget`）；`BaseTab.history_widgets()` 注册到 `HistoryArea`，`RightPanel` 仅承载 Agent Overlay
+- 各模块返回的 `BaseTab` 子类实例被添加到内容堆栈
 - `BaseTab` 提供设备状态感知：`on_devices_changed(devices)` 在设备列表变化时自动调用
 - 涉及设备操作的按钮应在回调中先调用 `self.require_device()`
 - 全局对话框样式统一使用 `toolkit.gui.toolkit_dialog` 中的函数
@@ -147,22 +159,25 @@ python scripts/create_module.py <module_name> --display-name "显示名称"
 
 - 模块通过 `register_agent_tools()` 向 MCP Server 暴露标准化工具（JSON Schema 参数定义）
 - 模块通过 `register_skills()` 向 Skill Registry 注册 SKILL.md 操作指南
-- MCP Server 支持 stdio/sse 传输模式，由 `toolkit/app.py` 的 `run_mcp_server()` 启动
+- MCP Server 支持 stdio/sse/streamable-http 传输模式，由 `toolkit/app.py` 的 `run_mcp_server()` 启动
 - Skill 文件使用 YAML frontmatter 描述元数据（name/description/triggers/category）
 
-### Agent 模块
+### Agent 核心引擎
 
-`modules/agent_chat/` 提供智能助手能力：
-- 支持多 LLM Provider（通过 LiteLLM 统一调用）
-- 模块通过 `register_agent_tools` 向 Agent 暴露工具
-- Agent Tab 始终固定在导航栏最上方
+`toolkit/agent/` 提供智能助手能力（R6 重构已从 `modules/agent_chat/` 下沉为框架级核心引擎）：
+- `AgentOrchestrator` 驱动对话循环，统一 Skill/Tool/MCP 视图与生命周期
+- `AgentService` 执行对话循环；`AgentPanel`（`toolkit/agent/gui/`）以**右侧 Overlay 面板**形式呈现，不再作为导航栏 Tab（旧 `AgentTab` 已降级为 stub）
+- 支持多 LLM Provider（通过 LiteLLM 统一调用，由 `toolkit/core/llm/` 的 `LLMManager` 管理）
+- 各模块通过 `register_agent_tools` 向 Agent 暴露工具
+- `modules/agent_chat/` 已降级为向后兼容 re-export 垫片（无 `manifest.json`，不再作为插件加载）
 
 ## 目录布局要点
 
 ```
 toolkit/
-  core/           # 核心服务（含 mcp_server.py、skill_registry.py）
-  gui/            # PyQt6 GUI 框架
+  agent/          # Agent 核心引擎（orchestrator/service/gui/skill_router/knowledge/memory/workflow）
+  core/           # 核心服务（含 mcp/ 包、llm/ 包、tool_registry、skill_registry、app_paths 等）
+  gui/            # PyQt6 GUI 框架（panels/、widgets/、base_tab、styles 等）
   sdk/            # 模块开发 SDK
 modules/
   <name>/
@@ -171,9 +186,9 @@ modules/
     src/service.py         # 业务服务（可选）
     skills/                # Skill 文件目录（可选）
     tests/                 # 模块测试
-data/                   # 运行时数据（config.json、toolkit.db；运行时生成，gitignore）
+data/                   # 运行时数据（config/toolkit_config.json、db/toolkit.db、output/；运行时生成，gitignore）
 scripts/                # 构建、测试、脚手架脚本
-docs/                   # 文档中心（PROGRESS / SUMMARY / architecture / knowledge / experience）
+docs/                   # 文档中心（PROGRESS / README 索引 / architecture / knowledge / experience）
 specs/                  # Speckit 输出的需求/计划/任务（所有模块统一在此）
 .specify/               # Speckit 配置与模板（含 constitution.md 最高治理文档）
 .claude/rules/          # Claude Code 加载的项目规则
@@ -218,7 +233,7 @@ specify → clarify → [UE/UI] → plan → tasks → analysis → implement �
 
 开发特定模块时，按以下优先级加载上下文（按需加载，禁止全量）：
 
-1. `modules/<name>/AGENTS.md` — 模块边界约束（MUST 首先阅读）
+1. `modules/<name>/AGENTS.md` — 模块边界约束（若存在则 MUST 首先阅读；Agent 边界约束改看 `toolkit/agent/` 下文档）
 2. `modules/<name>/docs/` — 模块级文档
 3. `specs/` 下的当前 spec/plan/tasks — 需求上下文
 4. `docs/knowledge/` — 项目跨模块知识
@@ -244,7 +259,7 @@ specify → clarify → [UE/UI] → plan → tasks → analysis → implement �
 
 | 场景 | 动作 |
 |------|------|
-| 新会话开始 / 上下文压缩后 | 自动读取 `docs/PROGRESS.md` + `SUMMARY.md` 重建上下文 |
+| 新会话开始 / 上下文压缩后 | 自动读取 `docs/PROGRESS.md` + `docs/README.md` 重建上下文 |
 | 代码变更或新建文档后 | 更新 `PROGRESS.md`，然后运行 `/longmemory sync` 刷新索引 |
 | 每周/迭代末 | 主动建议运行 `/longmemory sync --dry-run` 审计文档系统 |
 
@@ -281,8 +296,5 @@ BUG/ANALYZE/DESIGN 文档顶部必须包含状态卡片：
 ```
 
 <!-- SPECKIT START -->
-Current plan: `specs/021-agent-core-refactor/plan.md`
-Research: `specs/021-agent-core-refactor/research.md`
-Data model: `specs/021-agent-core-refactor/data-model.md`
-Contracts: `specs/021-agent-core-refactor/contracts/service-api.md`
+（当前无进行中的 Speckit feature）
 <!-- SPECKIT END -->

@@ -52,6 +52,16 @@ Android 性能分析工具集，插件化架构 7 模块就绪，核心功能可
 
 ## 近期完成
 
+### 2026-09-02（文档同步实际状态：CLAUDE.md + README.md）
+
+- **背景**：R6 Agent 核心重构、toolkit/core 扩展、项目重命名等变更后，CLAUDE.md / README.md 多处描述与实际代码脱节
+- **方法**：Workflow 6 维度并行审计（modules / core-services / agent-arch / commands / specs-docs-rules / gui-framework）+ 对抗性验证，24 条差异断言 0 refuted
+- **CLAUDE.md 更新**：① 项目简介补 `toolkit/agent/` 引擎与 game_perf 排除说明；② 核心服务表重写——补 `ToolRegistry`/`MCPRegistry`/`LLMManager` 三行、修正路径（`toolkit_config.json`/`data/db/toolkit.db`）、表头改为分阶段创建；③ Agent 段重写为 `toolkit/agent/` 核心引擎 + 右侧 Overlay 面板（`modules/agent_chat/` 降级为 shim）；④ GUI 段补 `TitleBar`/`panels`/`widgets` 布局；⑤ 目录布局补 `toolkit/agent/`、修正 `core/`/`data/`/`docs/` 注释；⑥ `--gui-only` no-op 修正为 `--no-package`；⑦ MCP 传输补 streamable-http；⑧ 知识检索 AGENTS.md 改为"若存在"；⑨ SPECKIT 块清空（021 已完成）；⑩ longmemory 触发表 `SUMMARY.md` → `docs/README.md`
+- **README.md 更新**：clone URL（gitee/lv-game-toolkit → GitHub game-perf-toolkit）、项目结构树（补 `toolkit/agent/`+`mcp/`+`llm/`，删不存在的 `cli/`，补全 6 个 modules）、开发环境补 Agent/MCP 依赖、测试示例改公开模块、构建 `--gui-only` no-op 修正、zip 产物名修正、分支策略（master/dev/toTester）
+- **claude-md-review**：project-root 层审查无致命项；3 条建议已处理（ConfigManager 待修复状态改为指向 config-sync-rules、AGENTS.md 缺失清单定性化、SPECKIT 占位文字中性化）
+- **Speckit 归档**：`.specify/feature.json` 已重置为空（021 完成指针清除，本地状态不进版本库）；021 物理归档（移动到 archive）待后续 speckit archive 命令处理
+- **验证**：无头启动链通过（上一条 TitleBar 修复已验证）；文档变更不涉及代码路径
+
 ### 2026-09-02（修复 TitleBar 启动崩溃）
 
 - **现象**：`python -m toolkit.app` 启动崩溃 `AttributeError: 'TitleBar' object has no attribute 'output_dir_requested'`（main_window.py:113）
